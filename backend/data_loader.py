@@ -160,15 +160,3 @@ DataLoader.calculate_indicators = calculate_indicators
 # # Display the first few rows of the fetched data
 # print(market_data.head())
 
-import yfinance as yf
-import pandas as pd
-import numpy as np
-
-# Test if yfinance is working by downloading some stock data
-data = yf.download("AAPL", start="2020-01-01", end="2021-01-01")
-print(data.head())
-
-# Test if pandas and numpy are working
-arr = np.array([1, 2, 3, 4, 5])
-df = pd.DataFrame(arr, columns=["Numbers"])
-print(df)
