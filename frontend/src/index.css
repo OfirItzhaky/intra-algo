@@ -1,0 +1,31 @@
+/* index.css */
+html, body, #root {
+    height: 100%;
+    margin: 0;
+    background-color: #111827; /* Dark theme */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.app-container {
+    text-align: center;
+    color: #a7f3d0; /* Soft teal */
+    width: 100%;
+    max-width: 800px;
+    padding: 20px;
+    background-color: #1f2937;
+    border-radius: 12px;
+}
+
+.title {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #6ee7b7;
+}
+
+.version {
+    font-size: 1.2rem;
+    color: #d1d5db;
+    margin-bottom: 20px;
+}
