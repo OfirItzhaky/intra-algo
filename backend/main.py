@@ -42,10 +42,19 @@ def load_data(
 
     if data_type == "training":
         training_df = df
+
     elif data_type == "simulating":
-        simulation_df = df
+        if training_df is None:
+            return {"status": "error", "message": "Training data must be loaded before simulation data!"}
+
+        try:
+            df = data_loader.align_and_validate_simulation(training_df, df)
+            simulation_df = df  # Save after alignment
+        except ValueError as e:
+            return {"status": "error", "message": str(e)}
+
     else:
-        return {"status": "error", "message": "Invalid data type."}
+        return {"status": "error", "message": "Invalid data type provided."}
 
     first_row = df.iloc[0]
     last_row = df.iloc[-1]

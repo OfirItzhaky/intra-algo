@@ -27,22 +27,25 @@ function LoadDataButton({ onSummaryLoaded }) {
         fetch(url)
             .then(res => res.json())
             .then(result => {
-                console.log("📥 Backend response:", result);  // Debug in Edge console
-
                 if (result.status === "success") {
-                    const summaryWithType = { ...result.summary, dataType };
-                    console.log("✅ Calling onSummaryLoaded:", summaryWithType);  // Debug
+                    const loadedSummary = {
+                        ...result.summary,   // Include backend summary (dates/times)
+                        dataType              // training or simulating
+                    };
 
-                    onSummaryLoaded(summaryWithType);
+                    onSummaryLoaded(loadedSummary);  // Send to app.jsx
+
                     setError(null);
                 } else {
                     setError(result.message);
+                    onSummaryLoaded({ dataType, error: result.message });  // Pass error to summary bar too
                 }
             })
-            .catch((err) => {
-                console.error("🚨 Fetch error:", err);
+            .catch(() => {
                 setError("Failed to reach backend.");
+                onSummaryLoaded({ dataType, error: "Failed to reach backend." });
             });
+
     };
 
     return (

@@ -61,86 +61,127 @@ class DataLoader:
             print(f"Error fetching data from Yahoo Finance: {e}")
             return pd.DataFrame()
 
-def calculate_indicators(self,df):
-    """
-    Generates technical indicators for a given DataFrame with Open, High, Low, Close, and Volume.
-    Temporarily removes Ichimoku and VWAP calculations for debugging.
-    """
+    def calculate_indicators(self,df):
+        """
+        Generates technical indicators for a given DataFrame with Open, High, Low, Close, and Volume.
+        Temporarily removes Ichimoku and VWAP calculations for debugging.
+        """
 
 
-    print("\n🔍 Debugging Inside `calculate_indicators` Function...")
+        print("\n🔍 Debugging Inside `calculate_indicators` Function...")
 
-    # ✅ Ensure correct sorting before calculation
-    df = df.sort_index()
+        # ✅ Ensure correct sorting before calculation
+        df = df.sort_index()
 
-    # ✅ Moving Averages (Fast, Slow, EMA)
-    df["FastAvg"] = df["Close"].rolling(window=9).mean()
-    df["SlowAvg"] = df["Close"].rolling(window=18).mean()
-    df["FastEMA"] = df["Close"].ewm(span=9, adjust=False).mean()
-    df["MedEMA"] = df["Close"].ewm(span=20, adjust=False).mean()
-    df["SlowEMA"] = df["Close"].ewm(span=50, adjust=False).mean()
+        # ✅ Moving Averages (Fast, Slow, EMA)
+        df["FastAvg"] = df["Close"].rolling(window=9).mean()
+        df["SlowAvg"] = df["Close"].rolling(window=18).mean()
+        df["FastEMA"] = df["Close"].ewm(span=9, adjust=False).mean()
+        df["MedEMA"] = df["Close"].ewm(span=20, adjust=False).mean()
+        df["SlowEMA"] = df["Close"].ewm(span=50, adjust=False).mean()
 
-    # ✅ Directional Movement Index & ADX
-    df.ta.adx(append=True)
+        # ✅ Directional Movement Index & ADX
+        df.ta.adx(append=True)
 
-    # ✅ Bollinger Bands (Upper, Lower, Mid)
-    bbands = df.ta.bbands(length=20, std=2)
-    df["UpperBand"] = bbands["BBU_20_2.0"]
-    df["LowerBand"] = bbands["BBL_20_2.0"]
-    df["MidLine"] = bbands["BBM_20_2.0"]
+        # ✅ Bollinger Bands (Upper, Lower, Mid)
+        bbands = df.ta.bbands(length=20, std=2)
+        df["UpperBand"] = bbands["BBU_20_2.0"]
+        df["LowerBand"] = bbands["BBL_20_2.0"]
+        df["MidLine"] = bbands["BBM_20_2.0"]
 
-    # ✅ Aroon Indicators
-    df.ta.aroon(append=True)
+        # ✅ Aroon Indicators
+        df.ta.aroon(append=True)
 
-    # ✅ Relative Strength Index (RSI)
-    df["RSI"] = df.ta.rsi(length=14)
+        # ✅ Relative Strength Index (RSI)
+        df["RSI"] = df.ta.rsi(length=14)
 
-    # ✅ Volume-Based Indicators
-    df["OBV"] = df.ta.obv()
-    df["Up"] = np.where(df["Close"] > df["Open"], df["Volume"], 0)
-    df["Down"] = np.where(df["Close"] < df["Open"], df["Volume"], 0)
+        # ✅ Volume-Based Indicators
+        df["OBV"] = df.ta.obv()
+        df["Up"] = np.where(df["Close"] > df["Open"], df["Volume"], 0)
+        df["Down"] = np.where(df["Close"] < df["Open"], df["Volume"], 0)
 
-    # ✅ Momentum Indicators
-    df["Momentum"] = df.ta.mom(length=10)
-    df["ROC"] = df.ta.roc(length=10)
-    df["CCI"] = df.ta.cci(length=20)
+        # ✅ Momentum Indicators
+        df["Momentum"] = df.ta.mom(length=10)
+        df["ROC"] = df.ta.roc(length=10)
+        df["CCI"] = df.ta.cci(length=20)
 
-    # 🚧 Debug: Check the actual column names returned by `ta.stoch()`
-    stoch = df.ta.stoch(length=14, k=3, d=3)
-    print("\n📌 **Available Columns in Stochastic Output:**")
-    print(stoch.columns)
+        # 🚧 Debug: Check the actual column names returned by `ta.stoch()`
+        stoch = df.ta.stoch(length=14, k=3, d=3)
+        print("\n📌 **Available Columns in Stochastic Output:**")
+        print(stoch.columns)
 
-    # ✅ Ensure we correctly map the column names
-    if "STOCHk_14_3_3" in stoch.columns and "STOCHd_14_3_3" in stoch.columns:
-        df["SlowK"] = stoch["STOCHk_14_3_3"]
-        df["SlowD"] = stoch["STOCHd_14_3_3"]
-    else:
-        print("\n⚠️ Warning: Stochastic column names do not match expected values. Skipping Stochastic calculation.")
+        # ✅ Ensure we correctly map the column names
+        if "STOCHk_14_3_3" in stoch.columns and "STOCHd_14_3_3" in stoch.columns:
+            df["SlowK"] = stoch["STOCHk_14_3_3"]
+            df["SlowD"] = stoch["STOCHd_14_3_3"]
+        else:
+            print("\n⚠️ Warning: Stochastic column names do not match expected values. Skipping Stochastic calculation.")
 
-    # 🚧 Commented out **VWAP Calculation** for debugging:
-    """
-    df["VWAP"] = df.ta.vwap(high=df["High"], low=df["Low"], close=df["Close"], volume=df["Volume"])
-    """
+        # 🚧 Commented out **VWAP Calculation** for debugging:
+        """
+        df["VWAP"] = df.ta.vwap(high=df["High"], low=df["Low"], close=df["Close"], volume=df["Volume"])
+        """
 
-    # 🚧 Commented out **Ichimoku Calculations** for debugging:
-    """
-    ichimoku = df.ta.ichimoku(tenkan=9, kijun=26, senkou=52)
-    df["Tenkan"] = ichimoku["ITS_9"]
-    df["Kijun"] = ichimoku["IKS_26"]
-    df["Chikou"] = ichimoku["ICS_26"]
-    df["SenkouSpan_A"] = ichimoku["ISA_9"]
-    df["SenkouSpan_B"] = ichimoku["ISB_26"]
-    """
+        # 🚧 Commented out **Ichimoku Calculations** for debugging:
+        """
+        ichimoku = df.ta.ichimoku(tenkan=9, kijun=26, senkou=52)
+        df["Tenkan"] = ichimoku["ITS_9"]
+        df["Kijun"] = ichimoku["IKS_26"]
+        df["Chikou"] = ichimoku["ICS_26"]
+        df["SenkouSpan_A"] = ichimoku["ISA_9"]
+        df["SenkouSpan_B"] = ichimoku["ISB_26"]
+        """
 
-    # ✅ Custom Momentum Decrease (1-4 Bars Ago)
-    df["MomDecr1"] = (df["Momentum"].rolling(window=2).mean().diff() < 0).astype(int)
-    df["MomDecr2"] = (df["Momentum"].rolling(window=3).mean().diff() < 0).astype(int)
-    df["MomDecr3"] = (df["Momentum"].rolling(window=4).mean().diff() < 0).astype(int)
-    df["MomDecr4"] = (df["Momentum"].rolling(window=5).mean().diff() < 0).astype(int)
+        # ✅ Custom Momentum Decrease (1-4 Bars Ago)
+        df["MomDecr1"] = (df["Momentum"].rolling(window=2).mean().diff() < 0).astype(int)
+        df["MomDecr2"] = (df["Momentum"].rolling(window=3).mean().diff() < 0).astype(int)
+        df["MomDecr3"] = (df["Momentum"].rolling(window=4).mean().diff() < 0).astype(int)
+        df["MomDecr4"] = (df["Momentum"].rolling(window=5).mean().diff() < 0).astype(int)
 
-    return df
+        return df
 
-DataLoader.calculate_indicators = calculate_indicators
+
+
+    def align_and_validate_simulation(self, training_df: pd.DataFrame, simulation_df: pd.DataFrame, interval_minutes=5):
+        """
+        Ensures simulation data starts immediately after training data ends.
+        Also ensures no gaps within the expected time interval.
+
+        Raises ValueError if gaps are found.
+        Adjusts simulation_df in-place if overlap exists.
+
+        @param training_df: Loaded training data.
+        @param simulation_df: Loaded simulation data.
+        @param interval_minutes: Expected bar interval (default 5 minutes).
+        """
+        # Get last bar from training
+        last_training_date = training_df.iloc[-1]["Date"]
+        last_training_time = training_df.iloc[-1]["Time"]
+
+        # Convert to timestamp for easy math
+        last_training_ts = pd.to_datetime(f"{last_training_date} {last_training_time}")
+
+        # Get first bar from simulation
+        first_sim_date = simulation_df.iloc[0]["Date"]
+        first_sim_time = simulation_df.iloc[0]["Time"]
+        first_sim_ts = pd.to_datetime(f"{first_sim_date} {first_sim_time}")
+
+        # ✅ Check for overlap (training ends after simulation starts)
+        if last_training_ts >= first_sim_ts:
+            # Slice simulation to remove overlap (keep only bars after training ends)
+            simulation_df = simulation_df[simulation_df.apply(
+                lambda row: pd.to_datetime(f"{row['Date']} {row['Time']}") > last_training_ts,
+                axis=1
+            )]
+            print("🔗 Simulation trimmed to avoid overlap with training data.")
+
+        # ✅ Check for gap (missing bars between training and simulation)
+        expected_start = last_training_ts + pd.Timedelta(minutes=interval_minutes)
+        if first_sim_ts > expected_start:
+            raise ValueError(f"⚠️ Gap detected between training and simulation data! "
+                             f"Expected: {expected_start}, Found: {first_sim_ts}")
+
+        return simulation_df  # Return the aligned and validated simulation data
 
 """# Example Cell"""
 
