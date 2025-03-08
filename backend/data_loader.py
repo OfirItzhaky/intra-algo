@@ -37,7 +37,7 @@ class DataLoader:
         try:
             data = pd.read_csv(file_path)
             print(f"Data successfully loaded from {file_path}")
-            return data
+            return data[["Open","High","Low","Close","Volume","Date","Time"]]
         except FileNotFoundError:
             print(f"Error: File not found at {file_path}")
             return pd.DataFrame()
@@ -61,84 +61,6 @@ class DataLoader:
             print(f"Error fetching data from Yahoo Finance: {e}")
             return pd.DataFrame()
 
-    def calculate_indicators(self,df):
-        """
-        Generates technical indicators for a given DataFrame with Open, High, Low, Close, and Volume.
-        Temporarily removes Ichimoku and VWAP calculations for debugging.
-        """
-
-
-        print("\n🔍 Debugging Inside `calculate_indicators` Function...")
-
-        # ✅ Ensure correct sorting before calculation
-        df = df.sort_index()
-
-        # ✅ Moving Averages (Fast, Slow, EMA)
-        df["FastAvg"] = df["Close"].rolling(window=9).mean()
-        df["SlowAvg"] = df["Close"].rolling(window=18).mean()
-        df["FastEMA"] = df["Close"].ewm(span=9, adjust=False).mean()
-        df["MedEMA"] = df["Close"].ewm(span=20, adjust=False).mean()
-        df["SlowEMA"] = df["Close"].ewm(span=50, adjust=False).mean()
-
-        # ✅ Directional Movement Index & ADX
-        df.ta.adx(append=True)
-
-        # ✅ Bollinger Bands (Upper, Lower, Mid)
-        bbands = df.ta.bbands(length=20, std=2)
-        df["UpperBand"] = bbands["BBU_20_2.0"]
-        df["LowerBand"] = bbands["BBL_20_2.0"]
-        df["MidLine"] = bbands["BBM_20_2.0"]
-
-        # ✅ Aroon Indicators
-        df.ta.aroon(append=True)
-
-        # ✅ Relative Strength Index (RSI)
-        df["RSI"] = df.ta.rsi(length=14)
-
-        # ✅ Volume-Based Indicators
-        df["OBV"] = df.ta.obv()
-        df["Up"] = np.where(df["Close"] > df["Open"], df["Volume"], 0)
-        df["Down"] = np.where(df["Close"] < df["Open"], df["Volume"], 0)
-
-        # ✅ Momentum Indicators
-        df["Momentum"] = df.ta.mom(length=10)
-        df["ROC"] = df.ta.roc(length=10)
-        df["CCI"] = df.ta.cci(length=20)
-
-        # 🚧 Debug: Check the actual column names returned by `ta.stoch()`
-        stoch = df.ta.stoch(length=14, k=3, d=3)
-        print("\n📌 **Available Columns in Stochastic Output:**")
-        print(stoch.columns)
-
-        # ✅ Ensure we correctly map the column names
-        if "STOCHk_14_3_3" in stoch.columns and "STOCHd_14_3_3" in stoch.columns:
-            df["SlowK"] = stoch["STOCHk_14_3_3"]
-            df["SlowD"] = stoch["STOCHd_14_3_3"]
-        else:
-            print("\n⚠️ Warning: Stochastic column names do not match expected values. Skipping Stochastic calculation.")
-
-        # 🚧 Commented out **VWAP Calculation** for debugging:
-        """
-        df["VWAP"] = df.ta.vwap(high=df["High"], low=df["Low"], close=df["Close"], volume=df["Volume"])
-        """
-
-        # 🚧 Commented out **Ichimoku Calculations** for debugging:
-        """
-        ichimoku = df.ta.ichimoku(tenkan=9, kijun=26, senkou=52)
-        df["Tenkan"] = ichimoku["ITS_9"]
-        df["Kijun"] = ichimoku["IKS_26"]
-        df["Chikou"] = ichimoku["ICS_26"]
-        df["SenkouSpan_A"] = ichimoku["ISA_9"]
-        df["SenkouSpan_B"] = ichimoku["ISB_26"]
-        """
-
-        # ✅ Custom Momentum Decrease (1-4 Bars Ago)
-        df["MomDecr1"] = (df["Momentum"].rolling(window=2).mean().diff() < 0).astype(int)
-        df["MomDecr2"] = (df["Momentum"].rolling(window=3).mean().diff() < 0).astype(int)
-        df["MomDecr3"] = (df["Momentum"].rolling(window=4).mean().diff() < 0).astype(int)
-        df["MomDecr4"] = (df["Momentum"].rolling(window=5).mean().diff() < 0).astype(int)
-
-        return df
 
 
 

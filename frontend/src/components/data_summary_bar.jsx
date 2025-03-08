@@ -1,34 +1,39 @@
-import React from 'react';
+function DataSummaryBar({ trainingSummary, simulatingSummary, labelSummary, newFeaturesCount }) {
+    console.log("🔍 Debugging Label Summary:", labelSummary); // ✅ Debug Log
 
-function DataSummaryBar({ trainingSummary, simulatingSummary }) {
     return (
         <div style={barStyle}>
             <h4 style={{ marginBottom: '10px', textDecoration: 'underline' }}>📊 Current Data Summary</h4>
 
-            {/* Training Summary */}
             <div style={summaryItemStyle}>
                 <strong>Training Data:</strong> {trainingSummary
                     ? `${trainingSummary.first_date} ${trainingSummary.first_time} ➡️ ${trainingSummary.last_date} ${trainingSummary.last_time}`
                     : "Not Loaded"}
-                {trainingSummary?.error && (
-                    <p style={warningStyle}>⚠️ {trainingSummary.error}</p>
-                )}
             </div>
 
-            {/* Simulation Summary */}
             <div style={summaryItemStyle}>
                 <strong>Simulation Data:</strong> {simulatingSummary
                     ? `${simulatingSummary.first_date} ${simulatingSummary.first_time} ➡️ ${simulatingSummary.last_date} ${simulatingSummary.last_time}`
                     : "Not Loaded"}
-                {simulatingSummary?.error && (
-                    <p style={warningStyle}>⚠️ {simulatingSummary.error}</p>
-                )}
+            </div>
+
+            <div style={summaryItemStyle}>
+                <strong>Features Created:</strong> {newFeaturesCount !== null
+                    ? `${newFeaturesCount} features added`
+                    : "Not Generated"}
+            </div>
+
+            <div style={summaryItemStyle}>
+                <strong>Labels Generated:</strong> {labelSummary
+                    ? `${labelSummary.label_type} (${labelSummary.rows_labeled} rows)`
+                    : "Not Generated"}
             </div>
         </div>
     );
 }
 
-// Styles inside the file (no external CSS needed)
+
+// Styles (remains unchanged)
 const barStyle = {
     position: 'absolute',
     top: '15px',
@@ -45,12 +50,6 @@ const barStyle = {
 const summaryItemStyle = {
     marginBottom: '8px',
     lineHeight: '1.4'
-};
-
-const warningStyle = {
-    color: '#fbbf24',
-    fontSize: '12px',
-    marginTop: '3px'
 };
 
 export default DataSummaryBar;
