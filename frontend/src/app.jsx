@@ -5,7 +5,7 @@ import ValidateDataButton from './components/validate_data_button';
 import GenerateFeaturesButton from './components/generate_features_button';
 import GenerateLabelsButton from './components/generate_labels_button';
 import StartSimulationButton from './components/start_simulation_button';
-import TrainRegressionModelButton from './components/train_regression_model_button';
+import TrainRegressionModelButton from './components/train_regression_model_button'; // ✅ Updated import
 import TrainClassifiersButton from './components/train_classifiers_button';
 import RestartSimulationButton from './components/restart_simulation_button';
 import DataSummaryBar from './components/data_summary_bar';
@@ -44,7 +44,7 @@ function App() {
                     <ValidateDataButton />
                     <GenerateFeaturesButton onFeaturesGenerated={setFeaturesCount} /> {/* ✅ Pass the update function */}
                     <GenerateLabelsButton onLabelsGenerated={setLabelSummary} />
-                    <TrainRegressionModelButton />
+                    <TrainRegressionModelButton /> {/* ✅ Updated component name */}
                     <TrainClassifiersButton />
                     <StartSimulationButton />
                     <RestartSimulationButton />
