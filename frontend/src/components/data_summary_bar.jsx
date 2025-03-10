@@ -1,5 +1,5 @@
-function DataSummaryBar({ trainingSummary, simulatingSummary, labelSummary, newFeaturesCount }) {
-    console.log("🔍 Debugging Label Summary:", labelSummary); // ✅ Debug Log
+function DataSummaryBar({ trainingSummary, simulatingSummary, labelSummary, newFeaturesCount, regressionMetrics }) {
+    console.log("🔍 Debugging Regression Metrics:", regressionMetrics); // ✅ Debug Log
 
     return (
         <div style={barStyle}>
@@ -28,12 +28,24 @@ function DataSummaryBar({ trainingSummary, simulatingSummary, labelSummary, newF
                     ? `${labelSummary.label_type} (${labelSummary.rows_labeled} rows)`
                     : "Not Generated"}
             </div>
+
+            {/* ✅ Regression Metrics (NEW) */}
+            {regressionMetrics && (
+                <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #4ade80' }}>
+                    <strong>📉 Regression Performance:</strong>
+                    <div style={summaryItemStyle}>
+                        <strong>MSE:</strong> {regressionMetrics.mse_filtered}
+                    </div>
+                    <div style={summaryItemStyle}>
+                        <strong>R² Score:</strong> {regressionMetrics.r2_filtered}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
 
-
-// Styles (remains unchanged)
+// ✅ Styles remain unchanged
 const barStyle = {
     position: 'absolute',
     top: '15px',

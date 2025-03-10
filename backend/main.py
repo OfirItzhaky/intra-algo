@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
+from sklearn.metrics import mean_squared_error, r2_score
 
 from regression_model_trainer import RegressionModelTrainer
 from label_generator import LabelGenerator
@@ -155,45 +156,69 @@ def generate_labels(label_type: str = Query(..., description="Label type (next_h
 
 
 
-# ✅ Define request model with `drop_price_columns`
+# ✅ Define request model with `drop_price_columns`, `apply_filter`, and `filter_threshold`
 class TrainRegressionRequest(BaseModel):
     drop_price_columns: bool = True  # Default to dropping prices
+    apply_filter: bool = True       # Default: filtering only for metrics not visuals..
+    filter_threshold: float = 4.0     # Default threshold for filtering extreme errors
+
 
 @app.post("/train-regression-model/")
 def train_regression_model(request: TrainRegressionRequest):
-    global training_df_labels, x_train_regression, y_train_regression, x_test_regression, y_test_regression
-    global regression_trained_model, predictions_regression
+    global training_df_labels, regression_trained_model  # Keep only necessary global vars
 
     if training_df_labels is None:
         return {"status": "error", "message": "Labeled training data is not available. Please generate labels first."}
 
-    # ✅ Initialize Trainer
-    trainer = RegressionModelTrainer(include_prices=not request.drop_price_columns)
+    # ✅ Initialize Trainer with user options
+    trainer = RegressionModelTrainer(
+        include_prices=not request.drop_price_columns,
+        apply_filter=request.apply_filter,
+        filter_threshold=request.filter_threshold
+    )
 
     # ✅ Prepare Data
     trainer.prepare_data(training_df_labels)
 
-    # ✅ Store training/test data globally
-    x_train_regression = trainer.x_train
-    y_train_regression = trainer.y_train
-    x_test_regression = trainer.x_test
-    y_test_regression = trainer.y_test
-
     # ✅ Train Model
     trainer.train_model()
-    regression_trained_model = trainer.model  # Save trained model globally
+    regression_trained_model = trainer.model  # ✅ Save trained model globally
 
-    # ✅ Make Predictions
-    predictions_regression = trainer.make_predictions()
+    # ✅ Make Predictions (populates `trainer.predictions`)
+    trainer.make_predictions()
+
+    # ✅ Compute prediction errors
+    prediction_errors = abs(trainer.predictions - trainer.y_test)
+
+    # ✅ Apply filter **only for metrics, NOT visualization**
+    if request.apply_filter:
+        valid_indices = prediction_errors <= request.filter_threshold
+        y_test_filtered = trainer.y_test[valid_indices]
+        predictions_filtered = trainer.predictions[valid_indices]
+
+        # ✅ Compute Metrics on Filtered Data
+        mse_filtered = mean_squared_error(y_test_filtered, predictions_filtered)
+        r2_filtered = r2_score(y_test_filtered, predictions_filtered)
+    else:
+        # ✅ No filtering: Use all predictions for evaluation
+        mse_filtered = mean_squared_error(trainer.y_test, trainer.predictions)
+        r2_filtered = r2_score(trainer.y_test, trainer.predictions)
 
     return {
         "status": "success",
-        "message": "Regression model trained and predictions made!",
-        "train_size": len(x_train_regression),
-        "test_size": len(x_test_regression),
-        "num_features": x_train_regression.shape[1],
-        "drop_price_columns": request.drop_price_columns
+        "message": "Regression model trained and evaluated!",
+        "train_size": len(trainer.x_train),
+        "test_size": len(trainer.x_test),
+        "num_features": trainer.x_train.shape[1],
+        "drop_price_columns": request.drop_price_columns,
+        "apply_filter": request.apply_filter,
+        "filter_threshold": request.filter_threshold if request.apply_filter else "N/A",
+        "mse_filtered": mse_filtered,
+        "r2_filtered": r2_filtered,
     }
+
+
+
 
 
 
