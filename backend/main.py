@@ -5,13 +5,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 from sklearn.metrics import mean_squared_error, r2_score
+from io import BytesIO
+from fastapi.responses import Response
+import matplotlib.pyplot as plt
 
+from backend.data_processor import DataProcessor
 from regression_model_trainer import RegressionModelTrainer
 from label_generator import LabelGenerator
 from feature_generator import FeatureGenerator
 from data_loader import DataLoader
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
+
 
 # CORS for frontend
 origins = ["http://localhost:5173"]
@@ -152,23 +158,50 @@ def generate_labels(label_type: str = Query(..., description="Label type (next_h
     }
 
 
+@app.get("/get-regression-chart/")
+def get_regression_chart():
+    """
+    Generates the regression chart dynamically and returns it as an image.
+    """
+    global trainer  # Ensure we're using the trainer instance
 
+    if trainer is None or trainer.y_test is None or trainer.predictions is None:
+        return {"status": "error", "message": "Visualization skipped due to missing data."}
+
+    if not hasattr(trainer, "x_test_with_meta") or trainer.x_test_with_meta is None:
+        return {"status": "error", "message": "Metadata (Date, Time, OHLC) is missing for visualization."}
+
+    print("📊 Generating visualization for the last 1,000 bars...")
+
+    processor = DataProcessor()
+    fig = processor.visualize_regression_predictions_for_pycharm(
+        trainer.x_test_with_meta, trainer.y_test, trainer.predictions, n=1000  # Default to 1,000 for scrolling
+    )
+
+    # ✅ Save to memory instead of disk
+    img_bytes = BytesIO()
+    fig.savefig(img_bytes, format="png", facecolor="black")  # ✅ Dark background
+    plt.close(fig)  # ✅ Prevent memory leaks
+    img_bytes.seek(0)
+
+    return Response(content=img_bytes.getvalue(), media_type="image/png")
 
 
 
 # ✅ Define request model with `drop_price_columns`, `apply_filter`, and `filter_threshold`
 class TrainRegressionRequest(BaseModel):
     drop_price_columns: bool = True  # Default to dropping prices
-    apply_filter: bool = True       # Default: filtering only for metrics not visuals..
+    apply_filter: bool = True       # Default: filtering only for metrics, not visuals.
     filter_threshold: float = 4.0     # Default threshold for filtering extreme errors
-
-
 @app.post("/train-regression-model/")
 def train_regression_model(request: TrainRegressionRequest):
     global training_df_labels, regression_trained_model  # Keep only necessary global vars
 
     if training_df_labels is None:
         return {"status": "error", "message": "Labeled training data is not available. Please generate labels first."}
+
+    # ✅ Store Date, Time, Open, High, Low, Close before feature selection
+    meta_columns = training_df_labels[["Date", "Time", "Open", "High", "Low", "Close"]].copy()
 
     # ✅ Initialize Trainer with user options
     trainer = RegressionModelTrainer(
@@ -187,6 +220,16 @@ def train_regression_model(request: TrainRegressionRequest):
     # ✅ Make Predictions (populates `trainer.predictions`)
     trainer.make_predictions()
 
+    # ✅ Ensure x_test_with_meta contains necessary columns
+    trainer.x_test_with_meta = trainer.x_test.copy()  # Copy test data
+
+    # ✅ Always merge Date & Time (avoid missing timestamps)
+    trainer.x_test_with_meta = trainer.x_test_with_meta.join(meta_columns[["Date", "Time"]].loc[trainer.x_test.index])
+
+    # ✅ Merge OHLC columns **only if dropping price columns**
+    if request.drop_price_columns:
+        trainer.x_test_with_meta = trainer.x_test_with_meta.join(meta_columns[["Open", "High", "Low", "Close"]].loc[trainer.x_test.index])
+
     # ✅ Compute prediction errors
     prediction_errors = abs(trainer.predictions - trainer.y_test)
 
@@ -203,6 +246,13 @@ def train_regression_model(request: TrainRegressionRequest):
         # ✅ No filtering: Use all predictions for evaluation
         mse_filtered = mean_squared_error(trainer.y_test, trainer.predictions)
         r2_filtered = r2_score(trainer.y_test, trainer.predictions)
+
+    # ✅ Generate the visualization **directly here** using `x_test_with_meta`
+    print("📊 Generating visualization for the last 20 bars...")
+    processor = DataProcessor()
+    processor.visualize_regression_predictions_for_pycharm(
+        trainer.x_test_with_meta, trainer.y_test, trainer.predictions, n=20  # Show only last 20 by default
+    )
 
     return {
         "status": "success",

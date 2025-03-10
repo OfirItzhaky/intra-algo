@@ -3,6 +3,7 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
+import matplotlib.dates as mdates
 
 
 class DataProcessor:
@@ -313,15 +314,19 @@ class DataProcessor:
     import pandas as pd
     import matplotlib.dates as mdates
 
-    def visualize_predictions_with_table(self, data, y_test, predictions, n=10, tick_size=0.25,
-                                         title="Model Predictions vs Actuals with Table"):
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    import matplotlib.dates as mdates
+
+    def visualize_regression_predictions_for_pycharm(self, data, y_test, predictions, n=20, tick_size=0.25,
+                                                     title="Regression Predictions (PyCharm)"):
         # ✅ Ensure correct alignment by using `data` rows that match `y_test.index`
-        aligned_data = data.copy()
+        aligned_data = data.loc[y_test.index].copy()
         aligned_data["Actual Value"] = y_test.values
         aligned_data["Predicted Value"] = predictions
 
-        # ✅ Use the last `n` rows for visualization
-        df_to_visualize = aligned_data.loc[y_test.index].tail(n)
+        # ✅ Slice only the last `n` rows for visualization
+        df_to_visualize = aligned_data.tail(n)
 
         if df_to_visualize.empty:
             print("Warning: The DataFrame for visualization is empty. Check your data alignment or filtering criteria.")
@@ -341,16 +346,17 @@ class DataProcessor:
         y_min = min_price - buffer
         y_max = max_price + buffer
 
-        # ✅ Creating a figure and a grid of subplots
-        fig, ax = plt.subplots(figsize=(14, 7))
+        # ✅ Creating a figure with a dark background
+        fig, ax = plt.subplots(figsize=(14, 7), facecolor="black")
+        ax.set_facecolor("black")  # ✅ Set background to dark
 
         # ✅ Set Y-axis limits dynamically
         ax.set_ylim(y_min, y_max)
 
-        # ✅ Manually drawing the candlesticks
+        # ✅ Manually drawing the candlesticks with white wicks
         for idx, row in df_to_visualize.iterrows():
             color = 'red' if row['Open'] > row['Close'] else 'green'
-            ax.plot([idx, idx], [row['Low'], row['High']], color='black')  # Wick
+            ax.plot([idx, idx], [row['Low'], row['High']], color='white')  # ✅ White wick
             ax.plot([idx, idx], [row['Open'], row['Close']], color=color, linewidth=10)  # Body
 
         # ✅ Overlaying the line plots for actual and predicted values
@@ -374,15 +380,17 @@ class DataProcessor:
         ax.xaxis.set_major_locator(mdates.AutoDateLocator())
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
         plt.xticks(rotation=45, ha="right")  # Rotate x-axis labels for better visibility
-        plt.title(title)
-        plt.xlabel("Timestamp")
-        plt.ylabel("High Price")
-        ax.set_ylim(y_min, y_max)  # Extend Y-axis range dynamically
-        ax.legend()
-        plt.grid(True)
+        plt.title(title, color="white")  # ✅ Title in white
+        plt.xlabel("Timestamp", color="white")  # ✅ X-axis label in white
+        plt.ylabel("Price", color="white")  # ✅ Y-axis label changed to "Price"
+        ax.tick_params(axis='x', colors="white")
+        ax.tick_params(axis='y', colors="white")
+        ax.legend(facecolor="black", edgecolor="white")  # ✅ Legend with dark background
+        plt.grid(True, color="gray", linestyle="--")
         plt.tight_layout()
         plt.show()
 
         return df_to_visualize
+
 
 

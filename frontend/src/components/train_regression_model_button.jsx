@@ -3,36 +3,44 @@ import React, { useState } from "react";
 function TrainRegressionModelButton({ onRegressionComplete }) {
     const [showModal, setShowModal] = useState(false);
     const [dropPriceColumns, setDropPriceColumns] = useState(true);
-    const [applyFilter, setApplyFilter] = useState(true); // ✅ New: User choice for filtering
+    const [applyFilter, setApplyFilter] = useState(true);
     const [filterThreshold, setFilterThreshold] = useState(4);
     const [error, setError] = useState(null);
 
     const handleOpenModal = () => setShowModal(true);
 
-   const handleConfirmTraining = async () => {
-    setShowModal(false);
+    const handleConfirmTraining = async () => {
+        setShowModal(false);
 
-    const response = await fetch("http://127.0.0.1:8000/train-regression-model/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            drop_price_columns: dropPriceColumns,
-            apply_filter: applyFilter,
-            filter_threshold: filterThreshold
-        })
-    });
+        try {
+            const response = await fetch("http://127.0.0.1:8000/train-regression-model/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    drop_price_columns: dropPriceColumns,
+                    apply_filter: applyFilter,
+                    filter_threshold: filterThreshold
+                })
+            });
 
-    const result = await response.json();
-    if (result.status === "success") {
-        console.log("Regression Training Completed:", result);
-        setError(null);
-        onRegressionComplete(result);  // ✅ Pass results to parent component
-    } else {
-        setError(result.message);
-    }
-};
+            const result = await response.json();
+            if (result.status === "success") {
+                console.log("Regression Training Completed:", result);
+                setError(null);
 
+                // ✅ Pass results to the parent component
+                onRegressionComplete(result);
 
+                // ✅ Open new tab with dynamic image endpoint
+                window.open("http://127.0.0.1:8000/get-regression-chart/", "_blank");
+            } else {
+                setError(result.message);
+            }
+        } catch (err) {
+            setError("⚠️ Failed to connect to backend.");
+            console.error("Fetch error:", err);
+        }
+    };
 
     return (
         <div>
@@ -65,7 +73,7 @@ function TrainRegressionModelButton({ onRegressionComplete }) {
                             <span style={{ marginLeft: '8px' }}>Apply Filtering</span>
                         </label>
 
-                        {/* ✅ Input for user-defined filter threshold (only enabled if filtering is applied) */}
+                        {/* ✅ Input for user-defined filter threshold */}
                         <label style={{ display: 'block', margin: '10px 0' }}>
                             <span>Filter Predictions Above (Absolute Error):</span>
                             <input
@@ -73,7 +81,7 @@ function TrainRegressionModelButton({ onRegressionComplete }) {
                                 value={filterThreshold}
                                 onChange={(e) => setFilterThreshold(parseFloat(e.target.value))}
                                 style={inputStyle}
-                                disabled={!applyFilter} // ✅ Disable input if filtering is off
+                                disabled={!applyFilter}
                             />
                         </label>
 
@@ -90,7 +98,7 @@ function TrainRegressionModelButton({ onRegressionComplete }) {
     );
 }
 
-// ✅ Styles (Consistent with `GenerateLabelsButton.jsx`)
+// ✅ Styles
 const buttonStyle = {
     padding: '10px 20px',
     backgroundColor: '#6f42c1',
@@ -139,7 +147,7 @@ const cancelButtonStyle = {
     borderRadius: '5px',
     cursor: 'pointer'
 };
-// ✅ Add this missing style (place it with other styles at the bottom)
+
 const inputStyle = {
     marginLeft: "8px",
     padding: "5px",
