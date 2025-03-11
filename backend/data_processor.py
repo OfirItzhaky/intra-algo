@@ -386,6 +386,11 @@ class DataProcessor:
         ax.tick_params(axis='x', colors="white")
         ax.tick_params(axis='y', colors="white")
         ax.legend(facecolor="black", edgecolor="white")  # ✅ Legend with dark background
+        # ✅ Change legend text color to match line colors
+        legend = ax.legend(facecolor="black", edgecolor="white")
+        for text, line in zip(legend.get_texts(), legend.get_lines()):
+            text.set_color(line.get_color())
+
         plt.grid(True, color="gray", linestyle="--")
         plt.tight_layout()
         plt.show()
