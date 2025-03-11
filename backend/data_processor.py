@@ -418,6 +418,7 @@ class DataProcessor:
         if df_to_visualize.empty:
             print("❌ Regression data for visualization is empty!")
             return None
+
         # ✅ Convert 'Date' and 'Time' columns into a proper DatetimeIndex if available
         if 'Date' in df_to_visualize.columns and 'Time' in df_to_visualize.columns:
             df_to_visualize['Timestamp'] = pd.to_datetime(df_to_visualize['Date'] + ' ' + df_to_visualize['Time'])
@@ -433,6 +434,9 @@ class DataProcessor:
 
         print("✅ Checking df_to_visualize shape:", df_to_visualize.shape)
         print("✅ Checking classifier_df shape before reindexing:", classifier_df.shape)
+
+        # ✅ Round classifier values to ensure binary classification (0 or 1)
+        classifier_df = classifier_df.round()
 
         # ✅ Create a figure with a dark background
         fig, ax = plt.subplots(figsize=(14, 7), facecolor="black")
@@ -463,34 +467,38 @@ class DataProcessor:
         ax2.set_yticklabels(["No Signal", "Good Signal"])
         ax2.set_ylabel("Classifier Prediction", color="white")
 
-        # ✅ Define colors, marker shapes, and positioning offsets
+        # ✅ Define marker shapes and positioning offsets
         classifier_styles = {
-            "RandomForest": ("green", "^", 2.0),  # Triangle
-            "LightGBM": ("orange", "s", 4),  # Square
-            "XGBoost": ("yellow", "v", 6)  # Downward Triangle (Cone)
+            "RandomForest": ("^", 2.0),  # Triangle
+            "LightGBM": ("s", 4),  # Square
+            "XGBoost": ("v", 6)  # Downward Triangle (Cone)
         }
 
-        # ✅ Plot classifier results below the price bars
-        for model, (color, marker, offset) in classifier_styles.items():
+        # ✅ Plot classifier results below the price bars with dynamic coloring
+        for model, (marker, offset) in classifier_styles.items():
             if model in classifier_df.columns:
+                colors = classifier_df[model].map(lambda x: "green" if x == 1 else "red")  # Dynamic color mapping
                 ax.scatter(
                     classifier_df.index, df_to_visualize["Low"] - offset,  # Position markers below the low price
-                    label=f"{model} Prediction", color=color, marker=marker, s=100  # Increase `s` from 50 to 100
+                    label=f"{model} Prediction", c=colors, marker=marker, s=100  # Increase `s` from 50 to 100
                 )
 
         # ✅ Restore title and legend
         plt.title("Regression + Classifier Predictions (PyCharm)", color="white")
 
-        # ✅ Fix classifier legend without overriding regression legend
+        # ✅ Fix legend to have all text in white
         legend1 = ax.legend(loc="upper left", facecolor="black", edgecolor="white", fontsize=10)
-        for text, line in zip(legend1.get_texts(), legend1.get_lines()):
-            text.set_color(line.get_color())  # ✅ Set text color to match the line color
+
+        # ✅ Loop through legend items and set all text to white
+        for text in legend1.get_texts():
+            text.set_color("white")  # ✅ Make all legend text white
 
         plt.xticks(rotation=45, ha="right")  # ✅ Ensure readable x-axis timestamps
         plt.tight_layout()
         plt.show()
 
         return fig
+
 
 
 
