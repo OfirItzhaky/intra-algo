@@ -32,7 +32,7 @@ class RegressionModelTrainer:
         self.last_train_timestamp = None
         self.last_test_timestamp = None
         self.filter_size = 0  # Number of removed rows
-
+        self.regression_figure = None
     def prepare_data(self, data: pd.DataFrame):
         """
         Prepares training and testing datasets for regression.

@@ -1,3 +1,4 @@
+import pandas as pd
 from fastapi import FastAPI, Query
 import os
 from fastapi.middleware.cors import CORSMiddleware
@@ -176,7 +177,7 @@ def get_regression_chart():
     fig = processor.visualize_regression_predictions_for_pycharm(
         trainer.x_test_with_meta, trainer.y_test, trainer.predictions, n=1000  # Default to 1,000 for scrolling
     )
-
+    trainer.regression_figure = fig
     # ✅ Save to memory instead of disk
     img_bytes = BytesIO()
     fig.savefig(img_bytes, format="png", facecolor="black")  # ✅ Dark background
@@ -250,7 +251,7 @@ def train_regression_model(request: TrainRegressionRequest):
     # ✅ Generate the visualization **directly here** using `x_test_with_meta`
     print("📊 Generating visualization for the last 20 bars...")
     processor = DataProcessor()
-    processor.visualize_regression_predictions_for_pycharm(
+    trainer.regression_figure = processor.visualize_regression_predictions_for_pycharm(
         trainer.x_test_with_meta, trainer.y_test, trainer.predictions, n=20  # Show only last 20 by default
     )
 
@@ -266,30 +267,25 @@ def train_regression_model(request: TrainRegressionRequest):
         "mse_filtered": mse_filtered,
         "r2_filtered": r2_filtered,
     }
-
 @app.post("/train-classifiers/")
 def train_classifiers():
-    global trainer  # ✅ Ensure trainer is globally available
+    global classifier_trainer  # ✅ Ensure classifier_trainer is globally stored
 
     if trainer is None or trainer.y_test_filtered is None or trainer.predictions_filtered is None:
         return {"status": "error", "message": "Classifier training skipped due to missing regression results."}
 
     print("📑 Training Classifiers using Regression Predictions...")
 
-    # ✅ Ensure `trainer.x_test_with_meta` contains relevant market data
     if trainer.x_test_with_meta is None:
         return {"status": "error", "message": "Meta columns are missing in x_test_with_meta."}
 
-    # ✅ Ensure the dataset for classification is properly filtered
     try:
         data_selected_filtered = trainer.x_test_with_meta.loc[trainer.y_test_filtered.index].copy()
     except KeyError:
         return {"status": "error", "message": "Filtered indices do not match x_test_with_meta."}
 
-    # ✅ Assign Predicted High
+    # ✅ Assign Predicted High and shift previous values
     data_selected_filtered["Predicted_High"] = trainer.predictions_filtered
-
-    # ✅ Shift previous values
     data_selected_filtered["Prev_Close"] = data_selected_filtered["Close"].shift(1)
     data_selected_filtered["Prev_Predicted_High"] = data_selected_filtered["Predicted_High"].shift(1)
 
@@ -302,45 +298,20 @@ def train_classifiers():
     if df_with_labels is None or df_with_labels.empty:
         return {"status": "error", "message": "Failed to generate labels for classification."}
 
-    # ✅ Split data for classification
+    # ✅ Prepare dataset for classification
     processor = DataProcessor()
-    (
-        trainer.classifier_X_train,
-        trainer.classifier_y_train,
-        trainer.classifier_X_test,
-        trainer.classifier_y_test
-    ) = processor.prepare_dataset_for_regression_sequential(
+    classifier_X_train, classifier_y_train, classifier_X_test, classifier_y_test = processor.prepare_dataset_for_regression_sequential(
         data=df_with_labels.drop(columns=["Predicted_High", "Next_High"], errors="ignore"),
         target_column="good_bar_prediction_outside_of_boundary",
         drop_target=True,
         split_ratio=0.8
     )
 
-    print(f"✅ Classifier Training set: {len(trainer.classifier_X_train)} samples, Test set: {len(trainer.classifier_X_test)} samples")
+    print(f"✅ Classifier Training set: {len(classifier_X_train)} samples, Test set: {len(classifier_X_test)} samples")
 
-    # ✅ Initialize the classifier trainer
+    # ✅ Initialize classifier trainer and train all classifiers
     classifier_trainer = ClassifierModelTrainer()
-
-    # ✅ Train all three classifiers and store results
-    rf_results = classifier_trainer.train_random_forest(
-        trainer.classifier_X_train, trainer.classifier_y_train,
-        trainer.classifier_X_test, trainer.classifier_y_test
-    )
-
-    lgbm_results = classifier_trainer.train_lightgbm(
-        trainer.classifier_X_train, trainer.classifier_y_train,
-        trainer.classifier_X_test, trainer.classifier_y_test
-    )
-
-    xgb_results = classifier_trainer.train_xgboost(
-        trainer.classifier_X_train, trainer.classifier_y_train,
-        trainer.classifier_X_test, trainer.classifier_y_test
-    )
-
-    # ✅ Store results globally (if needed)
-    trainer.rf_results = rf_results
-    trainer.lgbm_results = lgbm_results
-    trainer.xgb_results = xgb_results
+    classifier_trainer.train_all_classifiers(classifier_X_train, classifier_y_train, classifier_X_test, classifier_y_test, trainer)
 
     def extract_metrics(results):
         return {
@@ -353,22 +324,58 @@ def train_classifiers():
             "f1_1": results["evaluation_metrics"]["1"]["f1-score"],
         }
 
-    # ✅ Modify return statement in `train_classifiers`
     return {
         "status": "success",
         "message": "Classifier training complete!",
-        "classifier_train_size": len(trainer.classifier_X_train),
-        "classifier_test_size": len(trainer.classifier_X_test),
-        "rf_results": extract_metrics(trainer.rf_results),
-        "lgbm_results": extract_metrics(trainer.lgbm_results),
-        "xgb_results": extract_metrics(trainer.xgb_results),
+        "classifier_train_size": len(classifier_X_train),
+        "classifier_test_size": len(classifier_X_test),
+        "classifier_predictions": classifier_trainer.classifier_predictions_df.to_dict(orient="records"),  # ✅ Store predictions
+        "rf_results": extract_metrics(classifier_trainer.rf_results),
+        "lgbm_results": extract_metrics(classifier_trainer.lgbm_results),
+        "xgb_results": extract_metrics(classifier_trainer.xgb_results),
     }
 
 
 
+from fastapi.responses import Response
+import matplotlib.pyplot as plt
+import seaborn as sns
+from io import BytesIO
+
+@app.get("/debug-regression-figure/")
+def debug_regression_figure():
+    global trainer  # ✅ Ensure trainer is available
+
+    if trainer is None or trainer.regression_figure is None:
+        return {"status": "error", "message": "Regression figure not found. Ensure regression training was completed first."}
+
+    return {"status": "success", "message": "Regression figure exists!"}
 
 
+@app.get("/visualize-classifiers/")
+def visualize_classifiers():
+    global classifier_trainer, trainer  # ✅ Ensure both are available
 
+    if trainer is None or classifier_trainer is None:
+        return {"status": "error", "message": "Ensure both regression and classifier training are completed."}
+
+    print("📊 Generating Combined Visualization (Regression + Classifiers)...")
+
+    processor = DataProcessor()
+    fig = processor.visualize_classifiers_pycharm(
+        trainer, classifier_trainer, n=20
+    )
+
+    if fig is None:
+        return {"status": "error", "message": "Failed to generate visualization."}
+
+    # ✅ Save to memory
+    img_bytes = BytesIO()
+    fig.savefig(img_bytes, format="png", facecolor="black", bbox_inches="tight")
+    plt.close(fig)  # ✅ Prevent memory leaks
+    img_bytes.seek(0)
+
+    return Response(content=img_bytes.getvalue(), media_type="image/png")
 
 
 

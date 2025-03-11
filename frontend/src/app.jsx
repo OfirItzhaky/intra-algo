@@ -9,6 +9,9 @@ import TrainRegressionModelButton from './components/train_regression_model_butt
 import TrainClassifiersButton from './components/train_classifiers_button';
 import RestartSimulationButton from './components/restart_simulation_button';
 import DataSummaryBar from './components/data_summary_bar';
+import VisualizeClassifiersButton from './components/visualize_classifiers_button'; // ✅ NEW Button Component
+
+
 
 function App() {
     const [trainingSummary, setTrainingSummary] = useState(null);
@@ -17,6 +20,7 @@ function App() {
     const [featuresCount, setFeaturesCount] = useState(null);
     const [regressionMetrics, setRegressionMetrics] = useState(null); // ✅ Store regression results
     const [classifierResults, setClassifierResults] = useState(null); // ✅ Store classifier results
+    const [classifierVisualization, setClassifierVisualization] = useState(null); // ✅ NEW: Store visualization response
 
     const handleSummaryLoaded = (summary) => {
         if (summary?.dataType === 'training') {
@@ -49,6 +53,11 @@ function App() {
         }
     };
 
+    // ✅ New function to handle classifier visualization results
+    const handleVisualizationComplete = (response) => {
+        console.log("📊 Classifier Visualization Completed:", response);
+        setClassifierVisualization(response);
+    };
 
     return (
         <div className="app-container">
@@ -64,6 +73,7 @@ function App() {
                     newFeaturesCount={featuresCount}
                     regressionMetrics={regressionMetrics} // ✅ Pass regression results
                     classifierResults={classifierResults} // ✅ Pass classifier results
+                    classifierVisualization={classifierVisualization} // ✅ Pass visualization response
                 />
 
                 {/* ✅ Buttons Area */}
@@ -74,6 +84,7 @@ function App() {
                     <GenerateLabelsButton onLabelsGenerated={setLabelSummary} />
                     <TrainRegressionModelButton onRegressionComplete={setRegressionMetrics} />
                     <TrainClassifiersButton onClassificationComplete={handleClassificationComplete} /> {/* ✅ Fix: Use new function */}
+                    <VisualizeClassifiersButton onVisualizationComplete={handleVisualizationComplete} /> {/* ✅ NEW Button */}
                     <StartSimulationButton />
                     <RestartSimulationButton />
                 </div>

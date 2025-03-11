@@ -310,14 +310,6 @@ class DataProcessor:
 
         return X_train, y_train, X_test, y_test
 
-    import matplotlib.pyplot as plt
-    import pandas as pd
-    import matplotlib.dates as mdates
-
-    import matplotlib.pyplot as plt
-    import pandas as pd
-    import matplotlib.dates as mdates
-
     def visualize_regression_predictions_for_pycharm(self, data, y_test, predictions, n=20, tick_size=0.25,
                                                      title="Regression Predictions (PyCharm)"):
         # ✅ Ensure correct alignment by using `data` rows that match `y_test.index`
@@ -395,7 +387,110 @@ class DataProcessor:
         plt.tight_layout()
         plt.show()
 
-        return df_to_visualize
+        return fig
+
+    def visualize_classifiers_pycharm(self, trainer, classifier_trainer, n=20):
+        """
+        Plots classifier predictions alongside regression plot in a new figure.
+
+        Parameters:
+            classifier_trainer: ClassifierModelTrainer instance (stores classifier results).
+            trainer: RegressionModelTrainer instance (stores regression results).
+            n: Number of last bars to visualize.
+
+        Returns:
+            fig: Matplotlib figure containing the combined visualization.
+        """
+
+        print("📊 Debugging visualize_classifiers_pycharm...")
+
+        # ✅ Extract stored regression figure
+        if trainer.regression_figure is None:
+            print("⚠️ No stored regression figure! Showing classifier plot only.")
+            return None
+
+        # ✅ Get regression data for the last `n` bars
+        df_to_visualize = trainer.x_test_with_meta.loc[trainer.y_test.index].copy()
+        df_to_visualize["Actual Value"] = trainer.y_test.values
+        df_to_visualize["Predicted Value"] = trainer.predictions
+        df_to_visualize = df_to_visualize.tail(n)  # ✅ Only last `n` bars
+
+        if df_to_visualize.empty:
+            print("❌ Regression data for visualization is empty!")
+            return None
+
+        # ✅ Extract classifier results (ensure only last `n` bars)
+        classifier_df = classifier_trainer.classifier_predictions_df.copy()
+        classifier_df = classifier_df.reindex(df_to_visualize.index).tail(n)  # ✅ Align and then limit
+
+        if classifier_df.empty:
+            print("❌ No classifier predictions found!")
+            return None
+
+        print("✅ Checking df_to_visualize shape:", df_to_visualize.shape)
+        print("✅ Checking classifier_df shape before reindexing:", classifier_df.shape)
+
+        # ✅ Create a figure with a dark background
+        fig, ax = plt.subplots(figsize=(14, 7), facecolor="black")
+        ax.set_facecolor("black")
+
+        # ✅ Plot Candlesticks (Ensure existing elements remain intact)
+        for idx, row in df_to_visualize.iterrows():
+            color = 'red' if row['Open'] > row['Close'] else 'green'
+            ax.plot([idx, idx], [row['Low'], row['High']], color='white')  # Wick
+            ax.plot([idx, idx], [row['Open'], row['Close']], color=color, linewidth=10)  # Body
+
+        # ✅ Overlay Actual and Predicted Highs
+        ax.plot(df_to_visualize.index, df_to_visualize['Actual Value'], label='Actual High', marker='o', linestyle='-',
+                color='blue')
+        ax.plot(df_to_visualize.index, df_to_visualize['Predicted Value'], label='Predicted High', marker='o',
+                linestyle='--', color='red')
+
+        # ✅ Restore axis labels, grid, and ticks
+        ax.set_xlabel("Timestamp", color="white")
+        ax.set_ylabel("Price", color="white")
+        ax.tick_params(axis="both", colors="white")
+        ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
+
+        # ✅ Create a secondary Y-axis for classifier results
+        ax2 = ax.twinx()
+        ax2.set_ylim(-0.1, 1.1)
+        ax2.set_yticks([0, 1])
+        ax2.set_yticklabels(["No Signal", "Good Signal"])
+        ax2.set_ylabel("Classifier Prediction", color="white")
+
+        # ✅ Define colors and positioning offsets
+        classifier_colors = {
+            "RandomForest": ("green", 0.0),
+            "LightGBM": ("orange", 1.0),
+            "XGBoost": ("yellow", 1.5)
+        }
+
+        # ✅ Plot classifier results below the price bars
+        for model, (color, offset) in classifier_colors.items():
+            if model in classifier_df.columns:
+                ax.scatter(
+                    classifier_df.index, df_to_visualize["Low"] - offset,  # Position dots below low price
+                    label=f"{model} Prediction", color=color, marker="o", s=50  # s=50 for visibility
+                )
+
+        # ✅ Restore title and legend
+        plt.title("Regression + Classifier Predictions (PyCharm)", color="white")
+
+        # ✅ Fix classifier legend without overriding regression legend
+        legend1 = ax.legend(loc="upper left", facecolor="black", edgecolor="white", fontsize=10)
+        for text, line in zip(legend1.get_texts(), legend1.get_lines()):
+            text.set_color(line.get_color())  # ✅ Set text color to match the line color
+
+        plt.xticks(rotation=45, ha="right")  # ✅ Ensure readable x-axis timestamps
+        plt.tight_layout()
+        plt.show()
+
+        return fig
+
+
+
+
 
 
 
