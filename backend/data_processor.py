@@ -465,9 +465,9 @@ class DataProcessor:
 
         # ✅ Define colors, marker shapes, and positioning offsets
         classifier_styles = {
-            "RandomForest": ("green", "^", 0.0),  # Triangle
-            "LightGBM": ("orange", "s", 1.0),  # Square
-            "XGBoost": ("yellow", "v", 1.5)  # Downward Triangle (Cone)
+            "RandomForest": ("green", "^", 2.0),  # Triangle
+            "LightGBM": ("orange", "s", 4),  # Square
+            "XGBoost": ("yellow", "v", 6)  # Downward Triangle (Cone)
         }
 
         # ✅ Plot classifier results below the price bars
