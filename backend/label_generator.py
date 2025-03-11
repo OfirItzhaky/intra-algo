@@ -1,3 +1,6 @@
+import numpy as np
+
+
 class LabelGenerator:
     """
     LabelGenerator is responsible for generating trade labels based on predefined rules.

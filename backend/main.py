@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Query
 import os
-from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -9,12 +8,12 @@ from io import BytesIO
 from fastapi.responses import Response
 import matplotlib.pyplot as plt
 
-from backend.data_processor import DataProcessor
+from classifier_model_trainer import ClassifierModelTrainer
+from data_processor import DataProcessor
 from regression_model_trainer import RegressionModelTrainer
 from label_generator import LabelGenerator
 from feature_generator import FeatureGenerator
 from data_loader import DataLoader
-from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
@@ -193,9 +192,10 @@ class TrainRegressionRequest(BaseModel):
     drop_price_columns: bool = True  # Default to dropping prices
     apply_filter: bool = True       # Default: filtering only for metrics, not visuals.
     filter_threshold: float = 4.0     # Default threshold for filtering extreme errors
+
 @app.post("/train-regression-model/")
 def train_regression_model(request: TrainRegressionRequest):
-    global training_df_labels, regression_trained_model  # Keep only necessary global vars
+    global training_df_labels, regression_trained_model, trainer  # Keep only necessary global vars
 
     if training_df_labels is None:
         return {"status": "error", "message": "Labeled training data is not available. Please generate labels first."}
@@ -236,16 +236,16 @@ def train_regression_model(request: TrainRegressionRequest):
     # ✅ Apply filter **only for metrics, NOT visualization**
     if request.apply_filter:
         valid_indices = prediction_errors <= request.filter_threshold
-        y_test_filtered = trainer.y_test[valid_indices]
-        predictions_filtered = trainer.predictions[valid_indices]
-
-        # ✅ Compute Metrics on Filtered Data
-        mse_filtered = mean_squared_error(y_test_filtered, predictions_filtered)
-        r2_filtered = r2_score(y_test_filtered, predictions_filtered)
+        trainer.y_test_filtered = trainer.y_test[valid_indices].copy()
+        trainer.predictions_filtered = trainer.predictions[valid_indices].copy()
     else:
         # ✅ No filtering: Use all predictions for evaluation
-        mse_filtered = mean_squared_error(trainer.y_test, trainer.predictions)
-        r2_filtered = r2_score(trainer.y_test, trainer.predictions)
+        trainer.y_test_filtered = trainer.y_test.copy()
+        trainer.predictions_filtered = trainer.predictions.copy()
+
+    # ✅ Compute Metrics on Filtered Data
+    mse_filtered = mean_squared_error(trainer.y_test_filtered, trainer.predictions_filtered)
+    r2_filtered = r2_score(trainer.y_test_filtered, trainer.predictions_filtered)
 
     # ✅ Generate the visualization **directly here** using `x_test_with_meta`
     print("📊 Generating visualization for the last 20 bars...")
@@ -266,6 +266,105 @@ def train_regression_model(request: TrainRegressionRequest):
         "mse_filtered": mse_filtered,
         "r2_filtered": r2_filtered,
     }
+
+@app.post("/train-classifiers/")
+def train_classifiers():
+    global trainer  # ✅ Ensure trainer is globally available
+
+    if trainer is None or trainer.y_test_filtered is None or trainer.predictions_filtered is None:
+        return {"status": "error", "message": "Classifier training skipped due to missing regression results."}
+
+    print("📑 Training Classifiers using Regression Predictions...")
+
+    # ✅ Ensure `trainer.x_test_with_meta` contains relevant market data
+    if trainer.x_test_with_meta is None:
+        return {"status": "error", "message": "Meta columns are missing in x_test_with_meta."}
+
+    # ✅ Ensure the dataset for classification is properly filtered
+    try:
+        data_selected_filtered = trainer.x_test_with_meta.loc[trainer.y_test_filtered.index].copy()
+    except KeyError:
+        return {"status": "error", "message": "Filtered indices do not match x_test_with_meta."}
+
+    # ✅ Assign Predicted High
+    data_selected_filtered["Predicted_High"] = trainer.predictions_filtered
+
+    # ✅ Shift previous values
+    data_selected_filtered["Prev_Close"] = data_selected_filtered["Close"].shift(1)
+    data_selected_filtered["Prev_Predicted_High"] = data_selected_filtered["Predicted_High"].shift(1)
+
+    # ✅ Drop NaNs before classification label generation
+    data_selected_filtered = data_selected_filtered.dropna(subset=["Predicted_High", "Prev_Close", "Prev_Predicted_High"])
+
+    # ✅ Generate classification labels
+    label_gen = LabelGenerator()
+    df_with_labels = label_gen.add_good_bar_label(data_selected_filtered)
+    if df_with_labels is None or df_with_labels.empty:
+        return {"status": "error", "message": "Failed to generate labels for classification."}
+
+    # ✅ Split data for classification
+    processor = DataProcessor()
+    (
+        trainer.classifier_X_train,
+        trainer.classifier_y_train,
+        trainer.classifier_X_test,
+        trainer.classifier_y_test
+    ) = processor.prepare_dataset_for_regression_sequential(
+        data=df_with_labels.drop(columns=["Predicted_High", "Next_High"], errors="ignore"),
+        target_column="good_bar_prediction_outside_of_boundary",
+        drop_target=True,
+        split_ratio=0.8
+    )
+
+    print(f"✅ Classifier Training set: {len(trainer.classifier_X_train)} samples, Test set: {len(trainer.classifier_X_test)} samples")
+
+    # ✅ Initialize the classifier trainer
+    classifier_trainer = ClassifierModelTrainer()
+
+    # ✅ Train all three classifiers and store results
+    rf_results = classifier_trainer.train_random_forest(
+        trainer.classifier_X_train, trainer.classifier_y_train,
+        trainer.classifier_X_test, trainer.classifier_y_test
+    )
+
+    lgbm_results = classifier_trainer.train_lightgbm(
+        trainer.classifier_X_train, trainer.classifier_y_train,
+        trainer.classifier_X_test, trainer.classifier_y_test
+    )
+
+    xgb_results = classifier_trainer.train_xgboost(
+        trainer.classifier_X_train, trainer.classifier_y_train,
+        trainer.classifier_X_test, trainer.classifier_y_test
+    )
+
+    # ✅ Store results globally (if needed)
+    trainer.rf_results = rf_results
+    trainer.lgbm_results = lgbm_results
+    trainer.xgb_results = xgb_results
+
+    def extract_metrics(results):
+        return {
+            "accuracy": results["accuracy"],
+            "precision_0": results["evaluation_metrics"]["0"]["precision"],
+            "recall_0": results["evaluation_metrics"]["0"]["recall"],
+            "f1_0": results["evaluation_metrics"]["0"]["f1-score"],
+            "precision_1": results["evaluation_metrics"]["1"]["precision"],
+            "recall_1": results["evaluation_metrics"]["1"]["recall"],
+            "f1_1": results["evaluation_metrics"]["1"]["f1-score"],
+        }
+
+    # ✅ Modify return statement in `train_classifiers`
+    return {
+        "status": "success",
+        "message": "Classifier training complete!",
+        "classifier_train_size": len(trainer.classifier_X_train),
+        "classifier_test_size": len(trainer.classifier_X_test),
+        "rf_results": extract_metrics(trainer.rf_results),
+        "lgbm_results": extract_metrics(trainer.lgbm_results),
+        "xgb_results": extract_metrics(trainer.xgb_results),
+    }
+
+
 
 
 

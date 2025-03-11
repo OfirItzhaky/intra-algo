@@ -1,5 +1,14 @@
-function DataSummaryBar({ trainingSummary, simulatingSummary, labelSummary, newFeaturesCount, regressionMetrics }) {
-    console.log("🔍 Debugging Regression Metrics:", regressionMetrics); // ✅ Debug Log
+import React from "react"; // ✅ Ensure React is imported
+
+function DataSummaryBar({
+    trainingSummary,
+    simulatingSummary,
+    labelSummary,
+    newFeaturesCount,
+    regressionMetrics,
+    classifierResults
+}) {
+    console.log("🔍 Debugging Classifier Results:", classifierResults); // ✅ Debug Log
 
     return (
         <div style={barStyle}>
@@ -29,7 +38,7 @@ function DataSummaryBar({ trainingSummary, simulatingSummary, labelSummary, newF
                     : "Not Generated"}
             </div>
 
-            {/* ✅ Regression Metrics (NEW) */}
+            {/* ✅ Regression Metrics */}
             {regressionMetrics && (
                 <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #4ade80' }}>
                     <strong>📉 Regression Performance:</strong>
@@ -39,6 +48,47 @@ function DataSummaryBar({ trainingSummary, simulatingSummary, labelSummary, newF
                     <div style={summaryItemStyle}>
                         <strong>R² Score:</strong> {regressionMetrics.r2_filtered}
                     </div>
+                </div>
+            )}
+
+            {/* ✅ Classifier Results Table */}
+            {classifierResults && (
+                <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #facc15' }}>
+                    <strong>🤖 Classifier Performance:</strong>
+                    <table style={tableStyle}>
+                        <thead>
+                            <tr>
+                                <th>Classifier</th>
+                                <th>Precision</th>
+                                <th>Recall</th>
+                                <th>F1-Score</th>
+                                <th>Accuracy</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {Object.entries(classifierResults).map(([model, results]) => (
+                                <React.Fragment key={model}>
+                                    {/* ✅ Overall Results */}
+                                    <tr>
+                                        <td>{model} (Overall)</td>
+                                        <td>{results?.precision_1 !== undefined ? (results.precision_1 * 100).toFixed(1) + "%" : "N/A"}</td>
+                                        <td>{results?.recall_1 !== undefined ? (results.recall_1 * 100).toFixed(1) + "%" : "N/A"}</td>
+                                        <td>{results?.f1_1 !== undefined ? (results.f1_1 * 100).toFixed(1) + "%" : "N/A"}</td>
+                                        <td>{results?.accuracy !== undefined ? (results.accuracy * 100).toFixed(1) + "%" : "N/A"}</td>
+                                    </tr>
+
+                                    {/* ✅ Label 1 Results (Bold & Different Color) */}
+                                    <tr style={labelOneStyle}>
+                                        <td>↳ {model} (Label 1)</td>
+                                        <td>{results?.precision_1 !== undefined ? (results.precision_1 * 100).toFixed(1) + "%" : "N/A"}</td>
+                                        <td>{results?.recall_1 !== undefined ? (results.recall_1 * 100).toFixed(1) + "%" : "N/A"}</td>
+                                        <td>{results?.f1_1 !== undefined ? (results.f1_1 * 100).toFixed(1) + "%" : "N/A"}</td>
+                                        <td>N/A</td> {/* Accuracy is not relevant per label */}
+                                    </tr>
+                                </React.Fragment>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             )}
         </div>
@@ -62,6 +112,23 @@ const barStyle = {
 const summaryItemStyle = {
     marginBottom: '8px',
     lineHeight: '1.4'
+};
+
+// ✅ Style for Classifier Results Table
+const tableStyle = {
+    width: '100%',
+    marginTop: '10px',
+    borderCollapse: 'collapse',
+    textAlign: 'left',
+    backgroundColor: '#1e293b',
+    color: '#facc15'
+};
+
+// ✅ Style for Label 1 Rows
+const labelOneStyle = {
+    color: "#4ade80", // Brighter yellow to stand out
+    fontWeight: "bold",
+    fontSize: "1.1em"
 };
 
 export default DataSummaryBar;

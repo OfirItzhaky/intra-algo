@@ -10,6 +10,8 @@ class FeatureGenerator:
         """
         Initializes the FeatureGenerator class.
         """
+        self.df_with_labels = None  # ✅ Store processed dataset for classification
+
         print("✅ FeatureGenerator initialized!")
 
     def calculate_indicators(self, df):

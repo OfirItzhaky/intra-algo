@@ -20,6 +20,9 @@ class RegressionModelTrainer:
         self.y_train = None
         self.x_test = None
         self.y_test = None
+        self.x_test_filtered = None  # ✅ Store filtered dataset for classifiers
+        self.y_test_filtered = None
+        self.predictions_filtered = None
         self.predictions = None
         self.model = None
         self.mse_filtered = None
@@ -72,37 +75,6 @@ class RegressionModelTrainer:
             raise ValueError("Model is not trained. Call `train_model()` first.")
 
         self.predictions = self.model.predict(self.x_test)
-
-    def evaluate_model(self):
-        """
-        Evaluates the model using MSE and R² scores, optionally filtering extreme errors.
-        """
-        if self.predictions is None:
-            raise ValueError("Predictions are not available. Call `make_predictions()` first.")
-
-        # ✅ Unfiltered Metrics (Always Calculated)
-        self.mse_unfiltered = mean_squared_error(self.y_test, self.predictions)
-        self.r2_unfiltered = r2_score(self.y_test, self.predictions)
-
-        # ✅ Apply filtering **only if apply_filter is True**
-        if self.apply_filter:
-            prediction_errors = abs(self.predictions - self.y_test)
-
-            # ✅ **Use user-defined filter threshold instead of hardcoded 4**
-            valid_indices = prediction_errors <= self.filter_threshold
-            self.filter_size = len(self.y_test) - sum(valid_indices)  # Count removed points
-
-            # ✅ Keep only filtered values
-            y_test_filtered = self.y_test[valid_indices]
-            predictions_filtered = self.predictions[valid_indices]
-
-            # ✅ Compute filtered metrics
-            self.mse_filtered = mean_squared_error(y_test_filtered, predictions_filtered)
-            self.r2_filtered = r2_score(y_test_filtered, predictions_filtered)
-        else:
-            self.mse_filtered = None
-            self.r2_filtered = None
-            self.filter_size = 0
 
     def get_model_summary(self):
         """
