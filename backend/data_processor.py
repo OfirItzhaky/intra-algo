@@ -418,10 +418,14 @@ class DataProcessor:
         if df_to_visualize.empty:
             print("❌ Regression data for visualization is empty!")
             return None
+        # ✅ Convert 'Date' and 'Time' columns into a proper DatetimeIndex if available
+        if 'Date' in df_to_visualize.columns and 'Time' in df_to_visualize.columns:
+            df_to_visualize['Timestamp'] = pd.to_datetime(df_to_visualize['Date'] + ' ' + df_to_visualize['Time'])
+            df_to_visualize.set_index('Timestamp', inplace=True)
 
-        # ✅ Extract classifier results (ensure only last `n` bars)
+        # ✅ Ensure classifier_df matches the same datetime-based index
         classifier_df = classifier_trainer.classifier_predictions_df.copy()
-        classifier_df = classifier_df.reindex(df_to_visualize.index).tail(n)  # ✅ Align and then limit
+        classifier_df = classifier_df.reindex(df_to_visualize.index).tail(n)  # Align and limit
 
         if classifier_df.empty:
             print("❌ No classifier predictions found!")
@@ -459,19 +463,19 @@ class DataProcessor:
         ax2.set_yticklabels(["No Signal", "Good Signal"])
         ax2.set_ylabel("Classifier Prediction", color="white")
 
-        # ✅ Define colors and positioning offsets
-        classifier_colors = {
-            "RandomForest": ("green", 0.0),
-            "LightGBM": ("orange", 1.0),
-            "XGBoost": ("yellow", 1.5)
+        # ✅ Define colors, marker shapes, and positioning offsets
+        classifier_styles = {
+            "RandomForest": ("green", "^", 0.0),  # Triangle
+            "LightGBM": ("orange", "s", 1.0),  # Square
+            "XGBoost": ("yellow", "v", 1.5)  # Downward Triangle (Cone)
         }
 
         # ✅ Plot classifier results below the price bars
-        for model, (color, offset) in classifier_colors.items():
+        for model, (color, marker, offset) in classifier_styles.items():
             if model in classifier_df.columns:
                 ax.scatter(
-                    classifier_df.index, df_to_visualize["Low"] - offset,  # Position dots below low price
-                    label=f"{model} Prediction", color=color, marker="o", s=50  # s=50 for visibility
+                    classifier_df.index, df_to_visualize["Low"] - offset,  # Position markers below the low price
+                    label=f"{model} Prediction", color=color, marker=marker, s=100  # Increase `s` from 50 to 100
                 )
 
         # ✅ Restore title and legend
@@ -487,6 +491,7 @@ class DataProcessor:
         plt.show()
 
         return fig
+
 
 
 
