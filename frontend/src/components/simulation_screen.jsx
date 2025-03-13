@@ -80,11 +80,11 @@ function SimulationScreen() {
 
                             {/* ✅ Overlay Actual & Predicted High */}
                             <LineSeries
-                                yAccessor={(d) => d.actualHigh}
+                                yAccessor={(d, i) => (i === visibleData.length - 1 ? null : d.actualHigh)}
                                 strokeStyle="blue"
                                 strokeWidth={2}
                                 marker={CircleMarker}
-                                markerProps={{ strokeStyle: "blue", fill: "blue", r: 3 }}
+                                markerProps={{ stroke: "blue", fill: "blue", r: 3 }}
                             />
 
                             <LineSeries
@@ -93,42 +93,44 @@ function SimulationScreen() {
                                 strokeWidth={2}
                                 strokeDasharray="5,5"
                                 marker={CircleMarker}
-                                markerProps={{ strokeStyle: "red", fill: "red", r: 3 }}
+                                markerProps={{ stroke: "red", fill: "red", r: 3 }}
                             />
 
-                            {/* ✅ Dots for Actual High */}
+                            {/* ✅ Dots for Actual High (except last bar) */}
                             <ScatterSeries
-                                yAccessor={(d) => d.actualHigh}
+                                yAccessor={(d, i) => (i === visibleData.length - 1 ? null : d.actualHigh)}
                                 marker={CircleMarker}
-                                markerProps={{ strokeStyle: "blue", fill: "blue", r: 4 }}
+                                markerProps={{ stroke: "blue", fill: "blue", r: 3 }}
                             />
 
                             {/* ✅ Dots for Predicted High */}
                             <ScatterSeries
                                 yAccessor={(d) => d.predictedHigh}
                                 marker={CircleMarker}
-                                markerProps={{ strokeStyle: "red", fill: "red", r: 4 }}
+                                markerProps={{ stroke: "red", fill: "red", r: 4 }}
                             />
 
-                            {/* ✅ Labels for Actual High */}
-                            {visibleData.map((d, i) => (
-                                <Annotate
-                                    key={`actual-${i}`}
-                                    with={(props) => (
-                                        <text
-                                            x={props.xScale(props.xAccessor(d))}
-                                            y={props.yScale(d.actualHigh)}
-                                            textAnchor="middle"
-                                            fontSize={12}
-                                            fill="blue"
-                                            dy={-10}
-                                        >
-                                            {d.actualHigh.toFixed(2)}
-                                        </text>
-                                    )}
-                                    when={() => true}
-                                />
-                            ))}
+                            {/* ✅ Labels for Actual High (except last bar) */}
+                            {visibleData.map((d, i) =>
+                                i === visibleData.length - 1 ? null : (
+                                    <Annotate
+                                        key={`actual-${i}`}
+                                        with={(props) => (
+                                            <text
+                                                x={props.xScale(props.xAccessor(d))}
+                                                y={props.yScale(d.actualHigh)}
+                                                textAnchor="middle"
+                                                fontSize={12}
+                                                fill="blue"
+                                                dy={-10}
+                                            >
+                                                {d.actualHigh.toFixed(2)}
+                                            </text>
+                                        )}
+                                        when={() => true}
+                                    />
+                                )
+                            )}
 
                             {/* ✅ Labels for Predicted High */}
                             {visibleData.map((d, i) => (
@@ -149,7 +151,6 @@ function SimulationScreen() {
                                     when={() => true}
                                 />
                             ))}
-
                         </Chart>
                     </ChartCanvas>
                 </div>
