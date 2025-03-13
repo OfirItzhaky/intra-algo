@@ -498,12 +498,14 @@ class DataProcessor:
         plt.show()
 
         return fig
+
     def validate_simulation(self, training_df, simulation_df):
         """
         Validates simulation data against training data.
         - Ensures no missing expected bars.
         - Removes overlapping bars.
         - Ensures simulation extends past training data.
+        - Adjusts simulation start time if needed.
         """
         if training_df is None or simulation_df is None:
             return {"status": "error", "message": "Training or simulation data is not loaded."}
@@ -514,30 +516,52 @@ class DataProcessor:
         expected_next_bar = last_training_timestamp + pd.Timedelta(minutes=5)
 
         # ✅ Get first & last simulation timestamps
-        first_simulation_bar = pd.to_datetime(simulation_df.iloc[0]["Date"] + " " + simulation_df.iloc[0]["Time"])
-        last_simulation_bar = pd.to_datetime(simulation_df.iloc[-1]["Date"] + " " + simulation_df.iloc[-1]["Time"])
+        simulation_timestamps = pd.to_datetime(simulation_df["Date"] + " " + simulation_df["Time"])
+        first_simulation_bar = simulation_timestamps.iloc[0]
+        last_simulation_bar = simulation_timestamps.iloc[-1]
 
-        # ✅ Missing Data Warning
+        # ✅ Missing Data Warning (if expected time is not at the start)
         missing_data_alert = None
         if first_simulation_bar != expected_next_bar:
-            missing_data_alert = f"⚠️ Missing Data! Expected {expected_next_bar}, but found {first_simulation_bar}"
+            if expected_next_bar in simulation_timestamps.values:
+                # ✅ Slice simulation data to start from expected timestamp
+                simulation_df = simulation_df.loc[simulation_timestamps >= expected_next_bar]
+                first_simulation_bar = expected_next_bar  # ✅ Update first bar reference
+            else:
+                # If expected timestamp doesn't exist at all, show warning
+                missing_data_alert = f"⚠️ Missing Data! Expected {expected_next_bar}, but found {first_simulation_bar}"
 
         # ✅ Insufficient Simulation Data Warning
         insufficient_simulation_alert = None
         if last_simulation_bar <= last_training_timestamp:
-            insufficient_simulation_alert = f"❌ Simulation data is too short! Training ends at {last_training_timestamp}, but simulation ends at {last_simulation_bar}."
+            insufficient_simulation_alert = (
+                f"❌ Simulation data is too short! Training ends at {last_training_timestamp}, "
+                f"but simulation ends at {last_simulation_bar}."
+            )
 
         # ✅ Remove Overlapping Data
         training_timestamps = set(pd.to_datetime(training_df["Date"] + " " + training_df["Time"]))
         cleaned_simulation_df = simulation_df[
-            ~pd.to_datetime(simulation_df["Date"] + " " + simulation_df["Time"]).isin(training_timestamps)]
+            ~pd.to_datetime(simulation_df["Date"] + " " + simulation_df["Time"]).isin(training_timestamps)
+        ]
+        original_size = len(simulation_df)
+        sliced_size = len(cleaned_simulation_df)
 
+        print(f"🔍 Debug: Original Simulation Size -> {original_size}")
+        print(f"🔍 Debug: Sliced Simulation Size -> {sliced_size}")
+
+        # ✅ Ensure overlap fix is correctly detected
+        overlap_fixed = sliced_size < original_size
+        print(f"✅ Debug: Overlap Fixed Status -> {overlap_fixed}")
         return {
             "missing_data_warning": missing_data_alert,
-            "insufficient_simulation_warning": insufficient_simulation_alert,  # ✅ New check
-            "overlap_fixed": len(cleaned_simulation_df) < len(simulation_df),
+            "insufficient_simulation_warning": insufficient_simulation_alert,
+            "overlap_fixed": overlap_fixed,  # ✅ Updated flag
             "fixed_simulation_df": cleaned_simulation_df
         }
+
+
+
 
 
 

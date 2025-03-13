@@ -22,13 +22,27 @@ function App() {
     const [classifierResults, setClassifierResults] = useState(null);
     const [classifierVisualization, setClassifierVisualization] = useState(null);
 
-    const handleSummaryLoaded = (summary) => {
-        if (summary?.dataType === 'training') {
-            setTrainingSummary(summary);
-        } else if (summary?.dataType === 'simulating') {
-            setSimulatingSummary(summary);
+ const handleSummaryLoaded = (summary) => {
+    if (summary?.dataType === 'training') {
+        setTrainingSummary(summary);
+    } else if (summary?.dataType === 'simulating') {
+        if (summary.fixed_simulation_df) {  // ✅ Ensure we use the fixed version if available
+            const fixedFirstRow = summary.fixed_simulation_df[0];  // ✅ Extract first row from fixed data
+            const fixedLastRow = summary.fixed_simulation_df[summary.fixed_simulation_df.length - 1]; // ✅ Last row
+
+            setSimulatingSummary({
+                ...summary,
+                first_date: fixedFirstRow.Date,   // ✅ Correctly extract first date
+                first_time: fixedFirstRow.Time,
+                last_date: fixedLastRow.Date,     // ✅ Correctly extract last date
+                last_time: fixedLastRow.Time
+            });
+        } else {
+            setSimulatingSummary(summary);  // ✅ Fallback if no fixed data
         }
-    };
+    }
+};
+
 
     return (
         <Router>

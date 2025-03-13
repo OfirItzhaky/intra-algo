@@ -24,6 +24,14 @@ function DataSummaryBar({
                 <strong>Simulation Data:</strong> {simulatingSummary
                     ? `${simulatingSummary.first_date} ${simulatingSummary.first_time} ➡️ ${simulatingSummary.last_date} ${simulatingSummary.last_time}`
                     : "Not Loaded"}
+
+                {/* ✅ Display Warnings */}
+                {simulatingSummary?.missing_data_warning && (
+                    <div style={warningStyle}>⚠️ {simulatingSummary.missing_data_warning}</div>
+                )}
+                {simulatingSummary?.insufficient_simulation_warning && (
+                    <div style={errorStyle}>❌ {simulatingSummary.insufficient_simulation_warning}</div>
+                )}
             </div>
 
             <div style={summaryItemStyle}>
@@ -100,19 +108,43 @@ const barStyle = {
     position: 'absolute',
     top: '15px',
     right: '15px',
+    maxWidth: '450px', // ✅ Limit width to prevent overflow
     backgroundColor: '#1e293b',
     padding: '12px 16px',
     borderRadius: '8px',
     color: '#a7f3d0',
     fontFamily: 'monospace',
     boxShadow: '0 2px 10px rgba(0,0,0,0.5)',
-    zIndex: 100
+    zIndex: 100,
+    overflow: 'auto', // ✅ Allow scrolling if content overflows
+    wordWrap: 'break-word' // ✅ Prevent text overflow issues
 };
+
 
 const summaryItemStyle = {
     marginBottom: '8px',
     lineHeight: '1.4'
 };
+
+// ✅ Warning & Error Styles
+const warningStyle = {
+    color: "#facc15", // Yellow warning
+    fontWeight: "bold",
+    marginTop: "5px",
+    padding: "5px", // ✅ Add padding to improve spacing
+    borderRadius: "5px",
+    backgroundColor: "rgba(250, 201, 21, 0.15)" // ✅ Light yellow background
+};
+
+const errorStyle = {
+    color: "#f87171", // Red error
+    fontWeight: "bold",
+    marginTop: "5px",
+    padding: "5px", // ✅ Add padding
+    borderRadius: "5px",
+    backgroundColor: "rgba(248, 113, 113, 0.15)" // ✅ Light red background
+};
+
 
 // ✅ Style for Classifier Results Table
 const tableStyle = {
@@ -126,7 +158,7 @@ const tableStyle = {
 
 // ✅ Style for Label 1 Rows
 const labelOneStyle = {
-    color: "#4ade80", // Brighter yellow to stand out
+    color: "#4ade80",
     fontWeight: "bold",
     fontSize: "1.1em"
 };

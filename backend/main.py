@@ -50,7 +50,6 @@ predictions_regression = None
 # ✅ Store initial simulation data (before adding new bars)
 simulation_df_startingpoint = None
 
-
 @app.get("/load-data/")
 def load_data(
     file_path: str = Query(...),
@@ -73,7 +72,7 @@ def load_data(
     validation_result = None
 
     if data_type == "training":
-        training_df_raw = df
+        training_df_raw = df  # ✅ Store training data
 
     elif data_type == "simulating":
         if training_df_raw is None:
@@ -85,17 +84,20 @@ def load_data(
         # ✅ Apply the fixed simulation data
         simulation_df = validation_result["fixed_simulation_df"]
 
-    # ✅ Check again if df is now empty after processing
-    if df.empty:
-        return {"status": "error", "message": f"{data_type.capitalize()} file has no usable data after validation."}
-
     # ✅ Extract validation messages
     missing_data_warning = validation_result.get("missing_data_warning", None) if validation_result else None
+    insufficient_simulation_warning = validation_result.get("insufficient_simulation_warning", None) if validation_result else None
     overlap_fixed = validation_result.get("overlap_fixed", False) if validation_result else False
 
-    # ✅ Access first and last rows safely
-    first_row = df.iloc[0] if not df.empty else None
-    last_row = df.iloc[-1] if not df.empty else None
+    # ✅ Extract first and last rows SAFELY from the correct dataset
+    if data_type == "training":
+        first_row = training_df_raw.iloc[0] if not training_df_raw.empty else None
+        last_row = training_df_raw.iloc[-1] if not training_df_raw.empty else None
+    elif data_type == "simulating":
+        first_row = simulation_df.iloc[0] if not simulation_df.empty else None
+        last_row = simulation_df.iloc[-1] if not simulation_df.empty else None
+    else:
+        first_row, last_row = None, None  # Fallback case
 
     summary = {
         "symbol": symbol,
@@ -105,6 +107,7 @@ def load_data(
         "last_time": last_row["Time"] if last_row is not None else "N/A",
         "dataType": data_type,
         "missing_data_warning": missing_data_warning,  # ✅ Pass missing data warning
+        "insufficient_simulation_warning": insufficient_simulation_warning,  # ✅ Pass simulation too short warning
         "overlap_fixed": overlap_fixed  # ✅ Pass overlap fix status
     }
 
@@ -114,6 +117,7 @@ def load_data(
         "status": "success",
         "summary": summary
     }
+
 
 
 
