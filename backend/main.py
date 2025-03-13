@@ -8,7 +8,9 @@ from sklearn.metrics import mean_squared_error, r2_score
 from io import BytesIO
 from fastapi.responses import Response
 import matplotlib.pyplot as plt
+from fastapi import HTTPException
 
+from backend.new_bar import NewBar
 from classifier_model_trainer import ClassifierModelTrainer
 from data_processor import DataProcessor
 from regression_model_trainer import RegressionModelTrainer
@@ -45,6 +47,9 @@ x_test_regression = None
 y_test_regression = None
 regression_trained_model = None
 predictions_regression = None
+# ✅ Store initial simulation data (before adding new bars)
+simulation_df_startingpoint = None
+
 
 @app.get("/load-data/")
 def load_data(
@@ -377,6 +382,131 @@ def visualize_classifiers():
 
     return Response(content=img_bytes.getvalue(), media_type="image/png")
 
+
+
+
+@app.get("/generate-new-bar/")
+def generate_new_bar(validate: bool = False):
+    global simulation_df, regression_trained_model, classifier_trainer
+
+    if simulation_df is None or simulation_df.empty:
+        raise HTTPException(status_code=400, detail="Simulation data is not loaded.")
+
+    # Extract next available bar
+    next_bar_data = simulation_df.iloc[0].to_dict()  # Take first row
+    simulation_df.drop(index=simulation_df.index[0], inplace=True)  # Remove from queue
+
+    # Create NewBar instance and compute features
+    new_bar = NewBar(**next_bar_data)
+    new_bar._1_calculate_indicators_new_bar(simulation_df)
+    new_bar._2_add_vwap_new_bar(simulation_df)
+    new_bar._3_add_fibonacci_levels_new_bar(simulation_df)
+    new_bar._4_add_cci_average_new_bar(simulation_df)
+    new_bar._5_add_ichimoku_cloud_new_bar(simulation_df)
+    new_bar._6_add_atr_price_features_new_bar(simulation_df)
+    new_bar._7_add_multi_ema_indicators_new_bar(simulation_df)
+    new_bar._8_add_high_based_indicators_combined_new_bar(simulation_df)
+    new_bar._9_add_constant_columns_new_bar()
+    new_bar._10_add_macd_indicators_new_bar(simulation_df)
+    new_bar._11_add_volatility_momentum_volume_features_new_bar(simulation_df)
+
+    # Validate if requested
+    if validate:
+        new_bar.validate_new_bar()
+
+    # Convert to DataFrame format for model input
+    new_bar_df = pd.DataFrame([vars(new_bar)])
+
+    # Run regression model
+    predicted_high = regression_trained_model.predict(
+        new_bar_df.drop(columns=["Date", "Time", "Open", "High", "Low", "Close", "Volume"], errors="ignore"))[0]
+    new_bar_df["Predicted_High"] = predicted_high
+
+    # Prepare classifier input
+    new_bar_df["Prev_Close"] = new_bar_df["Close"].shift(1)
+    new_bar_df["Prev_Predicted_High"] = new_bar_df["Predicted_High"].shift(1)
+    new_bar_df.dropna(subset=["Prev_Close", "Prev_Predicted_High"], inplace=True)
+
+    # Run classifiers
+    classifier_predictions = classifier_trainer.predict_all_classifiers(
+        new_bar_df.drop(columns=["Date", "Time", "Open", "High", "Low", "Close", "Volume", "Predicted_High"],
+                        errors="ignore"))
+
+    # Attach predictions
+    new_bar_df["RandomForest"] = classifier_predictions["RandomForest"]
+    new_bar_df["LightGBM"] = classifier_predictions["LightGBM"]
+    new_bar_df["XGBoost"] = classifier_predictions["XGBoost"]
+
+    # Return processed new bar
+    return {
+        "status": "success",
+        "new_bar": new_bar_df.iloc[0].to_dict()
+    }
+import pandas as pd
+
+
+@app.get("/initialize-simulation/")
+def initialize_simulation():
+    global simulation_df_startingpoint
+
+    # ✅ Ensure all required data is available
+    if trainer is None or classifier_trainer is None:
+        return {"status": "error", "message": "Regression and classifier models are not initialized!"}
+
+    if trainer.x_test_with_meta is None or trainer.y_test is None:
+        return {"status": "error", "message": "No test data available for simulation!"}
+
+    if classifier_trainer.classifier_predictions_df is None:
+        return {"status": "error", "message": "Classifier predictions are missing!"}
+
+    # ✅ Extract relevant columns from regression data
+    regression_data = trainer.x_test_with_meta.loc[trainer.y_test.index].copy()
+    regression_data["Actual_High"] = trainer.y_test.values
+    regression_data["Predicted_High"] = trainer.predictions
+
+    # ✅ Merge Date and Time for proper alignment
+    meta_columns = training_df_labels[["Date", "Time", "Open", "High", "Low", "Close"]]
+    # ✅ Drop overlapping columns from `meta_columns` before joining
+    meta_columns = meta_columns.drop(columns=["Date", "Time", "Open", "High", "Low", "Close"], errors="ignore")
+
+    # ✅ Now join without duplicate errors
+    regression_data = regression_data.join(meta_columns, how="left")
+
+    # ✅ Create a proper Timestamp column (for merging with classifiers)
+    regression_data["Timestamp"] = pd.to_datetime(regression_data["Date"] + " " + regression_data["Time"])
+    regression_data.set_index("Timestamp", inplace=True)
+
+    # ✅ Ensure classifier predictions match timestamp format
+    classifier_predictions = classifier_trainer.classifier_predictions_df.copy()
+    classifier_predictions.index = pd.to_datetime(classifier_predictions.index)  # Convert index
+
+    # ✅ Merge regression + classifier predictions
+    simulation_df_startingpoint = regression_data.merge(
+        classifier_predictions, left_index=True, right_index=True, how="left"
+    )
+
+    # ✅ Keep only necessary columns
+    simulation_df_startingpoint = simulation_df_startingpoint[
+        ["Date", "Time", "Open", "High", "Low", "Close", "Actual_High", "Predicted_High", "RandomForest", "LightGBM", "XGBoost"]
+    ]
+    # ✅ Drop rows where any classifier prediction is NaN
+    simulation_df_startingpoint = simulation_df_startingpoint.dropna(subset=["RandomForest", "LightGBM", "XGBoost"])
+    # ✅ Check for NaNs in any other columns (excluding classifier predictions)
+    other_columns_with_nans = simulation_df_startingpoint.drop(
+        columns=["RandomForest", "LightGBM", "XGBoost"]).isna().sum()
+
+    # ✅ If any NaNs remain in other columns, raise an error
+    if other_columns_with_nans.sum() > 0:
+        raise ValueError(f"❌ Unexpected NaNs found in non-classifier columns:\n{other_columns_with_nans}")
+
+    # ✅ Debugging Output
+    print("✅ Final Simulation Starting Point DF:")
+    print(simulation_df_startingpoint.head())
+
+    return {
+        "status": "success",
+        "data": simulation_df_startingpoint.to_dict(orient="records"),
+    }
 
 
 if __name__ == "__main__":
