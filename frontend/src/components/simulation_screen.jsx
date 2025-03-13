@@ -80,7 +80,7 @@ function SimulationScreen() {
                 </div>
             </div>
 
-            <button style={{ backgroundColor: "#ff9800", color: "black", fontWeight: "bold" }}>
+            <button     className="generate-bar-button">
                 ➕ Generate Next Bar
             </button>
         </div>

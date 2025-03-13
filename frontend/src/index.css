@@ -59,3 +59,22 @@ html, body, #root {
 .chart-scroll-container::-webkit-scrollbar-thumb:hover {
     background: #555;
 }
+
+.generate-bar-button {
+    display: block;
+    margin: 20px auto; /* ✅ Center horizontally & add spacing */
+    padding: 12px 24px; /* ✅ Larger button */
+    font-size: 18px; /* ✅ Increase font size */
+    font-weight: bold;
+    background-color: #ff9800; /* ✅ Keep orange */
+    color: black;
+    border: none;
+    border-radius: 6px; /* ✅ Slightly rounded edges */
+    cursor: pointer;
+    position: relative; /* ✅ Maintain proper spacing */
+    top: 20px; /* ✅ Moves it down further */
+}
+
+.generate-bar-button:hover {
+    background-color: #e68900; /* ✅ Darker orange on hover */
+}
