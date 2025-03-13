@@ -11,8 +11,8 @@ import {
 import { scaleTime } from "d3-scale";
 
 function SimulationScreen() {
-    const [simulationData, setSimulationData] = useState([]);
-    const [visibleData, setVisibleData] = useState([]); // ✅ For controlling view
+    const [simulationData, setSimulationData] = useState([]); // ✅ Holds full data
+    const [visibleData, setVisibleData] = useState([]); // ✅ Initial viewport
 
     useEffect(() => {
         fetch("http://localhost:8000/initialize-simulation/")
@@ -32,8 +32,8 @@ function SimulationScreen() {
 
                     console.log("✅ Sample Processed Data:", parsedData.slice(0, 5)); // ✅ Debugging
 
-                    setSimulationData(parsedData);
-                    setVisibleData(parsedData.slice(-20)); // ✅ Show last 20 initially
+                    setSimulationData(parsedData); // ✅ Keep full data
+                    setVisibleData(parsedData); // ✅ Allow full scrollable range
                 } else {
                     console.error("⚠️ No valid data received:", data);
                 }
@@ -50,44 +50,40 @@ function SimulationScreen() {
         return <p style={{ color: 'white' }}>⚠️ No Data Available! Check Console Logs.</p>;
     }
 
-   return (
-    <div className="simulation-container">
-        <h2 style={{ color: "white" }}>📈 Simulation Running...</h2>
-        <p style={{ color: "lightgray" }}>Click "Generate Next Bar" to proceed.</p>
+    return (
+        <div className="simulation-container">
+            <h2 style={{ color: "white" }}>📈 Simulation Running...</h2>
+            <p style={{ color: "lightgray" }}>Click "Generate Next Bar" to proceed.</p>
 
-        {/* ✅ Scrollable Wrapper for the Chart */}
-        {/* ✅ Scrollable Wrapper for the Chart */}
-        {/* ✅ Scrollable Wrapper for the Chart */}
-        <div className="chart-scroll-container">
-            <div className="chart-inner-container">
-                <ChartCanvas
-                    height={400}
-                    width={1600}  // ✅ Ensure a wide chart for scrolling
-                    ratio={3}
-                    data={visibleData}
-                    seriesName="CandlestickChart"
-                    xAccessor={(d) => d.date}
-                    xScale={scaleTime()}
-                    xExtents={[
-                        visibleData[Math.max(0, visibleData.length - 20)].date,
-                        visibleData[visibleData.length - 1].date
-                    ]}
-                >
-                    <Chart id={1} yExtents={(d) => [d.high, d.low]}>
-                        <XAxis strokeStyle="white" tickLabelFill="white" />
-                        <YAxis strokeStyle="white" tickLabelFill="white" />
-                        <CandlestickSeries />
-                    </Chart>
-                </ChartCanvas>
+            {/* ✅ Scrollable Wrapper for the Chart */}
+            <div className="chart-scroll-container">
+                <div className="chart-inner-container">
+                    <ChartCanvas
+                        height={400}
+                        width={1600}  // ✅ Ensure a wide chart for scrolling
+                        ratio={3}
+                        data={visibleData}
+                        seriesName="CandlestickChart"
+                        xAccessor={(d) => d.date}
+                        xScale={scaleTime()}
+                        xExtents={[
+                            visibleData[Math.max(0, visibleData.length - 20)]?.date, // ✅ Start at last 20 bars
+                            visibleData[visibleData.length - 1]?.date // ✅ Default to most recent bar
+                        ]}
+                    >
+                        <Chart id={1} yExtents={(d) => [d.high, d.low]}>
+                            <XAxis strokeStyle="white" tickLabelFill="white" />
+                            <YAxis strokeStyle="white" tickLabelFill="white" />
+                            <CandlestickSeries />
+                        </Chart>
+                    </ChartCanvas>
+                </div>
             </div>
+
+            <button style={{ backgroundColor: "#ff9800", color: "black", fontWeight: "bold" }}>
+                ➕ Generate Next Bar
+            </button>
         </div>
-
-
-
-        <button style={{ backgroundColor: "#ff9800", color: "black", fontWeight: "bold" }}>
-            ➕ Generate Next Bar
-        </button>
-    </div>
     );
 }
 
