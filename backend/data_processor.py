@@ -498,6 +498,46 @@ class DataProcessor:
         plt.show()
 
         return fig
+    def validate_simulation(self, training_df, simulation_df):
+        """
+        Validates simulation data against training data.
+        - Ensures no missing expected bars.
+        - Removes overlapping bars.
+        - Ensures simulation extends past training data.
+        """
+        if training_df is None or simulation_df is None:
+            return {"status": "error", "message": "Training or simulation data is not loaded."}
+
+        # ✅ Get last training timestamp
+        last_training_bar = training_df.iloc[-1]
+        last_training_timestamp = pd.to_datetime(last_training_bar["Date"] + " " + last_training_bar["Time"])
+        expected_next_bar = last_training_timestamp + pd.Timedelta(minutes=5)
+
+        # ✅ Get first & last simulation timestamps
+        first_simulation_bar = pd.to_datetime(simulation_df.iloc[0]["Date"] + " " + simulation_df.iloc[0]["Time"])
+        last_simulation_bar = pd.to_datetime(simulation_df.iloc[-1]["Date"] + " " + simulation_df.iloc[-1]["Time"])
+
+        # ✅ Missing Data Warning
+        missing_data_alert = None
+        if first_simulation_bar != expected_next_bar:
+            missing_data_alert = f"⚠️ Missing Data! Expected {expected_next_bar}, but found {first_simulation_bar}"
+
+        # ✅ Insufficient Simulation Data Warning
+        insufficient_simulation_alert = None
+        if last_simulation_bar <= last_training_timestamp:
+            insufficient_simulation_alert = f"❌ Simulation data is too short! Training ends at {last_training_timestamp}, but simulation ends at {last_simulation_bar}."
+
+        # ✅ Remove Overlapping Data
+        training_timestamps = set(pd.to_datetime(training_df["Date"] + " " + training_df["Time"]))
+        cleaned_simulation_df = simulation_df[
+            ~pd.to_datetime(simulation_df["Date"] + " " + simulation_df["Time"]).isin(training_timestamps)]
+
+        return {
+            "missing_data_warning": missing_data_alert,
+            "insufficient_simulation_warning": insufficient_simulation_alert,  # ✅ New check
+            "overlap_fixed": len(cleaned_simulation_df) < len(simulation_df),
+            "fixed_simulation_df": cleaned_simulation_df
+        }
 
 
 

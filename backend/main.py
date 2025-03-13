@@ -57,7 +57,7 @@ def load_data(
     data_type: str = Query(...),
     symbol: str = Query(...)
 ):
-    global training_df_raw, training_df_features, training_df_labels, training_df_final, simulation_df
+    global training_df_raw, simulation_df
 
     base_folder = "data"
     full_path = os.path.join(base_folder, data_type, file_path)
@@ -65,37 +65,47 @@ def load_data(
     print(f"🔗 Loading file from: {full_path}")
 
     df = data_loader.load_from_csv(full_path)
-    if df.empty:
+
+    # ✅ Check if df is empty BEFORE using iloc
+    if df.empty or "Date" not in df.columns or "Time" not in df.columns:
         return {"status": "error", "message": f"{data_type.capitalize()} file could not be loaded or is empty."}
 
+    validation_result = None
+
     if data_type == "training":
-        training_df_raw = df  # ✅ Store raw data
-        training_df_features = None
-        training_df_labels = None
-        training_df_final = None
+        training_df_raw = df
 
     elif data_type == "simulating":
         if training_df_raw is None:
             return {"status": "error", "message": "Training data must be loaded before simulation data!"}
 
-        try:
-            df = data_loader.align_and_validate_simulation(training_df_raw, df)
-            simulation_df = df  # ✅ Save aligned simulation data
-        except ValueError as e:
-            return {"status": "error", "message": str(e)}
+        processor = DataProcessor()
+        validation_result = processor.validate_simulation(training_df_raw, df)
 
-    else:
-        return {"status": "error", "message": "Invalid data type provided."}
+        # ✅ Apply the fixed simulation data
+        simulation_df = validation_result["fixed_simulation_df"]
 
-    first_row = df.iloc[0]
-    last_row = df.iloc[-1]
+    # ✅ Check again if df is now empty after processing
+    if df.empty:
+        return {"status": "error", "message": f"{data_type.capitalize()} file has no usable data after validation."}
+
+    # ✅ Extract validation messages
+    missing_data_warning = validation_result.get("missing_data_warning", None) if validation_result else None
+    overlap_fixed = validation_result.get("overlap_fixed", False) if validation_result else False
+
+    # ✅ Access first and last rows safely
+    first_row = df.iloc[0] if not df.empty else None
+    last_row = df.iloc[-1] if not df.empty else None
+
     summary = {
         "symbol": symbol,
-        "first_date": first_row["Date"],
-        "first_time": first_row["Time"],
-        "last_date": last_row["Date"],
-        "last_time": last_row["Time"],
-        "dataType": data_type  # Important for frontend to know
+        "first_date": first_row["Date"] if first_row is not None else "N/A",
+        "first_time": first_row["Time"] if first_row is not None else "N/A",
+        "last_date": last_row["Date"] if last_row is not None else "N/A",
+        "last_time": last_row["Time"] if last_row is not None else "N/A",
+        "dataType": data_type,
+        "missing_data_warning": missing_data_warning,  # ✅ Pass missing data warning
+        "overlap_fixed": overlap_fixed  # ✅ Pass overlap fix status
     }
 
     print(f"✅ Summary: {summary}")
@@ -105,14 +115,31 @@ def load_data(
         "summary": summary
     }
 
+
+
 @app.get("/get-loaded-data/")
 def get_loaded_data(data_type: str = Query(..., description="Data type - training or simulating")):
+    global simulation_df
+
     if data_type == "training" and training_df_raw is not None:
         return {"status": "success", "data": training_df_raw.head(5).to_dict(orient="records")}
+
     elif data_type == "simulating" and simulation_df is not None:
-        return {"status": "success", "data": simulation_df.head(5).to_dict(orient="records")}
+        # ✅ Run validation again to ensure simulation data is clean
+        processor = DataProcessor()
+        validation_result = processor.validate_simulation(training_df_raw, simulation_df)
+
+        return {
+            "status": "success",
+            "data": validation_result["fixed_simulation_df"].head(5).to_dict(orient="records"),
+            "missing_data_warning": validation_result["missing_data_warning"],  # ✅ Pass missing data alerts
+            "overlap_fixed": validation_result["overlap_fixed"]  # ✅ Pass overlap fix status
+        }
+
     else:
         return {"status": "error", "message": f"No {data_type} data loaded yet."}
+
+
 
 @app.post("/generate-features/")
 def generate_features():

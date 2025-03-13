@@ -96,21 +96,20 @@ function SimulationScreen() {
                                 markerProps={{ stroke: "red", fill: "red", r: 3 }}
                             />
 
-                            {/* ✅ Dots for Actual High (except last bar) */}
+                            {/* ✅ Remove ScatterSeries for last bar */}
                             <ScatterSeries
                                 yAccessor={(d, i) => (i === visibleData.length - 1 ? null : d.actualHigh)}
                                 marker={CircleMarker}
                                 markerProps={{ stroke: "blue", fill: "blue", r: 3 }}
                             />
 
-                            {/* ✅ Dots for Predicted High */}
                             <ScatterSeries
                                 yAccessor={(d) => d.predictedHigh}
                                 marker={CircleMarker}
                                 markerProps={{ stroke: "red", fill: "red", r: 4 }}
                             />
 
-                            {/* ✅ Labels for Actual High (except last bar) */}
+                            {/* ✅ Remove Actual High Labels for Last Bar */}
                             {visibleData.map((d, i) =>
                                 i === visibleData.length - 1 ? null : (
                                     <Annotate
@@ -132,7 +131,7 @@ function SimulationScreen() {
                                 )
                             )}
 
-                            {/* ✅ Labels for Predicted High */}
+                            {/* ✅ Keep Predicted High Labels */}
                             {visibleData.map((d, i) => (
                                 <Annotate
                                     key={`predicted-${i}`}
