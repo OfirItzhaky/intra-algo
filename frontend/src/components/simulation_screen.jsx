@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
 import "../index.css";  // ✅ Adjusted for correct path
 import { CircleMarker } from "react-financial-charts";
-import { ScatterSeries, Annotate, LabelAnnotation } from "react-financial-charts"; // ✅ Correct imports
+import { ScatterSeries, Annotate } from "react-financial-charts";
 
 import {
     ChartCanvas,
     Chart,
     CandlestickSeries,
-    LineSeries,  // ✅ For Actual & Predicted High
+    LineSeries,
     XAxis,
     YAxis
 } from "react-financial-charts";
@@ -31,14 +31,14 @@ function SimulationScreen() {
                         low: d.Low,
                         close: d.Close,
                         volume: d.Volume,
-                        actualHigh: d.Actual_High,  // ✅ Add Actual High
-                        predictedHigh: d.Predicted_High, // ✅ Add Predicted High
+                        actualHigh: d.Actual_High,
+                        predictedHigh: d.Predicted_High,
                     }));
 
                     console.log("✅ Sample Processed Data:", parsedData.slice(0, 5));
 
                     setSimulationData(parsedData);
-                    setVisibleData(parsedData);  // ✅ Show all data, but default view will be last 20 bars
+                    setVisibleData(parsedData);
                 } else {
                     console.error("⚠️ No valid data received:", data);
                 }
@@ -81,7 +81,7 @@ function SimulationScreen() {
                             {/* ✅ Overlay Actual & Predicted High */}
                             <LineSeries
                                 yAccessor={(d) => d.actualHigh}
-                                strokeStyle="blue" // ✅ Corrected strokeStyle
+                                strokeStyle="blue"
                                 strokeWidth={2}
                                 marker={CircleMarker}
                                 markerProps={{ strokeStyle: "blue", fill: "blue", r: 3 }}
@@ -89,7 +89,7 @@ function SimulationScreen() {
 
                             <LineSeries
                                 yAccessor={(d) => d.predictedHigh}
-                                strokeStyle="red" // ✅ Corrected strokeStyle
+                                strokeStyle="red"
                                 strokeWidth={2}
                                 strokeDasharray="5,5"
                                 marker={CircleMarker}
@@ -114,19 +114,19 @@ function SimulationScreen() {
                             {visibleData.map((d, i) => (
                                 <Annotate
                                     key={`actual-${i}`}
-                                    with={LabelAnnotation}
+                                    with={(props) => (
+                                        <text
+                                            x={props.xScale(props.xAccessor(d))}
+                                            y={props.yScale(d.actualHigh)}
+                                            textAnchor="middle"
+                                            fontSize={12}
+                                            fill="blue"
+                                            dy={-10}
+                                        >
+                                            {d.actualHigh.toFixed(2)}
+                                        </text>
+                                    )}
                                     when={() => true}
-                                    usingProps={{
-                                        x: d.date,
-                                        y: d.actualHigh,
-                                        text: d.actualHigh.toFixed(2),
-                                        textAnchor: "middle",
-                                        fontSize: 12,
-                                        fill: "blue",
-                                        opacity: 1,
-                                        dx: -10,
-                                        dy: -10
-                                    }}
                                 />
                             ))}
 
@@ -134,19 +134,19 @@ function SimulationScreen() {
                             {visibleData.map((d, i) => (
                                 <Annotate
                                     key={`predicted-${i}`}
-                                    with={LabelAnnotation}
+                                    with={(props) => (
+                                        <text
+                                            x={props.xScale(props.xAccessor(d))}
+                                            y={props.yScale(d.predictedHigh)}
+                                            textAnchor="middle"
+                                            fontSize={12}
+                                            fill="red"
+                                            dy={-10}
+                                        >
+                                            {d.predictedHigh.toFixed(2)}
+                                        </text>
+                                    )}
                                     when={() => true}
-                                    usingProps={{
-                                        x: d.date,
-                                        y: d.predictedHigh,
-                                        text: d.predictedHigh.toFixed(2),
-                                        textAnchor: "middle",
-                                        fontSize: 12,
-                                        fill: "red",
-                                        opacity: 1,
-                                        dx: 10,
-                                        dy: -10
-                                    }}
                                 />
                             ))}
 
