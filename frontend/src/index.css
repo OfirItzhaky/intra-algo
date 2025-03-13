@@ -29,3 +29,33 @@ html, body, #root {
     color: #d1d5db;
     margin-bottom: 20px;
 }
+
+.chart-scroll-container {
+    width: 100%;
+    overflow-x: auto;  /* ✅ Enables horizontal scrolling */
+    white-space: nowrap;
+    padding-bottom: 10px;
+    display: flex;
+    justify-content: flex-start;
+}
+
+.chart-inner-container {
+    width: 1500px; /* ✅ Match this to your chart width */
+    min-width: 1500px; /* ✅ Ensures it doesn’t collapse */
+    overflow-x: visible;
+}
+
+
+
+.chart-scroll-container::-webkit-scrollbar {
+    height: 8px;
+}
+
+.chart-scroll-container::-webkit-scrollbar-thumb {
+    background: #4facfe;
+    border-radius: 4px;
+}
+
+.chart-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
