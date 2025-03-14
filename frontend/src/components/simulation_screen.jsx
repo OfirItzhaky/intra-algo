@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import "../index.css";  // ✅ Adjusted for correct path
+import "../index.css"; // ✅ Uses the correct styles
 import { CircleMarker } from "react-financial-charts";
 import { ScatterSeries, Annotate } from "react-financial-charts";
 
@@ -12,10 +12,12 @@ import {
     YAxis
 } from "react-financial-charts";
 import { scaleTime } from "d3-scale";
+import GenerateNewBarButton from "./generate_new_bar_button"; // ✅ Import the button
 
 function SimulationScreen() {
     const [simulationData, setSimulationData] = useState([]);
     const [visibleData, setVisibleData] = useState([]);
+    const [isFirstBarGenerated, setIsFirstBarGenerated] = useState(false);
 
     useEffect(() => {
         fetch("http://localhost:8000/initialize-simulation/")
@@ -45,6 +47,23 @@ function SimulationScreen() {
             })
             .catch(error => console.error("🚨 Error fetching simulation data:", error));
     }, []);
+
+    const handleNewBarGenerated = (newBar) => {
+        console.log("➕ New Bar Generated:", newBar);
+
+        setSimulationData(prevData => {
+            let updatedData = [...prevData, newBar];
+
+            // ✅ Ensure actual high is only added for previous bar
+            if (updatedData.length > 1) {
+                updatedData[updatedData.length - 2].actualHigh = newBar.high; // Attach actual high to previous bar
+            }
+
+            return updatedData;
+        });
+
+        setVisibleData(prevData => [...prevData, newBar]);
+    };
 
     console.log("📊 Sample of visibleData for Chart:", visibleData.slice(0, 5));
 
@@ -96,7 +115,7 @@ function SimulationScreen() {
                                 markerProps={{ stroke: "red", fill: "red", r: 3 }}
                             />
 
-                            {/* ✅ Remove ScatterSeries for last bar */}
+                            {/* ✅ ScatterSeries for predictions */}
                             <ScatterSeries
                                 yAccessor={(d, i) => (i === visibleData.length - 1 ? null : d.actualHigh)}
                                 marker={CircleMarker}
@@ -123,7 +142,7 @@ function SimulationScreen() {
                                                 fill="blue"
                                                 dy={-10}
                                             >
-                                                {d.actualHigh.toFixed(2)}
+                                                {d.actualHigh ? d.actualHigh.toFixed(2) : ""}
                                             </text>
                                         )}
                                         when={() => true}
@@ -155,9 +174,15 @@ function SimulationScreen() {
                 </div>
             </div>
 
-            <button className="generate-bar-button">
-                ➕ Generate Next Bar
-            </button>
+            {/* ✅ Button properly styled now */}
+            <div className="button-container">
+                <GenerateNewBarButton
+                    onNewBarGenerated={handleNewBarGenerated}
+                    isFirstBarGenerated={isFirstBarGenerated}
+                    setIsFirstBarGenerated={setIsFirstBarGenerated}
+                />
+
+            </div>
         </div>
     );
 }

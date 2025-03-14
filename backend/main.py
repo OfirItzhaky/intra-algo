@@ -419,15 +419,23 @@ def visualize_classifiers():
 @app.get("/generate-new-bar/")
 def generate_new_bar(validate: bool = False):
     global simulation_df, regression_trained_model, classifier_trainer
+    global first_bar_processed  # ✅ Track first-bar status
 
     if simulation_df is None or simulation_df.empty:
         raise HTTPException(status_code=400, detail="Simulation data is not loaded.")
 
-    # Extract next available bar
+    # ✅ Extract next available bar
     next_bar_data = simulation_df.iloc[0].to_dict()  # Take first row
     simulation_df.drop(index=simulation_df.index[0], inplace=True)  # Remove from queue
 
-    # Create NewBar instance and compute features
+    # ✅ First bar alignment validation (ONLY for first bar)
+    if not first_bar_processed:
+        expected_first_timestamp = pd.to_datetime(next_bar_data["Date"] + " " + next_bar_data["Time"])
+        if expected_first_timestamp != pd.to_datetime("2025-01-22 18:25:00"):
+            raise HTTPException(status_code=400, detail="First bar timestamp does not align with expected start.")
+        first_bar_processed = True  # ✅ Mark first-bar as handled
+
+    # ✅ Create NewBar instance and compute features
     new_bar = NewBar(**next_bar_data)
     new_bar._1_calculate_indicators_new_bar(simulation_df)
     new_bar._2_add_vwap_new_bar(simulation_df)
@@ -441,39 +449,38 @@ def generate_new_bar(validate: bool = False):
     new_bar._10_add_macd_indicators_new_bar(simulation_df)
     new_bar._11_add_volatility_momentum_volume_features_new_bar(simulation_df)
 
-    # Validate if requested
+    # ✅ Existing NaN validation (unchanged)
     if validate:
         new_bar.validate_new_bar()
 
-    # Convert to DataFrame format for model input
+    # ✅ Convert to DataFrame format for model input
     new_bar_df = pd.DataFrame([vars(new_bar)])
 
-    # Run regression model
+    # ✅ Run regression model
     predicted_high = regression_trained_model.predict(
         new_bar_df.drop(columns=["Date", "Time", "Open", "High", "Low", "Close", "Volume"], errors="ignore"))[0]
     new_bar_df["Predicted_High"] = predicted_high
 
-    # Prepare classifier input
+    # ✅ Prepare classifier input
     new_bar_df["Prev_Close"] = new_bar_df["Close"].shift(1)
     new_bar_df["Prev_Predicted_High"] = new_bar_df["Predicted_High"].shift(1)
     new_bar_df.dropna(subset=["Prev_Close", "Prev_Predicted_High"], inplace=True)
 
-    # Run classifiers
+    # ✅ Run classifiers
     classifier_predictions = classifier_trainer.predict_all_classifiers(
         new_bar_df.drop(columns=["Date", "Time", "Open", "High", "Low", "Close", "Volume", "Predicted_High"],
                         errors="ignore"))
 
-    # Attach predictions
+    # ✅ Attach predictions
     new_bar_df["RandomForest"] = classifier_predictions["RandomForest"]
     new_bar_df["LightGBM"] = classifier_predictions["LightGBM"]
     new_bar_df["XGBoost"] = classifier_predictions["XGBoost"]
 
-    # Return processed new bar
     return {
         "status": "success",
         "new_bar": new_bar_df.iloc[0].to_dict()
     }
-import pandas as pd
+
 
 
 @app.get("/initialize-simulation/")
