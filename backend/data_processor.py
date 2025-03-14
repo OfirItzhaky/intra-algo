@@ -544,6 +544,27 @@ class DataProcessor:
         cleaned_simulation_df = simulation_df[
             ~pd.to_datetime(simulation_df["Date"] + " " + simulation_df["Time"]).isin(training_timestamps)
         ]
+        # ✅ Ensure we keep one extra bar at the start
+        if not cleaned_simulation_df.empty:
+            cleaned_simulation_df = pd.concat([simulation_df.iloc[:1], cleaned_simulation_df], ignore_index=True)
+
+        if not cleaned_simulation_df.empty:
+            first_sliced_timestamp = pd.to_datetime(
+                cleaned_simulation_df.iloc[0]["Date"] + " " + cleaned_simulation_df.iloc[0]["Time"])
+
+            first_sliced_timestamp - pd.Timedelta(minutes=5)
+            # ✅ Find the previous bar in the original simulation data
+            prev_bar = last_training_bar.copy()
+
+            # ✅ Add the found previous bar back if it exists
+            if not prev_bar.empty:
+                # Convert Series to DataFrame properly and reset index
+                prev_bar_df = prev_bar.to_frame().T.reset_index(drop=True)
+
+                # Concatenate with cleaned simulation data
+                cleaned_simulation_df = pd.concat([prev_bar_df, cleaned_simulation_df], ignore_index=True)
+
+
         original_size = len(simulation_df)
         sliced_size = len(cleaned_simulation_df)
 
