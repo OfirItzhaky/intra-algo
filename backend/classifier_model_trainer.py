@@ -147,3 +147,36 @@ class ClassifierModelTrainer:
         }, index=timestamps)
 
         print("✅ All classifier predictions stored successfully!")
+
+    def predict_all_classifiers(self, X_input: pd.DataFrame):
+        """
+        Runs all trained classifiers on the given input data and returns predictions.
+
+        Parameters:
+            X_input (pd.DataFrame): Input data for classification (should match training feature set).
+
+        Returns:
+            dict: A dictionary containing predictions from all classifiers.
+        """
+
+        if self.rf_results is None or self.lgbm_results is None or self.xgb_results is None:
+            raise ValueError("❌ Classifier models are not trained! Call `train_all_classifiers` first.")
+
+        print("\n🚀 Running classifier predictions...")
+
+        # ✅ Ensure input is aligned with training features
+        required_features = self.rf_results["model"].feature_names_in_  # Assuming all classifiers use the same features
+        X_input = X_input[required_features]  # ✅ Keep only relevant columns
+
+        # ✅ Run predictions for each classifier
+        rf_pred = self.rf_results["model"].predict(X_input)
+        lgbm_pred = (self.lgbm_results["model"].predict(X_input) >= 0.5).astype(int)
+        xgb_pred = (self.xgb_results["model"].predict_proba(X_input)[:, 1] >= 0.5).astype(int)
+
+        print("✅ Predictions generated for all classifiers!")
+
+        return {
+            "RandomForest": rf_pred[0],  # Extract single prediction
+            "LightGBM": lgbm_pred[0],
+            "XGBoost": xgb_pred[0]
+        }

@@ -322,7 +322,7 @@ class NewBar:
         else:
             print(f"✅ **Fields Populated:** {populated_fields}")
 
-    def _7_add_multi_ema_indicators_new_bar(self, historical_features, ema_periods=None):
+    def _7_add_multi_ema_indicators_new_bar(self, historical_data, ema_periods=None):
         """
         Computes multiple EMAs using historical data and updates the `NewBar` object.
 
@@ -336,9 +336,9 @@ class NewBar:
             ema_periods = list(range(5, 55, 5))  # 5, 10, 15, ..., 50
 
         # ✅ Ensure historical data is sufficient for EMA calculation
-        if len(historical_features) < max(ema_periods):
+        if len(historical_data) < max(ema_periods):
             print(
-                f"⚠️ Not enough data for EMA calculations (Need at least {max(ema_periods)}, have {len(historical_features)})")
+                f"⚠️ Not enough data for EMA calculations (Need at least {max(ema_periods)}, have {len(historical_data)})")
             return
 
         # ✅ Compute EMAs and distances for each period
@@ -349,7 +349,7 @@ class NewBar:
             open_distance_col = f"Open_vs_EMA_{period}"
 
             # Compute EMA using historical Close prices
-            ema_series = historical_features["Close"].ewm(span=period, adjust=False).mean()
+            ema_series = historical_data["Close"].ewm(span=period, adjust=False).mean()
             setattr(self, ema_col, ema_series.iloc[-1])  # Assign latest EMA value to `NewBar`
 
             # Compute distances

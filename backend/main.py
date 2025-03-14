@@ -416,8 +416,6 @@ def visualize_classifiers():
     return Response(content=img_bytes.getvalue(), media_type="image/png")
 
 
-
-
 @app.get("/generate-new-bar/")
 def generate_new_bar(validate: bool = False):
     global simulation_df, regression_trained_model, classifier_trainer
@@ -457,50 +455,80 @@ def generate_new_bar(validate: bool = False):
 
     # ✅ Create NewBar instance and compute features
     new_bar = NewBar(**next_bar_data)
-    new_bar._1_calculate_indicators_new_bar(simulation_df)
-    new_bar._2_add_vwap_new_bar(simulation_df)
-    new_bar._3_add_fibonacci_levels_new_bar(simulation_df)
-    new_bar._4_add_cci_average_new_bar(simulation_df)
-    new_bar._5_add_ichimoku_cloud_new_bar(simulation_df)
-    new_bar._6_add_atr_price_features_new_bar(simulation_df)
-    new_bar._7_add_multi_ema_indicators_new_bar(simulation_df)
-    new_bar._8_add_high_based_indicators_combined_new_bar(simulation_df)
+    new_bar._1_calculate_indicators_new_bar(historical_data=simulation_df.copy())
+    new_bar._2_add_vwap_new_bar(historical_data=simulation_df.copy())
+    new_bar._3_add_fibonacci_levels_new_bar(historical_data=simulation_df.copy())
+    new_bar._4_add_cci_average_new_bar(historical_data=simulation_df.copy())
+    new_bar._5_add_ichimoku_cloud_new_bar(historical_data=simulation_df.copy())
+    new_bar._6_add_atr_price_features_new_bar(historical_data=simulation_df.copy())
+    new_bar._7_add_multi_ema_indicators_new_bar(historical_data=simulation_df.copy())
+    new_bar._8_add_high_based_indicators_combined_new_bar(historical_data=simulation_df.copy())
     new_bar._9_add_constant_columns_new_bar()
-    new_bar._10_add_macd_indicators_new_bar(simulation_df)
-    new_bar._11_add_volatility_momentum_volume_features_new_bar(simulation_df)
+    new_bar._10_add_macd_indicators_new_bar(historical_data=simulation_df.copy())
+    new_bar._11_add_volatility_momentum_volume_features_new_bar(historical_data=simulation_df.copy())
 
-    # ✅ Existing NaN validation (unchanged)
+    # ✅ Validate New Bar
     if validate:
         new_bar.validate_new_bar()
 
     # ✅ Convert to DataFrame format for model input
     new_bar_df = pd.DataFrame([vars(new_bar)])
 
+    # ✅ Always drop `Date` and `Time` as they are not numerical
+    features_for_prediction = new_bar_df.drop(columns=["Date", "Time"], errors="ignore")
+
+    # ✅ Check which price columns were used during model training
+    price_columns = {"Open", "High", "Low", "Close", "Volume"}
+    trained_features = set(regression_trained_model.feature_names_in_)  # Extract features used during training
+
+    # ✅ If price columns were **not** used during training, drop them from the prediction data
+    columns_to_drop = price_columns - trained_features  # Get the difference (columns to drop)
+    features_for_prediction = features_for_prediction.drop(columns=columns_to_drop, errors="ignore")
+
+    # ✅ Ensure feature order matches training order
+    features_for_prediction = features_for_prediction[regression_trained_model.feature_names_in_]
+
+    # ✅ Debug: Print the final columns being passed to regression
+    print("\n✅ **Final Features Passed to Regression Model:**", features_for_prediction.columns.tolist())
+
     # ✅ Run regression model
-    predicted_high = regression_trained_model.predict(
-        new_bar_df.drop(columns=["Date", "Time", "Open", "High", "Low", "Close", "Volume"], errors="ignore"))[0]
+    predicted_high = regression_trained_model.predict(features_for_prediction)[0]
+
+
+
+    # ✅ Attach prediction to new_bar
+    new_bar.Predicted_High = predicted_high
     new_bar_df["Predicted_High"] = predicted_high
 
     # ✅ Prepare classifier input
-    new_bar_df["Prev_Close"] = new_bar_df["Close"].shift(1)
-    new_bar_df["Prev_Predicted_High"] = new_bar_df["Predicted_High"].shift(1)
-    new_bar_df.dropna(subset=["Prev_Close", "Prev_Predicted_High"], inplace=True)
+    new_bar_df["Prev_Close"] = simulation_df.iloc[-1]["Close"] if len(simulation_df) > 1 else new_bar.Close
+    new_bar_df["Prev_Predicted_High"] = simulation_df.iloc[-1][
+        "Predicted_High"] if "Predicted_High" in simulation_df.columns else new_bar.Predicted_High
 
     # ✅ Run classifiers
     classifier_predictions = classifier_trainer.predict_all_classifiers(
         new_bar_df.drop(columns=["Date", "Time", "Open", "High", "Low", "Close", "Volume", "Predicted_High"],
-                        errors="ignore"))
+                        errors="ignore")
+    )
 
-    # ✅ Attach predictions
+    # ✅ Attach classifier predictions to new_bar
+    new_bar.RandomForest = classifier_predictions["RandomForest"]
+    new_bar.LightGBM = classifier_predictions["LightGBM"]
+    new_bar.XGBoost = classifier_predictions["XGBoost"]
+
+    # ✅ Attach classifier predictions to new_bar_df for UI response
     new_bar_df["RandomForest"] = classifier_predictions["RandomForest"]
     new_bar_df["LightGBM"] = classifier_predictions["LightGBM"]
     new_bar_df["XGBoost"] = classifier_predictions["XGBoost"]
+
+    # ✅ Log Output for Debugging
+    print("\n📊 **New Bar Processed Successfully:**")
+    print(new_bar_df[["Date", "Time", "Predicted_High", "RandomForest", "LightGBM", "XGBoost"]].to_string(index=False))
 
     return {
         "status": "success",
         "new_bar": new_bar_df.iloc[0].to_dict()
     }
-
 
 
 @app.get("/initialize-simulation/")
