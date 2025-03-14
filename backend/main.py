@@ -50,6 +50,8 @@ predictions_regression = None
 # ✅ Store initial simulation data (before adding new bars)
 simulation_df_startingpoint = None
 
+first_bar_processed = False  # ✅ Initialize first-bar tracking
+
 @app.get("/load-data/")
 def load_data(
     file_path: str = Query(...),
@@ -419,7 +421,7 @@ def visualize_classifiers():
 @app.get("/generate-new-bar/")
 def generate_new_bar(validate: bool = False):
     global simulation_df, regression_trained_model, classifier_trainer
-    global first_bar_processed  # ✅ Track first-bar status
+    global first_bar_processed  # ✅ Ensure it’s accessed globally
 
     if simulation_df is None or simulation_df.empty:
         raise HTTPException(status_code=400, detail="Simulation data is not loaded.")
@@ -430,10 +432,28 @@ def generate_new_bar(validate: bool = False):
 
     # ✅ First bar alignment validation (ONLY for first bar)
     if not first_bar_processed:
-        expected_first_timestamp = pd.to_datetime(next_bar_data["Date"] + " " + next_bar_data["Time"])
-        if expected_first_timestamp != pd.to_datetime("2025-01-22 18:25:00"):
-            raise HTTPException(status_code=400, detail="First bar timestamp does not align with expected start.")
-        first_bar_processed = True  # ✅ Mark first-bar as handled
+        # 🔹 Extract the last two timestamps from classifier predictions DataFrame
+        last_two_rows = classifier_trainer.classifier_predictions_df.iloc[-2:]  # Get last two rows
+
+        # ✅ Extract the index values since the Date/Time are in the index
+        last_timestamp = pd.to_datetime(last_two_rows.index[-1])
+        second_last_timestamp = pd.to_datetime(last_two_rows.index[-2])
+
+        # ✅ Compute expected interval
+        expected_interval = last_timestamp - second_last_timestamp
+
+        # ✅ Compute expected first timestamp dynamically
+        expected_first_timestamp = last_timestamp + expected_interval
+
+        # ✅ Get actual first timestamp from simulation data
+        actual_first_timestamp = pd.to_datetime(next_bar_data["Date"] + " " + next_bar_data["Time"])
+
+        # ✅ Validate the timestamp
+        if actual_first_timestamp != expected_first_timestamp:
+            raise HTTPException(status_code=400,
+                                detail=f"First bar timestamp mismatch! Expected '{expected_first_timestamp}', but got '{actual_first_timestamp}'")
+
+        first_bar_processed = True  # ✅ Mark as processed
 
     # ✅ Create NewBar instance and compute features
     new_bar = NewBar(**next_bar_data)

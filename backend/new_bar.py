@@ -111,24 +111,17 @@ class NewBar:
             print(f"⚠️ Missing columns in historical data: {missing_columns}")
             return
 
+        # ✅ Work on a copy to avoid modifying original data
+        hist_copy = historical_data.copy()
+
         # ✅ Compute Cumulative Price x Volume and Cumulative Volume for historical data
-        historical_data["Typical_Price"] = (historical_data["High"] + historical_data["Low"] + historical_data[
-            "Close"]) / 3
-        historical_data["Cum_PxV"] = (historical_data["Typical_Price"] * historical_data["Volume"]).cumsum()
-        historical_data["Cum_Volume"] = historical_data["Volume"].cumsum()
+        hist_copy["Typical_Price"] = (hist_copy["High"] + hist_copy["Low"] + hist_copy["Close"]) / 3
+        hist_copy["Cum_PxV"] = (hist_copy["Typical_Price"] * hist_copy["Volume"]).cumsum()
+        hist_copy["Cum_Volume"] = hist_copy["Volume"].cumsum()
 
-        # ✅ Assign the last available cumulative values from historical data
-        if not historical_data["Cum_PxV"].isna().all():
-            last_cum_pxv = historical_data["Cum_PxV"].iloc[-1]
-        else:
-            print("⚠️ `Cum_PxV` is NaN in historical data!")
-            last_cum_pxv = 0  # Default fallback
-
-        if not historical_data["Cum_Volume"].isna().all():
-            last_cum_volume = historical_data["Cum_Volume"].iloc[-1]
-        else:
-            print("⚠️ `Cum_Volume` is NaN in historical data!")
-            last_cum_volume = 0  # Default fallback
+        # ✅ Assign the last available cumulative values from copied historical data
+        last_cum_pxv = hist_copy["Cum_PxV"].iloc[-1] if not hist_copy["Cum_PxV"].isna().all() else 0
+        last_cum_volume = hist_copy["Cum_Volume"].iloc[-1] if not hist_copy["Cum_Volume"].isna().all() else 0
 
         print(f"\n🔍 **Last Known Cumulative Values Before New Bar:**")
         print(f"   🔹 Last Cum_PxV: {last_cum_pxv}")
@@ -214,13 +207,14 @@ class NewBar:
             print(f"⚠️ Not enough data for CCI calculation (Required: {cci_length}, Available: {len(historical_data)})")
             return
 
-        # Compute CCI for the latest row
-        self.CCI = \
-        ta.cci(historical_data["High"], historical_data["Low"], historical_data["Close"], length=cci_length).iloc[-1]
+        # ✅ Compute CCI for the latest row (without modifying historical_data)
+        cci_series = ta.cci(historical_data["High"], historical_data["Low"], historical_data["Close"],
+                            length=cci_length)
+        self.CCI = cci_series.iloc[-1]
 
-        # Compute CCI Moving Average
-        if len(historical_data) >= cci_avg_length:
-            self.CCI_Avg = historical_data["CCI"].rolling(window=cci_avg_length).mean().iloc[-1]
+        # ✅ Compute CCI Moving Average (use temp CCI values instead of modifying historical_data)
+        if len(cci_series) >= cci_avg_length:
+            self.CCI_Avg = cci_series.rolling(window=cci_avg_length).mean().iloc[-1]
 
         # ✅ Identify and print successfully populated fields
         relevant_columns = ["CCI", "CCI_Avg"]
@@ -292,14 +286,14 @@ class NewBar:
             print(f"⚠️ Not enough data for ATR Calculation (Need at least {atr_period}, have {len(historical_data)})")
             return
 
-        # ✅ Compute True Range (TR) for historical data
-        historical_data["Prev_Close"] = historical_data["Close"].shift(1)
-        historical_data["TR1"] = historical_data["High"] - historical_data["Low"]
-        historical_data["TR2"] = abs(historical_data["High"] - historical_data["Prev_Close"])
-        historical_data["TR3"] = abs(historical_data["Low"] - historical_data["Prev_Close"])
-        historical_data["True_Range"] = historical_data[["TR1", "TR2", "TR3"]].max(axis=1)
+        # ✅ Compute True Range (TR) **without modifying historical_data**
+        prev_close_series = historical_data["Close"].shift(1)
+        tr1_series = historical_data["High"] - historical_data["Low"]
+        tr2_series = abs(historical_data["High"] - prev_close_series)
+        tr3_series = abs(historical_data["Low"] - prev_close_series)
+        true_range_series = pd.concat([tr1_series, tr2_series, tr3_series], axis=1).max(axis=1)
 
-        # ✅ Compute TR for the new bar
+        # ✅ Compute TR for the new bar (without modifying historical_data)
         self.Prev_Close = historical_data["Close"].iloc[-1]
         self.TR1 = self.High - self.Low
         self.TR2 = abs(self.High - self.Prev_Close)
@@ -307,10 +301,10 @@ class NewBar:
         self.True_Range = max(self.TR1, self.TR2, self.TR3)
 
         # ✅ Compute ATR using a rolling window
-        atr_series = historical_data["True_Range"].rolling(window=atr_period).mean()
+        atr_series = true_range_series.rolling(window=atr_period).mean()
         self.ATR = atr_series.iloc[-1]
 
-        # ✅ Assign ATR-based price levels
+        # ✅ Assign ATR-based price levels (only modifying `NewBar` attributes)
         self.__dict__["ATR+ High"] = self.High + self.ATR
         self.__dict__["ATR+ Low"] = self.Low - self.ATR
         self.__dict__["ATR+ Close"] = self.Close + self.ATR
@@ -368,16 +362,18 @@ class NewBar:
         # ✅ Print populated fields
         print(f"✅ **Fields Populated:** {populated_fields}")
 
-    def _8_add_high_based_indicators_combined_new_bar(self, historical_features, ema_periods=None,
-                                                      rolling_periods=None):
+    def _8_add_high_based_indicators_combined_new_bar(self, historical_data, ema_periods=None, rolling_periods=None):
         """
         Computes High-based EMA indicators, rolling highs, and periodic highs for the new bar.
 
         Parameters:
-            historical_features (pd.DataFrame): DataFrame containing past bars for calculations.
+            historical_data (pd.DataFrame): DataFrame containing past bars for calculations.
             ema_periods (list, optional): List of EMA periods for High price. Default: [5, 10, ..., 50].
             rolling_periods (list, optional): List of rolling periods for Highest Highs. Default: [3, 4, 5, 6, 8, 10, 12, 15, 20].
         """
+
+        # ✅ Ensure historical_data is untouched by making a copy
+        temp_historical = historical_data.copy()
 
         # ✅ Default EMA timeframes if not provided
         if ema_periods is None:
@@ -388,9 +384,10 @@ class NewBar:
             rolling_periods = [3, 4, 5, 6, 8, 10, 12, 15, 20]
 
         # ✅ Ensure historical data is sufficient
-        if len(historical_features) < max(rolling_periods):
+        if len(temp_historical) < max(rolling_periods):
             print(
-                f"⚠️ Not enough data for High-Based Indicators (Need at least {max(rolling_periods)}, have {len(historical_features)})")
+                f"⚠️ Not enough data for High-Based Indicators (Need at least {max(rolling_periods)}, have {len(temp_historical)})"
+            )
             return
 
         # ✅ Compute EMAs Based on High Price
@@ -400,7 +397,7 @@ class NewBar:
             distance_col = f"High_vs_{ema_col}"
 
             # Compute EMA using historical High prices
-            ema_series = historical_features["High"].ewm(span=period, adjust=False).mean()
+            ema_series = temp_historical["High"].ewm(span=period, adjust=False).mean()
             setattr(self, ema_col, ema_series.iloc[-1])  # Assign latest EMA value to `NewBar`
 
             # Compute the distance between High and its EMA
@@ -411,38 +408,41 @@ class NewBar:
         # ✅ Compute Rolling Highest Highs
         for period in rolling_periods:
             rolling_high_col = f"High_Max_{period}"
-            rolling_high_series = historical_features["High"].rolling(window=period).max()
+            rolling_high_series = temp_historical["High"].rolling(window=period).max()
             setattr(self, rolling_high_col, rolling_high_series.iloc[-1])  # Assign latest value
 
             populated_fields.append(rolling_high_col)
 
         # ✅ Compute Periodic Highs (Hourly, 15-Min, Daily)
-        historical_features["Datetime"] = pd.to_datetime(
-            historical_features["Date"] + " " + historical_features["Time"])
+        temp_historical["Datetime"] = pd.to_datetime(temp_historical["Date"] + " " + temp_historical["Time"])
         self_datetime = pd.to_datetime(self.Date + " " + self.Time)
 
         # ✅ Hourly High
-        hourly_high = historical_features[historical_features["Datetime"].dt.hour == self_datetime.hour]["High"].max()
+        hourly_high = temp_historical[temp_historical["Datetime"].dt.hour == self_datetime.hour]["High"].max()
         self.High_Hourly = hourly_high
         populated_fields.append("High_Hourly")
 
         # ✅ Corrected 15-Minute High Calculation
         start_time = self_datetime - pd.Timedelta(minutes=15)
-        matching_rows = historical_features[
-            (historical_features["Datetime"] >= start_time) &
-            (historical_features["Datetime"] < self_datetime)
+        matching_rows = temp_historical[
+            (temp_historical["Datetime"] >= start_time) &
+            (temp_historical["Datetime"] < self_datetime)
             ]
 
-        # ✅ Assign 15-Minute High (Max from Matching Rows)
-        self.High_15Min = max(
-            self.High,
-            historical_features.iloc[-1]["High"],
-            historical_features.iloc[-2]["High"]
-        )
+        # ✅ Assign 15-Minute High (Ensure historical_data has enough rows)
+        if len(temp_historical) >= 2:
+            self.High_15Min = max(
+                self.High,
+                temp_historical.iloc[-1]["High"],
+                temp_historical.iloc[-2]["High"]
+            )
+        else:
+            raise ValueError("❌ ERROR: Not enough historical data to compute 15-Min High. Check data integrity.")
+
         populated_fields.append("High_15Min")
 
         # ✅ Daily High
-        daily_high = historical_features[historical_features["Date"] == self.Date]["High"].max()
+        daily_high = temp_historical[temp_historical["Date"] == self.Date]["High"].max()
         self.High_Daily = daily_high
         populated_fields.append("High_Daily")
 
@@ -581,7 +581,7 @@ class NewBar:
         else:
             print(f"✅ **Fields Populated:** {populated_fields}")
 
-    def validate_new_bar(new_bar):
+    def validate_new_bar(self,new_bar):
         """
         Validates that all attributes in `new_bar` are populated before conversion to DataFrame.
 
