@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import "../index.css"; // ✅ Uses the correct styles
 import { CircleMarker } from "react-financial-charts";
-import { ScatterSeries, Annotate } from "react-financial-charts";
+import { Annotate } from "react-financial-charts";
 
 import {
     ChartCanvas,
@@ -13,6 +13,30 @@ import {
 } from "react-financial-charts";
 import { scaleTime } from "d3-scale";
 import GenerateNewBarButton from "./generate_new_bar_button"; // ✅ Import the button
+
+// ✅ Custom SquareMarker Component
+const SquareMarker = ({ x, y, value, label }) => (
+    <g>
+        <rect
+            x={x - 8}
+            y={y - 8}
+            width={18}
+            height={18}
+            fill={value === 1 ? "#00FF00" : "#FF0000"} // ✅ Green for 1, Red for 0
+            rx={3} // ✅ Rounded corners
+        />
+        <text
+            x={x}
+            y={y + 5}
+            textAnchor="middle"
+            fontSize="12px"
+            fontWeight="bold"
+            fill="white"
+        >
+            {label}
+        </text>
+    </g>
+);
 
 function SimulationScreen() {
     const [simulationData, setSimulationData] = useState([]);
@@ -35,6 +59,9 @@ function SimulationScreen() {
                         volume: d.Volume,
                         actualHigh: d.Actual_High,
                         predictedHigh: d.Predicted_High,
+                        rf: d.RandomForest,
+                        lt: d.LightGBM,
+                        xg: d.XGBoost
                     }));
 
                     console.log("✅ Sample Processed Data:", parsedData.slice(0, 5));
@@ -56,7 +83,7 @@ function SimulationScreen() {
 
             // ✅ Ensure actual high is only added for previous bar
             if (updatedData.length > 1) {
-                updatedData[updatedData.length - 2].actualHigh = newBar.high; // Attach actual high to previous bar
+                updatedData[updatedData.length - 2].actualHigh = newBar.high;
             }
 
             return updatedData;
@@ -115,40 +142,50 @@ function SimulationScreen() {
                                 markerProps={{ stroke: "red", fill: "red", r: 3 }}
                             />
 
-                            {/* ✅ ScatterSeries for predictions */}
-                            <ScatterSeries
-                                yAccessor={(d, i) => (i === visibleData.length - 1 ? null : d.actualHigh)}
-                                marker={CircleMarker}
-                                markerProps={{ stroke: "blue", fill: "blue", r: 3 }}
-                            />
-
-                            <ScatterSeries
-                                yAccessor={(d) => d.predictedHigh}
-                                marker={CircleMarker}
-                                markerProps={{ stroke: "red", fill: "red", r: 4 }}
-                            />
-
-                            {/* ✅ Remove Actual High Labels for Last Bar */}
-                            {visibleData.map((d, i) =>
-                                i === visibleData.length - 1 ? null : (
+                            {/* ✅ Classifier Predictions Below Candles */}
+                            {visibleData.map((d, i) => (
+                                <React.Fragment key={i}>
                                     <Annotate
-                                        key={`actual-${i}`}
                                         with={(props) => (
-                                            <text
+                                            <SquareMarker
                                                 x={props.xScale(props.xAccessor(d))}
-                                                y={props.yScale(d.actualHigh)}
-                                                textAnchor="middle"
-                                                fontSize={12}
-                                                fill="blue"
-                                                dy={-10}
-                                            >
-                                                {d.actualHigh ? d.actualHigh.toFixed(2) : ""}
-                                            </text>
+                                                y={props.yScale(d.low) + 30} // ✅ Position below the low
+                                                value={d.rf}
+                                                label="RF"
+                                                textAnchor="middle"  // ✅ Centers text horizontally
+                                                dominantBaseline="middle" // ✅ Centers text vertically
+                                            />
                                         )}
                                         when={() => true}
                                     />
-                                )
-                            )}
+                                    <Annotate
+                                        with={(props) => (
+                                            <SquareMarker
+                                                x={props.xScale(props.xAccessor(d))}
+                                                y={props.yScale(d.low) + 60} // ✅ Lower position
+                                                value={d.lt}
+                                                label="LT"
+                                                textAnchor="middle"  // ✅ Centers text horizontally
+                                                dominantBaseline="middle" // ✅ Centers text vertically
+                                            />
+                                        )}
+                                        when={() => true}
+                                    />
+                                    <Annotate
+                                        with={(props) => (
+                                            <SquareMarker
+                                                x={props.xScale(props.xAccessor(d))}
+                                                y={props.yScale(d.low) + 90} // ✅ Lowest position
+                                                value={d.xg}
+                                                label="XG"
+                                                textAnchor="middle"  // ✅ Centers text horizontally
+                                                dominantBaseline="middle" // ✅ Centers text vertically
+                                            />
+                                        )}
+                                        when={() => true}
+                                    />
+                                </React.Fragment>
+                            ))}
 
                             {/* ✅ Keep Predicted High Labels */}
                             {visibleData.map((d, i) => (
@@ -181,7 +218,6 @@ function SimulationScreen() {
                     isFirstBarGenerated={isFirstBarGenerated}
                     setIsFirstBarGenerated={setIsFirstBarGenerated}
                 />
-
             </div>
         </div>
     );
