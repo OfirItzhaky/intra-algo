@@ -277,6 +277,9 @@ def train_regression_model(request: TrainRegressionRequest):
         valid_indices = prediction_errors <= request.filter_threshold
         trainer.y_test_filtered = trainer.y_test[valid_indices].copy()
         trainer.predictions_filtered = trainer.predictions[valid_indices].copy()
+        # ✅ Store valid indices globally for classifier training
+        global valid_prediction_indices
+        valid_prediction_indices = valid_indices  # ✅ Save filtered indices globally
     else:
         # ✅ No filtering: Use all predictions for evaluation
         trainer.y_test_filtered = trainer.y_test.copy()
@@ -454,7 +457,18 @@ def generate_new_bar(validate: bool = False):
         first_bar_processed = True  # ✅ Mark as processed
 
     # ✅ Create NewBar instance and compute features
-    new_bar = NewBar(**next_bar_data)
+    # ✅ Create NewBar instance with explicit fields
+    new_bar = NewBar(
+        Open=next_bar_data["Open"],
+        High=next_bar_data["High"],
+        Low=next_bar_data["Low"],
+        Close=next_bar_data["Close"],
+        Volume=next_bar_data["Volume"],
+        Date=next_bar_data["Date"],
+        Time=next_bar_data["Time"]
+    )
+
+
     new_bar._1_calculate_indicators_new_bar(historical_data=simulation_df.copy())
     new_bar._2_add_vwap_new_bar(historical_data=simulation_df.copy())
     new_bar._3_add_fibonacci_levels_new_bar(historical_data=simulation_df.copy())
@@ -476,9 +490,16 @@ def generate_new_bar(validate: bool = False):
 
     # ✅ Always drop `Date` and `Time` as they are not numerical
     features_for_prediction = new_bar_df.drop(columns=["Date", "Time"], errors="ignore")
-
-    # ✅ Check which price columns were used during model training
     price_columns = {"Open", "High", "Low", "Close", "Volume"}
+
+
+    # Only drop price columns if they were NOT used in regression training (keep them otherwise)
+    trained_features_regression = set(regression_trained_model.feature_names_in_)  # Features used in regression
+    columns_to_drop_from_regression = price_columns - trained_features_regression  # Drop only if NOT in regression
+
+    features_for_prediction = features_for_prediction.drop(columns=columns_to_drop_from_regression, errors="ignore")
+
+
     trained_features = set(regression_trained_model.feature_names_in_)  # Extract features used during training
 
     # ✅ If price columns were **not** used during training, drop them from the prediction data
@@ -506,10 +527,7 @@ def generate_new_bar(validate: bool = False):
         "Predicted_High"] if "Predicted_High" in simulation_df.columns else new_bar.Predicted_High
 
     # ✅ Run classifiers
-    classifier_predictions = classifier_trainer.predict_all_classifiers(
-        new_bar_df.drop(columns=["Date", "Time", "Open", "High", "Low", "Close", "Volume", "Predicted_High"],
-                        errors="ignore")
-    )
+    classifier_predictions = classifier_trainer.predict_all_classifiers(new_bar_df)
 
     # ✅ Attach classifier predictions to new_bar
     new_bar.RandomForest = classifier_predictions["RandomForest"]

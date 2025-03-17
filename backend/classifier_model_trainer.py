@@ -166,6 +166,7 @@ class ClassifierModelTrainer:
 
         # ✅ Ensure input is aligned with training features
         required_features = self.rf_results["model"].feature_names_in_  # Assuming all classifiers use the same features
+
         X_input = X_input[required_features]  # ✅ Keep only relevant columns
 
         # ✅ Run predictions for each classifier
