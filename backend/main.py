@@ -545,13 +545,26 @@ def generate_new_bar(validate: bool = False):
 
     return {
         "status": "success",
-        "new_bar": new_bar_df.iloc[0].to_dict()
+        "new_bar": {
+            "date": f"{new_bar.Date} {new_bar.Time}",  # ✅ Combine Date and Time
+            "Open": float(new_bar.Open),  # ✅ Convert NumPy types
+            "High": float(new_bar.High),
+            "Low": float(new_bar.Low),
+            "Close": float(new_bar.Close),
+            "Volume": int(new_bar.Volume),  # ✅ Ensure Volume is int
+            "Predicted_High": float(new_bar.Predicted_High),
+            "RandomForest": int(new_bar.RandomForest),  # ✅ Convert classifiers to int
+            "LightGBM": int(new_bar.LightGBM),
+            "XGBoost": int(new_bar.XGBoost),
+        }
     }
+
+
 
 
 @app.get("/initialize-simulation/")
 def initialize_simulation():
-    global simulation_df_startingpoint
+    global simulation_df_startingpoint, first_bar_processed, trainer, classifier_trainer
 
     # ✅ Ensure all required data is available
     if trainer is None or classifier_trainer is None:
@@ -562,27 +575,28 @@ def initialize_simulation():
 
     if classifier_trainer.classifier_predictions_df is None:
         return {"status": "error", "message": "Classifier predictions are missing!"}
+    first_bar_processed = False
 
     # ✅ Extract relevant columns from regression data
     regression_data = trainer.x_test_with_meta.loc[trainer.y_test.index].copy()
     regression_data["Actual_High"] = trainer.y_test.values
     regression_data["Predicted_High"] = trainer.predictions
 
-    # ✅ Merge Date and Time for proper alignment
-    meta_columns = training_df_labels[["Date", "Time", "Open", "High", "Low", "Close"]]
-    # ✅ Drop overlapping columns from `meta_columns` before joining
-    meta_columns = meta_columns.drop(columns=["Date", "Time", "Open", "High", "Low", "Close"], errors="ignore")
+    # ✅ Remove overlapping columns from `meta_columns`
+    meta_columns = training_df_labels[["Date", "Time", "Open", "High", "Low", "Close"]].copy()
+    meta_columns = meta_columns.drop(columns=["Date", "Time", "Open", "High", "Low", "Close"],
+                                     errors="ignore")  # ✅ Drop duplicates
 
-    # ✅ Now join without duplicate errors
-    regression_data = regression_data.join(meta_columns, how="left")
+    # ✅ Join the cleaned meta_columns to regression_data
+    regression_data = regression_data.join(meta_columns, how="left", rsuffix="_meta")
 
-    # ✅ Create a proper Timestamp column (for merging with classifiers)
+    # ✅ Create timestamp column
     regression_data["Timestamp"] = pd.to_datetime(regression_data["Date"] + " " + regression_data["Time"])
     regression_data.set_index("Timestamp", inplace=True)
 
     # ✅ Ensure classifier predictions match timestamp format
     classifier_predictions = classifier_trainer.classifier_predictions_df.copy()
-    classifier_predictions.index = pd.to_datetime(classifier_predictions.index)  # Convert index
+    classifier_predictions.index = pd.to_datetime(classifier_predictions.index)
 
     # ✅ Merge regression + classifier predictions
     simulation_df_startingpoint = regression_data.merge(
@@ -593,7 +607,7 @@ def initialize_simulation():
     simulation_df_startingpoint = simulation_df_startingpoint[
         ["Date", "Time", "Open", "High", "Low", "Close", "Actual_High", "Predicted_High", "RandomForest", "LightGBM", "XGBoost"]
     ]
-    # ✅ Drop rows where any classifier prediction is NaN
+    # ✅ Drop NaNs
     simulation_df_startingpoint = simulation_df_startingpoint.dropna(subset=["RandomForest", "LightGBM", "XGBoost"])
     # ✅ Check for NaNs in any other columns (excluding classifier predictions)
     other_columns_with_nans = simulation_df_startingpoint.drop(
