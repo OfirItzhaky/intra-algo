@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import "../index.css"; // ✅ Uses the correct styles
 import { CircleMarker } from "react-financial-charts";
 import { Annotate } from "react-financial-charts";
@@ -45,13 +45,24 @@ const SquareMarker = ({ x, y, value, label }) => {
 function SimulationScreen() {
     const [simulationData, setSimulationData] = useState([]);
     const [visibleData, setVisibleData] = useState([]);
-    const [chartKey, setChartKey] = useState(0);  // 🔹 Add state to force re-render
+    const [chartKey, setChartKey] = useState(0);
     const [isFirstBarGenerated, setIsFirstBarGenerated] = useState(false);
+    const chartRef = useRef(null);  // ✅ Reference to chart for scrolling
+
+    // ✅ Auto-scroll to the rightmost part of the chart
+    const scrollToRightMost = () => {
+        if (chartRef.current) {
+            chartRef.current.scrollLeft = chartRef.current.scrollWidth;
+        }
+    };
 
     useEffect(() => {
         console.log("🔄 Re-rendering Chart due to visibleData update...");
         setChartKey(prevKey => prevKey + 1);
-    }, [visibleData]);  // 🔹 Depend on `visibleData` to trigger updates
+
+        // ✅ Auto-scroll after updating visible data
+        scrollToRightMost();
+    }, [visibleData]);
 
     useEffect(() => {
         fetch("http://localhost:8000/initialize-simulation/")
@@ -78,6 +89,9 @@ function SimulationScreen() {
 
                     setSimulationData(parsedData);
                     setVisibleData(parsedData);
+
+                    // ✅ Scroll to latest bars after loading
+                    setTimeout(scrollToRightMost, 100);
                 } else {
                     console.error("⚠️ No valid data received:", data);
                 }
@@ -105,15 +119,15 @@ function SimulationScreen() {
             return updatedData;
         });
 
-       setVisibleData(prevData => {
-        let updatedVisibleData = [...prevData, formattedNewBar];
-        console.log("📊 Updated Visible Data (AFTER SET):", updatedVisibleData);
-        console.log("📊 Last Bar in Visible Data:", updatedVisibleData[updatedVisibleData.length - 1]);
+        setVisibleData(prevData => {
+            let updatedVisibleData = [...prevData, formattedNewBar];
 
-        // 🔹 Force React to recognize state change by creating a new reference
-        return [...updatedVisibleData];
-    });
+            console.log("📊 Updated Visible Data (AFTER SET):", updatedVisibleData);
+            console.log("📊 Last Bar in Visible Data:", updatedVisibleData[updatedVisibleData.length - 1]);
 
+            setTimeout(scrollToRightMost, 100);  // ✅ Scroll after adding a new bar
+            return [...updatedVisibleData];
+        });
     };
 
     console.log("📊 Chart Rendering - Visible Data Length:", visibleData.length);
@@ -129,10 +143,10 @@ function SimulationScreen() {
             <h2 style={{ color: "white" }}>📈 Simulation Running...</h2>
             <p style={{ color: "lightgray" }}>Click "Generate Next Bar" to proceed.</p>
 
-            <div className="chart-scroll-container">
+            <div className="chart-scroll-container" ref={chartRef}>
                 <div className="chart-inner-container">
                     <ChartCanvas
-                        key={chartKey}  // 🔹 Forces re-render when data changes
+                        key={chartKey}
                         height={400}
                         width={1600}
                         ratio={3}
@@ -141,12 +155,10 @@ function SimulationScreen() {
                         xAccessor={(d) => d.date}
                         xScale={scaleTime()}
                         xExtents={[
-                            visibleData.length > 1
-                                ? visibleData[visibleData.length - Math.min(20, visibleData.length)].date
-                                : new Date(),
-                            visibleData.length > 0
-                                ? visibleData[visibleData.length - 1].date
-                                : new Date()
+                            visibleData.length > 3
+                                ? visibleData[visibleData.length - 20].date  // ✅ Adds padding for extra bars
+                                : visibleData[0].date,
+                            new Date(visibleData[visibleData.length - 1].date.getTime() + 15 * 60 * 1000)  // ✅ Adds extra 15 min
                         ]}
 
                     >
