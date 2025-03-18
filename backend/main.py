@@ -49,7 +49,7 @@ regression_trained_model = None
 predictions_regression = None
 # ✅ Store initial simulation data (before adding new bars)
 simulation_df_startingpoint = None
-
+simulation_df_original = None
 first_bar_processed = False  # ✅ Initialize first-bar tracking
 
 @app.get("/load-data/")
@@ -58,7 +58,7 @@ def load_data(
     data_type: str = Query(...),
     symbol: str = Query(...)
 ):
-    global training_df_raw, simulation_df
+    global training_df_raw, simulation_df, simulation_df_original  # ✅ Added `simulation_df_original`
 
     base_folder = "data"
     full_path = os.path.join(base_folder, data_type, file_path)
@@ -85,6 +85,10 @@ def load_data(
 
         # ✅ Apply the fixed simulation data
         simulation_df = validation_result["fixed_simulation_df"]
+
+        # ✅ Store a **backup copy** ONLY if `simulation_df_original` is not already set
+        if simulation_df_original is None:
+            simulation_df_original = simulation_df.copy()  # ✅ Store original for restarting
 
     # ✅ Extract validation messages
     missing_data_warning = validation_result.get("missing_data_warning", None) if validation_result else None
@@ -119,6 +123,7 @@ def load_data(
         "status": "success",
         "summary": summary
     }
+
 
 
 
@@ -625,7 +630,6 @@ def initialize_simulation():
         "data": simulation_df_startingpoint.to_dict(orient="records"),
     }
 
-
 @app.get("/restart-simulation/")
 def restart_simulation():
     global simulation_df, simulation_df_original, first_bar_processed
@@ -639,9 +643,12 @@ def restart_simulation():
     # ✅ Reset first bar tracking
     first_bar_processed = False
 
-    print("🔄 Simulation restarted successfully!")
+    print("🔄 Simulation restarted successfully! Simulation data restored.")
 
-    return {"status": "success", "message": "Simulation restarted to initial state."}
+    return {
+        "status": "success",
+        "message": "Simulation restarted to initial state."
+    }
 
 
 

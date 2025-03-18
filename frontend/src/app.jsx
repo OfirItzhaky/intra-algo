@@ -47,10 +47,13 @@ function App() {
         console.log("🔄 Refreshing simulation data after restart...");
 
         try {
+            // ✅ Clear previous data temporarily to force UI update
+            setSimulatingSummary(null);
+
             const response = await fetch("http://localhost:8000/get-loaded-data/?data_type=simulating");
             const data = await response.json();
 
-            if (data.status === "success") {
+            if (data.status === "success" && Array.isArray(data.data) && data.data.length > 0) {
                 setSimulatingSummary({
                     ...data,
                     first_date: data.data[0]?.Date || "N/A",
@@ -61,9 +64,11 @@ function App() {
                 console.log("✅ Simulation data refreshed!");
             } else {
                 console.error("❌ Error refreshing simulation data:", data.message);
+                setSimulatingSummary({ error: data.message });
             }
         } catch (error) {
             console.error("🚨 Failed to refresh simulation data:", error);
+            setSimulatingSummary({ error: "Failed to reach backend." });
         }
     };
 

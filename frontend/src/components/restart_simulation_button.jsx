@@ -6,11 +6,15 @@ function RestartSimulationButton({ onRestart }) {
 
         try {
             const response = await fetch("http://localhost:8000/restart-simulation/");
+            if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+
             const data = await response.json();
 
             if (data.status === "success") {
                 console.log("✅ Simulation restarted successfully!");
-                if (onRestart) onRestart();  // ✅ Notify parent to refresh UI
+                if (typeof onRestart === "function") {
+                    onRestart();  // ✅ Notify parent to refresh UI
+                }
             } else {
                 console.error("❌ Error restarting simulation:", data.message);
             }
