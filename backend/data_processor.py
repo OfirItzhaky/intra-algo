@@ -557,13 +557,15 @@ class DataProcessor:
             prev_bar = last_training_bar.copy()
 
             # ✅ Add the found previous bar back if it exists
-            if not prev_bar.empty:
-                # Convert Series to DataFrame properly and reset index
-                prev_bar_df = prev_bar.to_frame().T.reset_index(drop=True)
+            print("\n📊 BEFORE Adding prev_bar_df:")
+            print(cleaned_simulation_df.head(3))  # Print first 3 rows for visibility
 
-                # Concatenate with cleaned simulation data
+            if not prev_bar.empty:
+                prev_bar_df = prev_bar.to_frame().T.reset_index(drop=True)
                 cleaned_simulation_df = pd.concat([prev_bar_df, cleaned_simulation_df], ignore_index=True)
 
+            print("\n📊 AFTER Adding prev_bar_df:")
+            print(cleaned_simulation_df.head(3))  # Check if duplicates appear
 
         original_size = len(simulation_df)
         sliced_size = len(cleaned_simulation_df)
@@ -578,7 +580,8 @@ class DataProcessor:
             "missing_data_warning": missing_data_alert,
             "insufficient_simulation_warning": insufficient_simulation_alert,
             "overlap_fixed": overlap_fixed,  # ✅ Updated flag
-            "fixed_simulation_df": cleaned_simulation_df
+            "fixed_simulation_df": cleaned_simulation_df.drop_duplicates(subset=["Date", "Time"])
+
         }
 
 

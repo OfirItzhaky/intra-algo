@@ -44,31 +44,20 @@ function App() {
     };
 
     const handleSimulationRestart = async () => {
-        console.log("🔄 Refreshing simulation data after restart...");
+        console.log("🔄 Restarting simulation... (Summary remains unchanged)");
 
         try {
-            // ✅ Clear previous data temporarily to force UI update
-            setSimulatingSummary(null);
-
-            const response = await fetch("http://localhost:8000/get-loaded-data/?data_type=simulating");
+            const response = await fetch("http://localhost:8000/restart-simulation");
             const data = await response.json();
 
-            if (data.status === "success" && Array.isArray(data.data) && data.data.length > 0) {
-                setSimulatingSummary({
-                    ...data,
-                    first_date: data.data[0]?.Date || "N/A",
-                    first_time: data.data[0]?.Time || "N/A",
-                    last_date: data.data[data.data.length - 1]?.Date || "N/A",
-                    last_time: data.data[data.data.length - 1]?.Time || "N/A"
-                });
-                console.log("✅ Simulation data refreshed!");
+            if (data.status === "success") {
+                console.log("✅ Simulation restarted successfully!");
+                // ✅ Optional: Add a toast/pop-up to confirm restart if needed
             } else {
-                console.error("❌ Error refreshing simulation data:", data.message);
-                setSimulatingSummary({ error: data.message });
+                console.error("❌ Error restarting simulation:", data.message);
             }
         } catch (error) {
-            console.error("🚨 Failed to refresh simulation data:", error);
-            setSimulatingSummary({ error: "Failed to reach backend." });
+            console.error("🚨 Failed to restart simulation:", error);
         }
     };
 
@@ -83,7 +72,7 @@ function App() {
 
                             <DataSummaryBar
                                 trainingSummary={trainingSummary}
-                                simulatingSummary={simulatingSummary}
+                                simulatingSummary={simulatingSummary}  // ✅ Summary remains unchanged on restart
                                 labelSummary={labelSummary}
                                 newFeaturesCount={featuresCount}
                                 regressionMetrics={regressionMetrics}

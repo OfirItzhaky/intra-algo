@@ -71,6 +71,8 @@ def load_data(
     if df.empty or "Date" not in df.columns or "Time" not in df.columns:
         return {"status": "error", "message": f"{data_type.capitalize()} file could not be loaded or is empty."}
 
+    df = df.drop_duplicates(subset=["Date", "Time"])
+
     validation_result = None
 
     if data_type == "training":
