@@ -12,14 +12,18 @@ function RestartSimulationButton({ onRestart }) {
 
             if (data.status === "success") {
                 console.log("✅ Simulation restarted successfully!");
+                window.alert("✅ Simulation has been restarted!");  // ✅ Show popup alert
+
                 if (typeof onRestart === "function") {
                     onRestart();  // ✅ Notify parent to refresh UI
                 }
             } else {
                 console.error("❌ Error restarting simulation:", data.message);
+                window.alert(`❌ Failed to restart: ${data.message}`);  // ❌ Show error popup
             }
         } catch (error) {
             console.error("🚨 Failed to restart simulation:", error);
+            window.alert("🚨 An error occurred while restarting the simulation.");  // ❌ Show generic error popup
         }
     };
 
