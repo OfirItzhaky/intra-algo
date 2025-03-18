@@ -480,18 +480,19 @@ def generate_new_bar(validate: bool = False):
         Time=next_bar_data["Time"]
     )
 
+    historical_data = newbar_created_df_for_simulator.copy() if not newbar_created_df_for_simulator.empty else training_df_raw.copy()
 
-    new_bar._1_calculate_indicators_new_bar(historical_data=simulation_df.copy())
-    new_bar._2_add_vwap_new_bar(historical_data=simulation_df.copy())
-    new_bar._3_add_fibonacci_levels_new_bar(historical_data=simulation_df.copy())
-    new_bar._4_add_cci_average_new_bar(historical_data=simulation_df.copy())
-    new_bar._5_add_ichimoku_cloud_new_bar(historical_data=simulation_df.copy())
-    new_bar._6_add_atr_price_features_new_bar(historical_data=simulation_df.copy())
-    new_bar._7_add_multi_ema_indicators_new_bar(historical_data=simulation_df.copy())
-    new_bar._8_add_high_based_indicators_combined_new_bar(historical_data=simulation_df.copy())
+    new_bar._1_calculate_indicators_new_bar(historical_data=historical_data)
+    new_bar._2_add_vwap_new_bar(historical_data=historical_data)
+    new_bar._3_add_fibonacci_levels_new_bar(historical_data=historical_data)
+    new_bar._4_add_cci_average_new_bar(historical_data=historical_data)
+    new_bar._5_add_ichimoku_cloud_new_bar(historical_data=historical_data)
+    new_bar._6_add_atr_price_features_new_bar(historical_data=historical_data)
+    new_bar._7_add_multi_ema_indicators_new_bar(historical_data=historical_data)
+    new_bar._8_add_high_based_indicators_combined_new_bar(historical_data=historical_data)
     new_bar._9_add_constant_columns_new_bar()
-    new_bar._10_add_macd_indicators_new_bar(historical_data=simulation_df.copy())
-    new_bar._11_add_volatility_momentum_volume_features_new_bar(historical_data=simulation_df.copy())
+    new_bar._10_add_macd_indicators_new_bar(historical_data=historical_data)
+    new_bar._11_add_volatility_momentum_volume_features_new_bar(historical_data=historical_data)
 
     # ✅ Validate New Bar
     if validate:
@@ -563,6 +564,8 @@ def generate_new_bar(validate: bool = False):
 
     # ✅ Save the new bar to the global DataFrame
     newbar_created_df_for_simulator = pd.concat([newbar_created_df_for_simulator, new_bar_df], ignore_index=True)
+    newbar_created_df_for_simulator = newbar_created_df_for_simulator.drop_duplicates(subset=["Date", "Time"],
+                                                                                      keep="first")
 
     return {
         "status": "success",
