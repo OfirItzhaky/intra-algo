@@ -431,6 +431,11 @@ def generate_new_bar(validate: bool = False):
     global simulation_df, regression_trained_model, classifier_trainer
     global first_bar_processed  # ✅ Ensure it’s accessed globally
 
+    global newbar_created_df_for_simulator
+
+    if 'newbar_created_df_for_simulator' not in globals() or newbar_created_df_for_simulator is None:
+        newbar_created_df_for_simulator = pd.DataFrame()  # ✅ Initialize if not exists
+
     if simulation_df is None or simulation_df.empty:
         raise HTTPException(status_code=400, detail="Simulation data is not loaded.")
 
@@ -529,9 +534,15 @@ def generate_new_bar(validate: bool = False):
     new_bar_df["Predicted_High"] = predicted_high
 
     # ✅ Prepare classifier input
-    new_bar_df["Prev_Close"] = simulation_df.iloc[-1]["Close"] if len(simulation_df) > 1 else new_bar.Close
-    new_bar_df["Prev_Predicted_High"] = simulation_df.iloc[-1][
-        "Predicted_High"] if "Predicted_High" in simulation_df.columns else new_bar.Predicted_High
+    # ✅ Prepare classifier input
+    if newbar_created_df_for_simulator.empty:
+        # First bar: Get values from historical data
+        new_bar_df["Prev_Close"] = training_df_raw.iloc[-1]["Close"]
+        new_bar_df["Prev_Predicted_High"] = training_df_raw.iloc[-1]["High"]  # Assuming High was used
+    else:
+        # Subsequent bars: Use last processed new bar
+        new_bar_df["Prev_Close"] = newbar_created_df_for_simulator.iloc[-1]["Close"]
+        new_bar_df["Prev_Predicted_High"] = newbar_created_df_for_simulator.iloc[-1]["Predicted_High"]
 
     # ✅ Run classifiers
     classifier_predictions = classifier_trainer.predict_all_classifiers(new_bar_df)
@@ -549,6 +560,9 @@ def generate_new_bar(validate: bool = False):
     # ✅ Log Output for Debugging
     print("\n📊 **New Bar Processed Successfully:**")
     print(new_bar_df[["Date", "Time", "Predicted_High", "RandomForest", "LightGBM", "XGBoost"]].to_string(index=False))
+
+    # ✅ Save the new bar to the global DataFrame
+    newbar_created_df_for_simulator = pd.concat([newbar_created_df_for_simulator, new_bar_df], ignore_index=True)
 
     return {
         "status": "success",
