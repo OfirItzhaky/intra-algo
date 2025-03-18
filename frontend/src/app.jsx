@@ -22,27 +22,50 @@ function App() {
     const [classifierResults, setClassifierResults] = useState(null);
     const [classifierVisualization, setClassifierVisualization] = useState(null);
 
- const handleSummaryLoaded = (summary) => {
-    if (summary?.dataType === 'training') {
-        setTrainingSummary(summary);
-    } else if (summary?.dataType === 'simulating') {
-        if (summary.fixed_simulation_df) {  // ✅ Ensure we use the fixed version if available
-            const fixedFirstRow = summary.fixed_simulation_df[0];  // ✅ Extract first row from fixed data
-            const fixedLastRow = summary.fixed_simulation_df[summary.fixed_simulation_df.length - 1]; // ✅ Last row
+    const handleSummaryLoaded = (summary) => {
+        if (summary?.dataType === 'training') {
+            setTrainingSummary(summary);
+        } else if (summary?.dataType === 'simulating') {
+            if (summary.fixed_simulation_df) {  // ✅ Ensure we use the fixed version if available
+                const fixedFirstRow = summary.fixed_simulation_df[0];  // ✅ Extract first row from fixed data
+                const fixedLastRow = summary.fixed_simulation_df[summary.fixed_simulation_df.length - 1]; // ✅ Last row
 
-            setSimulatingSummary({
-                ...summary,
-                first_date: fixedFirstRow.Date,   // ✅ Correctly extract first date
-                first_time: fixedFirstRow.Time,
-                last_date: fixedLastRow.Date,     // ✅ Correctly extract last date
-                last_time: fixedLastRow.Time
-            });
-        } else {
-            setSimulatingSummary(summary);  // ✅ Fallback if no fixed data
+                setSimulatingSummary({
+                    ...summary,
+                    first_date: fixedFirstRow.Date,   // ✅ Correctly extract first date
+                    first_time: fixedFirstRow.Time,
+                    last_date: fixedLastRow.Date,     // ✅ Correctly extract last date
+                    last_time: fixedLastRow.Time
+                });
+            } else {
+                setSimulatingSummary(summary);  // ✅ Fallback if no fixed data
+            }
         }
-    }
-};
+    };
 
+    const handleSimulationRestart = async () => {
+        console.log("🔄 Refreshing simulation data after restart...");
+
+        try {
+            const response = await fetch("http://localhost:8000/get-loaded-data/?data_type=simulating");
+            const data = await response.json();
+
+            if (data.status === "success") {
+                setSimulatingSummary({
+                    ...data,
+                    first_date: data.data[0]?.Date || "N/A",
+                    first_time: data.data[0]?.Time || "N/A",
+                    last_date: data.data[data.data.length - 1]?.Date || "N/A",
+                    last_time: data.data[data.data.length - 1]?.Time || "N/A"
+                });
+                console.log("✅ Simulation data refreshed!");
+            } else {
+                console.error("❌ Error refreshing simulation data:", data.message);
+            }
+        } catch (error) {
+            console.error("🚨 Failed to refresh simulation data:", error);
+        }
+    };
 
     return (
         <Router>
@@ -64,7 +87,7 @@ function App() {
                             />
 
                             <div className="button-group">
-                                <LoadDataButton onSummaryLoaded={handleSummaryLoaded} />  {/* ✅ Restore this */}
+                                <LoadDataButton onSummaryLoaded={handleSummaryLoaded} />
                                 <ValidateDataButton />
                                 <GenerateFeaturesButton onFeaturesGenerated={setFeaturesCount} />
                                 <GenerateLabelsButton onLabelsGenerated={setLabelSummary} />
@@ -72,7 +95,7 @@ function App() {
                                 <TrainClassifiersButton onClassificationComplete={setClassifierResults} />
                                 <VisualizeClassifiersButton onVisualizationComplete={setClassifierVisualization} />
                                 <StartSimulationButton />
-                                <RestartSimulationButton />
+                                <RestartSimulationButton onRestart={handleSimulationRestart} />
                             </div>
                         </div>
                     </div>
@@ -82,6 +105,5 @@ function App() {
         </Router>
     );
 }
-
 
 export default App;

@@ -547,24 +547,24 @@ def generate_new_bar(validate: bool = False):
         "status": "success",
         "new_bar": {
             "date": f"{new_bar.Date} {new_bar.Time}",  # ✅ Combine Date and Time
-            "Open": float(new_bar.Open),  # ✅ Convert NumPy types
-            "High": float(new_bar.High),
-            "Low": float(new_bar.Low),
-            "Close": float(new_bar.Close),
-            "Volume": int(new_bar.Volume),  # ✅ Ensure Volume is int
-            "Predicted_High": float(new_bar.Predicted_High),
-            "RandomForest": int(new_bar.RandomForest),  # ✅ Convert classifiers to int
-            "LightGBM": int(new_bar.LightGBM),
-            "XGBoost": int(new_bar.XGBoost),
+            "open": float(new_bar.Open),  # ✅ Convert NumPy types
+            "high": float(new_bar.High),
+            "low": float(new_bar.Low),
+            "close": float(new_bar.Close),
+            "volume": int(new_bar.Volume),  # ✅ Ensure volume is int
+            "actualHigh": None,  # ✅ Placeholder since actualHigh is only updated later
+            "predictedHigh": float(new_bar.Predicted_High),
+            "rf": int(new_bar.RandomForest),  # ✅ Ensure lowercase keys
+            "lt": int(new_bar.LightGBM),
+            "xg": int(new_bar.XGBoost),
         }
     }
 
 
 
-
 @app.get("/initialize-simulation/")
 def initialize_simulation():
-    global simulation_df_startingpoint, first_bar_processed, trainer, classifier_trainer
+    global simulation_df_startingpoint, simulation_df_original, first_bar_processed, trainer, classifier_trainer
 
     # ✅ Ensure all required data is available
     if trainer is None or classifier_trainer is None:
@@ -598,7 +598,6 @@ def initialize_simulation():
     classifier_predictions = classifier_trainer.classifier_predictions_df.copy()
     classifier_predictions.index = pd.to_datetime(classifier_predictions.index)
 
-    # ✅ Merge regression + classifier predictions
     simulation_df_startingpoint = regression_data.merge(
         classifier_predictions, left_index=True, right_index=True, how="left"
     )
@@ -607,6 +606,7 @@ def initialize_simulation():
     simulation_df_startingpoint = simulation_df_startingpoint[
         ["Date", "Time", "Open", "High", "Low", "Close", "Actual_High", "Predicted_High", "RandomForest", "LightGBM", "XGBoost"]
     ]
+
     # ✅ Drop NaNs
     simulation_df_startingpoint = simulation_df_startingpoint.dropna(subset=["RandomForest", "LightGBM", "XGBoost"])
     # ✅ Check for NaNs in any other columns (excluding classifier predictions)
@@ -617,7 +617,6 @@ def initialize_simulation():
     if other_columns_with_nans.sum() > 0:
         raise ValueError(f"❌ Unexpected NaNs found in non-classifier columns:\n{other_columns_with_nans}")
 
-    # ✅ Debugging Output
     print("✅ Final Simulation Starting Point DF:")
     print(simulation_df_startingpoint.head())
 
@@ -625,6 +624,25 @@ def initialize_simulation():
         "status": "success",
         "data": simulation_df_startingpoint.to_dict(orient="records"),
     }
+
+
+@app.get("/restart-simulation/")
+def restart_simulation():
+    global simulation_df, simulation_df_original, first_bar_processed
+
+    if simulation_df_original is None:
+        return {"status": "error", "message": "Cannot restart simulation. No backup available."}
+
+    # ✅ Restore the simulation data from the original copy
+    simulation_df = simulation_df_original.copy()
+
+    # ✅ Reset first bar tracking
+    first_bar_processed = False
+
+    print("🔄 Simulation restarted successfully!")
+
+    return {"status": "success", "message": "Simulation restarted to initial state."}
+
 
 
 if __name__ == "__main__":

@@ -1,8 +1,22 @@
 import React from 'react';
 
-function RestartSimulationButton() {
-    const handleClick = () => {
-        console.log('Restart Simulation Clicked!');
+function RestartSimulationButton({ onRestart }) {
+    const handleClick = async () => {
+        console.log('🔄 Restart Simulation Clicked!');
+
+        try {
+            const response = await fetch("http://localhost:8000/restart-simulation/");
+            const data = await response.json();
+
+            if (data.status === "success") {
+                console.log("✅ Simulation restarted successfully!");
+                if (onRestart) onRestart();  // ✅ Notify parent to refresh UI
+            } else {
+                console.error("❌ Error restarting simulation:", data.message);
+            }
+        } catch (error) {
+            console.error("🚨 Failed to restart simulation:", error);
+        }
     };
 
     return (
