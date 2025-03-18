@@ -150,7 +150,7 @@ function SimulationScreen() {
                         ]}
 
                     >
-                        <Chart id={1} yExtents={(d) => [d.high, d.low]}>
+                        <Chart id={1} yExtents={(d) => [Math.min(d.low, d.predictedHigh || d.low), Math.max(d.high, d.predictedHigh || d.high)]}>
                             <XAxis strokeStyle="white" tickLabelFill="white" />
                             <YAxis strokeStyle="white" tickLabelFill="white" />
                             <CandlestickSeries />
