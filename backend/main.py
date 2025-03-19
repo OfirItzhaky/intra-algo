@@ -294,12 +294,12 @@ def train_regression_model(request: TrainRegressionRequest):
     mse_filtered = mean_squared_error(trainer.y_test_filtered, trainer.predictions_filtered)
     r2_filtered = r2_score(trainer.y_test_filtered, trainer.predictions_filtered)
 
-    # ✅ Generate the visualization **directly here** using `x_test_with_meta`
-    print("📊 Generating visualization for the last 20 bars...")
-    processor = DataProcessor()
-    trainer.regression_figure = processor.visualize_regression_predictions_for_pycharm(
-        trainer.x_test_with_meta, trainer.y_test, trainer.predictions, n=20  # Show only last 20 by default
-    )
+    # # ✅ Generate the visualization **directly here** using `x_test_with_meta`
+    # print("📊 Generating visualization for the last 20 bars...")
+    # processor = DataProcessor()
+    # trainer.regression_figure = processor.visualize_regression_predictions_for_pycharm(
+    #     trainer.x_test_with_meta, trainer.y_test, trainer.predictions, n=20  # Show only last 20 by default
+    # )
 
     return {
         "status": "success",

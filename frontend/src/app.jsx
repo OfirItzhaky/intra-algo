@@ -7,6 +7,7 @@ import GenerateFeaturesButton from './components/generate_features_button';
 import GenerateLabelsButton from './components/generate_labels_button';
 import StartSimulationButton from './components/start_simulation_button';
 import TrainRegressionModelButton from './components/train_regression_model_button';
+import VisualizeRegressionButton from './components/visualize_regression_button'; // ✅ New button
 import TrainClassifiersButton from './components/train_classifiers_button';
 import RestartSimulationButton from './components/restart_simulation_button';
 import DataSummaryBar from './components/data_summary_bar';
@@ -86,6 +87,7 @@ function App() {
                                 <GenerateFeaturesButton onFeaturesGenerated={setFeaturesCount} />
                                 <GenerateLabelsButton onLabelsGenerated={setLabelSummary} />
                                 <TrainRegressionModelButton onRegressionComplete={setRegressionMetrics} />
+                                <VisualizeRegressionButton /> {/* ✅ New Button Added Here */}
                                 <TrainClassifiersButton onClassificationComplete={setClassifierResults} />
                                 <VisualizeClassifiersButton onVisualizationComplete={setClassifierVisualization} />
                                 <StartSimulationButton />

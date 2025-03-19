@@ -31,8 +31,6 @@ function TrainRegressionModelButton({ onRegressionComplete }) {
                 // ✅ Pass results to the parent component
                 onRegressionComplete(result);
 
-                // ✅ Open new tab with dynamic image endpoint
-                window.open("http://127.0.0.1:8000/get-regression-chart/", "_blank");
             } else {
                 setError(result.message);
             }
