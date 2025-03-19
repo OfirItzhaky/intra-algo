@@ -5,9 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 from sklearn.metrics import mean_squared_error, r2_score
-from io import BytesIO
-from fastapi.responses import Response
-import matplotlib.pyplot as plt
 from fastapi import HTTPException
 
 from backend.new_bar import NewBar
@@ -51,7 +48,8 @@ predictions_regression = None
 simulation_df_startingpoint = None
 simulation_df_original = None
 first_bar_processed = False  # ✅ Initialize first-bar tracking
-
+regression_historical_data = None
+classifier_historical_data = None
 @app.get("/load-data/")
 def load_data(
     file_path: str = Query(...),
@@ -425,50 +423,27 @@ def visualize_classifiers():
 
     return Response(content=img_bytes.getvalue(), media_type="image/png")
 
-
 @app.get("/generate-new-bar/")
 def generate_new_bar(validate: bool = False):
-    global simulation_df, regression_trained_model, classifier_trainer
-    global first_bar_processed  # ✅ Ensure it’s accessed globally
-
-    global newbar_created_df_for_simulator
-
-    if 'newbar_created_df_for_simulator' not in globals() or newbar_created_df_for_simulator is None:
-        newbar_created_df_for_simulator = pd.DataFrame()  # ✅ Initialize if not exists
+    global simulation_df, regression_trained_model, classifier_trainer, trainer
+    global newbar_created_df_for_simulator  # ✅ Stores newly created bars for future use
+    global regression_historical_data , classifier_historical_data
+    global first_bar_processed
 
     if simulation_df is None or simulation_df.empty:
         raise HTTPException(status_code=400, detail="Simulation data is not loaded.")
 
-    # ✅ Extract next available bar
+    # ✅ Ensure global structures exist
+    if 'newbar_created_df_for_simulator' not in globals() or newbar_created_df_for_simulator is None:
+        newbar_created_df_for_simulator = pd.DataFrame()
+
+
+
     next_bar_data = simulation_df.iloc[0].to_dict()  # Take first row
     simulation_df.drop(index=simulation_df.index[0], inplace=True)  # Remove from queue
 
-    # ✅ First bar alignment validation (ONLY for first bar)
-    if not first_bar_processed:
-        # 🔹 Extract the last two timestamps from classifier predictions DataFrame
-        last_two_rows = classifier_trainer.classifier_predictions_df.iloc[-2:]  # Get last two rows
 
-        # ✅ Extract the index values since the Date/Time are in the index
-        last_timestamp = pd.to_datetime(last_two_rows.index[-1])
-        second_last_timestamp = pd.to_datetime(last_two_rows.index[-2])
 
-        # ✅ Compute expected interval
-        expected_interval = last_timestamp - second_last_timestamp
-
-        # ✅ Compute expected first timestamp dynamically
-        expected_first_timestamp = last_timestamp + expected_interval
-
-        # ✅ Get actual first timestamp from simulation data
-        actual_first_timestamp = pd.to_datetime(next_bar_data["Date"] + " " + next_bar_data["Time"])
-
-        # ✅ Validate the timestamp
-        if actual_first_timestamp != expected_first_timestamp:
-            raise HTTPException(status_code=400,
-                                detail=f"First bar timestamp mismatch! Expected '{expected_first_timestamp}', but got '{actual_first_timestamp}'")
-
-        first_bar_processed = True  # ✅ Mark as processed
-
-    # ✅ Create NewBar instance and compute features
     # ✅ Create NewBar instance with explicit fields
     new_bar = NewBar(
         Open=next_bar_data["Open"],
@@ -480,73 +455,60 @@ def generate_new_bar(validate: bool = False):
         Time=next_bar_data["Time"]
     )
 
-    historical_data = newbar_created_df_for_simulator.copy() if not newbar_created_df_for_simulator.empty else training_df_raw.copy()
+    # ✅ If this is the first bar, initialize from x_test_with_meta
+    if not first_bar_processed:
+        regression_historical_data = trainer.x_test_with_meta.copy()
 
-    new_bar._1_calculate_indicators_new_bar(historical_data=historical_data)
-    new_bar._2_add_vwap_new_bar(historical_data=historical_data)
-    new_bar._3_add_fibonacci_levels_new_bar(historical_data=historical_data)
-    new_bar._4_add_cci_average_new_bar(historical_data=historical_data)
-    new_bar._5_add_ichimoku_cloud_new_bar(historical_data=historical_data)
-    new_bar._6_add_atr_price_features_new_bar(historical_data=historical_data)
-    new_bar._7_add_multi_ema_indicators_new_bar(historical_data=historical_data)
-    new_bar._8_add_high_based_indicators_combined_new_bar(historical_data=historical_data)
+    # ✅ Ensure historical data contains all necessary features before calculations
+    if regression_historical_data is None or regression_historical_data.empty:
+        raise ValueError(
+            "❌ `regression_historical_data` is empty! Ensure it is initialized before calling indicators.")
+
+    new_bar._1_calculate_indicators_new_bar(historical_data=regression_historical_data)
+    new_bar._2_add_vwap_new_bar(historical_data=regression_historical_data)
+    new_bar._3_add_fibonacci_levels_new_bar(historical_data=regression_historical_data)
+    new_bar._4_add_cci_average_new_bar(historical_data=regression_historical_data)
+    new_bar._5_add_ichimoku_cloud_new_bar(historical_data=regression_historical_data)
+    new_bar._6_add_atr_price_features_new_bar(historical_data=regression_historical_data)
+    new_bar._7_add_multi_ema_indicators_new_bar(historical_data=regression_historical_data)
+    new_bar._8_add_high_based_indicators_combined_new_bar(historical_data=regression_historical_data)
     new_bar._9_add_constant_columns_new_bar()
-    new_bar._10_add_macd_indicators_new_bar(historical_data=historical_data)
-    new_bar._11_add_volatility_momentum_volume_features_new_bar(historical_data=historical_data)
+    new_bar._10_add_macd_indicators_new_bar(historical_data=regression_historical_data)
+    new_bar._11_add_volatility_momentum_volume_features_new_bar(historical_data=regression_historical_data)
 
     # ✅ Validate New Bar
     if validate:
         new_bar.validate_new_bar()
 
-    # ✅ Convert to DataFrame format for model input
-    new_bar_df = pd.DataFrame([vars(new_bar)])
-
-    # ✅ Always drop `Date` and `Time` as they are not numerical
-    features_for_prediction = new_bar_df.drop(columns=["Date", "Time"], errors="ignore")
-    price_columns = {"Open", "High", "Low", "Close", "Volume"}
-
-
-    # Only drop price columns if they were NOT used in regression training (keep them otherwise)
-    trained_features_regression = set(regression_trained_model.feature_names_in_)  # Features used in regression
-    columns_to_drop_from_regression = price_columns - trained_features_regression  # Drop only if NOT in regression
-
-    features_for_prediction = features_for_prediction.drop(columns=columns_to_drop_from_regression, errors="ignore")
-
-
-    trained_features = set(regression_trained_model.feature_names_in_)  # Extract features used during training
-
-    # ✅ If price columns were **not** used during training, drop them from the prediction data
-    columns_to_drop = price_columns - trained_features  # Get the difference (columns to drop)
-    features_for_prediction = features_for_prediction.drop(columns=columns_to_drop, errors="ignore")
-
-    # ✅ Ensure feature order matches training order
-    features_for_prediction = features_for_prediction[regression_trained_model.feature_names_in_]
-
-    # ✅ Debug: Print the final columns being passed to regression
-    print("\n✅ **Final Features Passed to Regression Model:**", features_for_prediction.columns.tolist())
-
+    # ✅ Append `new_bar` to regression historical data for future use
+    new_bar_df = pd.DataFrame([vars(new_bar)])  # Convert to DataFrame
+    regression_historical_data = pd.concat([regression_historical_data, new_bar_df],
+                                           ignore_index=True)  # ✅ Append to history
+    regression_historical_data = regression_historical_data.drop_duplicates(subset=["Date", "Time"],
+                                                                            keep="first")  # ✅ Avoid duplicate rows
     # ✅ Run regression model
-    predicted_high = regression_trained_model.predict(features_for_prediction)[0]
-
-
+    predicted_high = regression_trained_model.predict(
+        regression_historical_data.iloc[[-1]][regression_trained_model.feature_names_in_].copy()
+    )[0]
 
     # ✅ Attach prediction to new_bar
     new_bar.Predicted_High = predicted_high
     new_bar_df["Predicted_High"] = predicted_high
 
-    # ✅ Prepare classifier input
-    # ✅ Prepare classifier input
-    if newbar_created_df_for_simulator.empty:
-        # First bar: Get values from historical data
-        new_bar_df["Prev_Close"] = training_df_raw.iloc[-1]["Close"]
-        new_bar_df["Prev_Predicted_High"] = training_df_raw.iloc[-1]["High"]  # Assuming High was used
+
+    # ✅ If this is the first bar, initialize from x_test_with_meta
+    if not first_bar_processed:
+        new_bar_df["Prev_Close"] = regression_historical_data.iloc[-2]["Close"]  # ✅ Corrected
+        new_bar_df["Prev_Predicted_High"] = trainer.predictions[-1]  # ✅ Use last known prediction
     else:
-        # Subsequent bars: Use last processed new bar
-        new_bar_df["Prev_Close"] = newbar_created_df_for_simulator.iloc[-1]["Close"]
-        new_bar_df["Prev_Predicted_High"] = newbar_created_df_for_simulator.iloc[-1]["Predicted_High"]
+        new_bar_df["Prev_Close"] = classifier_historical_data.iloc[-1]["Close"]  # ✅ Keep using regression history
+        new_bar_df["Prev_Predicted_High"] = classifier_historical_data.iloc[-1][
+            "Predicted_High"]  # ✅ Use last classifier prediction
 
     # ✅ Run classifiers
-    classifier_predictions = classifier_trainer.predict_all_classifiers(new_bar_df)
+    classifier_predictions = classifier_trainer.predict_all_classifiers(
+        new_bar_df[classifier_trainer.rf_results["model"].feature_names_in_].copy()
+    )
 
     # ✅ Attach classifier predictions to new_bar
     new_bar.RandomForest = classifier_predictions["RandomForest"]
@@ -562,11 +524,11 @@ def generate_new_bar(validate: bool = False):
     print("\n📊 **New Bar Processed Successfully:**")
     print(new_bar_df[["Date", "Time", "Predicted_High", "RandomForest", "LightGBM", "XGBoost"]].to_string(index=False))
 
-    # ✅ Save the new bar to the global DataFrame
-    newbar_created_df_for_simulator = pd.concat([newbar_created_df_for_simulator, new_bar_df], ignore_index=True)
-    newbar_created_df_for_simulator = newbar_created_df_for_simulator.drop_duplicates(subset=["Date", "Time"],
-                                                                                      keep="first")
-
+    classifier_historical_data = pd.concat([classifier_historical_data, new_bar_df],
+                                           ignore_index=True)  # ✅ Append to history
+    classifier_historical_data = classifier_historical_data.drop_duplicates(subset=["Date", "Time"],
+                                                                            keep="first")  # ✅ Avoid duplicate rows
+    first_bar_processed = True
     return {
         "status": "success",
         "new_bar": {
