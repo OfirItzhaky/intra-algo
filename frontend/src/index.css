@@ -78,3 +78,71 @@ html, body, #root {
 .generate-bar-button:hover {
     background-color: #e68900; /* ✅ Darker orange on hover */
 }
+/* Make "Train Classifiers" button same size as "Train Regression Model" */
+.train-classifiers-button, .train-regression-model-button {
+    width: 100%;
+    padding: 14px 24px; /* Slightly larger for uniformity */
+    font-size: 16px;
+    font-weight: bold;
+    text-align: center;
+    border-radius: 8px;
+    border: none;
+}
+
+/* Make "Train Classifiers" same width as "Train Regression Model" */
+.train-classifiers-button {
+    width: 100%;
+    padding: 14px 24px;
+    font-size: 16px;
+    font-weight: bold;
+    text-align: center;
+    border-radius: 8px;
+    border: none;
+    background-color: #dc3545; /* Keep red */
+    color: white;
+}
+
+.train-classifiers-button:hover {
+    background-color: #c82333;
+}
+
+/* Adjust "Visualize Regression" button size and spacing */
+.visualize-regression-button {
+    padding: 8px 16px;
+    font-size: 14px;
+    background-color: #3b82f6;
+    width: auto;
+    border-radius: 6px;
+    margin-top: 6px; /* Ensure proper spacing */
+}
+
+.visualize-regression-button:hover {
+    background-color: #2563eb;
+}
+
+/* Ensure proper spacing between all buttons */
+.button-group {
+    display: flex;
+    flex-direction: column;
+    gap: 14px; /* Increase spacing slightly */
+    align-items: center;
+    width: 100%;
+}
+
+/* Make sure "Start Simulation" and "Restart Simulation" remain side by side */
+.simulation-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 16px; /* Keep spacing between them */
+    width: 100%;
+}
+
+.start-simulation-button, .restart-simulation-button {
+    flex: 1;
+    max-width: 220px;
+    padding: 12px 24px;
+    font-size: 16px;
+    border-radius: 6px;
+    text-align: center;
+}
+
