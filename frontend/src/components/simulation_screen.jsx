@@ -246,6 +246,32 @@ function SimulationScreen() {
                                     when={() => true}
                                 />
                             ))}
+                            {visibleData.map((d, i) => (
+                                <Annotate
+                                    key={`actual-${i}`}
+                                    with={(props) => {
+                                        const yValue = d.actualHigh;
+                                        return (
+                                            yValue !== undefined &&
+                                            !isNaN(yValue) &&
+                                            i !== visibleData.length - 1 // ✅ Skip the last bar
+                                        ) ? (
+                                            <text
+                                                x={props.xScale(props.xAccessor(d))}
+                                                y={props.yScale(yValue) - 12}  // ✅ Shift slightly up to avoid overlap
+                                                textAnchor="middle"
+                                                fontSize={12}
+                                                fill="blue"  // ✅ Blue for actual values
+                                                dy={-10}
+                                            >
+                                                {yValue.toFixed(2)}
+                                            </text>
+                                        ) : null;
+                                    }}
+                                    when={() => true}
+                                />
+                            ))}
+
                         </Chart>
                     </ChartCanvas>
                 </div>
