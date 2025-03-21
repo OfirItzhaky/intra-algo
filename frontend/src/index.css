@@ -36,44 +36,44 @@ html, body, #root {
     white-space: nowrap;
     padding-bottom: 10px;
     display: flex;
-    justify-content: flex-start;
+    justify-content: center; /* ✅ Center the chart horizontally */
 }
 
 .chart-inner-container {
-    width: 1500px; /* ✅ Match this to your chart width */
-    min-width: 1500px; /* ✅ Ensures it doesn’t collapse */
+    width: 1500px; /* ✅ Ensure enough width for scrolling */
+    min-width: 1500px; /* ✅ Prevent collapse */
     overflow-x: visible;
 }
 
-
-
+/* ✅ Visible scrollbar */
 .chart-scroll-container::-webkit-scrollbar {
-    height: 8px;
+    height: 10px;
+    background: #2d2d2d;  /* ✅ Dark background */
 }
 
 .chart-scroll-container::-webkit-scrollbar-thumb {
-    background: #4facfe;
-    border-radius: 4px;
+    background: #bbbbbb;  /* ✅ Light gray scrollbar */
+    border-radius: 5px;
 }
 
 .chart-scroll-container::-webkit-scrollbar-thumb:hover {
-    background: #555;
+    background: #888888;  /* ✅ Slightly darker on hover */
 }
 
 .generate-bar-button {
     display: block;
-    margin: 20px auto; /* ✅ Center horizontally & add spacing */
-    padding: 12px 24px; /* ✅ Larger button */
-    font-size: 18px; /* ✅ Increase font size */
+    margin: 10px auto; /* ✅ Control spacing properly */
+    padding: 12px 24px;
+    font-size: 18px;
     font-weight: bold;
-    background-color: #ff9800; /* ✅ Keep orange */
+    background-color: #ff9800;
     color: black;
     border: none;
-    border-radius: 6px; /* ✅ Slightly rounded edges */
+    border-radius: 6px;
     cursor: pointer;
-    position: relative; /* ✅ Maintain proper spacing */
-    top: 20px; /* ✅ Moves it down further */
 }
+
+
 
 .generate-bar-button:hover {
     background-color: #e68900; /* ✅ Darker orange on hover */
