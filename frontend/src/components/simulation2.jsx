@@ -49,7 +49,7 @@ const Simulation2 = () => {
 
         if (data.status === "success" && data.data.length > 0) {
           const parsedData = data.data.map(d => ({
-            date: new Date(`${d.Date} ${d.Time}:00`),  // Convert to Date object immediately
+            date: `${d.Date} ${d.Time}:00`,  // 🛠️ FIXED FORMAT
             open: d.Open,
             high: d.High,
             low: d.Low,
