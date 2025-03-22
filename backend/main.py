@@ -7,7 +7,7 @@ import uvicorn
 from sklearn.metrics import mean_squared_error, r2_score
 from fastapi import HTTPException
 
-from backend.new_bar import NewBar
+from new_bar import NewBar
 from classifier_model_trainer import ClassifierModelTrainer
 from data_processor import DataProcessor
 from regression_model_trainer import RegressionModelTrainer

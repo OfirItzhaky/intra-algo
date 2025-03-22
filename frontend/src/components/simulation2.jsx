@@ -28,10 +28,13 @@ const Simulation2 = () => {
   const [visibleData, setVisibleData] = useState([]);
 
   // Move ScaleProvider setup into useMemo
+  
   const { data: scaledData, xScale, xAccessor, displayXAccessor } = useMemo(() => {
     const ScaleProvider = discontinuousTimeScaleProviderBuilder()
       .inputDateAccessor(d => d.date instanceof Date ? d.date : new Date(d.date));
-    return ScaleProvider(visibleData);
+    const result = ScaleProvider(visibleData);
+    console.log("DEBUG - ScaleProvider Result:", result);
+    return result;
   }, [visibleData]);
 
   // Add debug log here
@@ -49,7 +52,7 @@ const Simulation2 = () => {
 
         if (data.status === "success" && data.data.length > 0) {
           const parsedData = data.data.map(d => ({
-            date: `${d.Date} ${d.Time}:00`,  // 🛠️ FIXED FORMAT
+            date: new Date(`${d.Date.split('/')[2]}-${d.Date.split('/')[0].padStart(2, '0')}-${d.Date.split('/')[1].padStart(2, '0')} ${d.Time}:00`),
             open: d.Open,
             high: d.High,
             low: d.Low,
@@ -69,6 +72,11 @@ const Simulation2 = () => {
 
           console.log("📌 Updated `simulationData`:", parsedData);
           console.log("📌 Updated `visibleData`:", parsedData);
+          console.log("DEBUG - Date Conversion:", {
+            originalDate: visibleData[0]?.date,
+            parsedDate: new Date(visibleData[0]?.date),
+            isValidDate: !isNaN(new Date(visibleData[0]?.date).getTime())
+          });
 
           console.log("Sample date string:", parsedData[0].date);
           console.log("Parsed date:", new Date(parsedData[0].date));
@@ -105,6 +113,7 @@ const Simulation2 = () => {
     console.log("📌 Checking 100th Item in visibleData:", visibleData[Math.max(0, visibleData.length - 100)]);
     console.log("📌 Checking visibleData structure:", JSON.stringify(visibleData.slice(0, 5), null, 2));
 
+    // console.log("DEBUG - xAccessor Function:", xAccessor);
     // ✅ Debugging: Ensure xAccessor values before setting xExtents
     const max = xAccessor(visibleData[visibleData.length - 1]);
     const min = xAccessor(visibleData[Math.max(0, visibleData.length - 100)]);
@@ -126,9 +135,7 @@ console.log("📌 xExtents:", xExtents);
     }
   });
   // ✅ Debugging: Check xAccessor values before setting xExtents
-visibleData.forEach((d, i) => {
-    console.log(`xAccessor(${i}):`, xAccessor(d));
-});
+ 
 
   const barChartExtents = (data) => {
     return data.volume;
