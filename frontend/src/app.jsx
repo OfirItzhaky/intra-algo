@@ -14,6 +14,7 @@ import DataSummaryBar from './components/data_summary_bar';
 import VisualizeClassifiersButton from './components/visualize_classifiers_button';
 import SimulationScreen from './components/simulation_screen'; // ✅ New Simulation Component
 import Simulation2 from './components/simulation2'; // ✅ New Simulation Component
+import Simulation3 from './components/simulation3'; // ✅ New Simulation Component
 function App() {
     const [trainingSummary, setTrainingSummary] = useState(null);
     const [simulatingSummary, setSimulatingSummary] = useState(null);
@@ -96,7 +97,7 @@ function App() {
                         </div>
                     </div>
                 } />
-                <Route path="/simulation" element={<Simulation2 />} />
+                <Route path="/simulation" element={<Simulation3 />} />
             </Routes>
         </Router>
     );
