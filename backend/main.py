@@ -6,7 +6,7 @@ from pydantic import BaseModel
 import uvicorn
 from sklearn.metrics import mean_squared_error, r2_score
 from fastapi import HTTPException
-
+import json
 from new_bar import NewBar
 from classifier_model_trainer import ClassifierModelTrainer
 from data_processor import DataProcessor
@@ -598,6 +598,35 @@ def initialize_simulation():
 
     print("✅ Final Simulation Starting Point DF:")
     print(simulation_df_startingpoint.head())
+    # Step 1: Add date field
+    simulation_df_startingpoint["date"] = pd.to_datetime(
+        simulation_df_startingpoint["Date"] + " " + simulation_df_startingpoint["Time"]
+    ).dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Step 2: Prepare subsets
+    initial_data = simulation_df_startingpoint[["date", "Open", "High", "Low", "Close"]].rename(
+        columns={"Open": "open", "High": "high", "Low": "low", "Close": "close"}
+    )
+    pred_actual_data = simulation_df_startingpoint[["date", "Actual_High", "Predicted_High"]].rename(
+        columns={"Actual_High": "actualHigh", "Predicted_High": "predictedHigh"}
+    )
+    classifier_data = simulation_df_startingpoint[["date", "RandomForest", "LightGBM", "XGBoost"]].rename(
+        columns={"RandomForest": "rf", "LightGBM": "lt", "XGBoost": "xg"}
+    )
+
+    # Step 3: Combine to JS string
+    js_lines = [
+        f"export let initialData = {json.dumps(initial_data.to_dict(orient='records'), indent=2)};\n",
+        f"export let PredActualData = {json.dumps(pred_actual_data.to_dict(orient='records'), indent=2)};\n",
+        f"export let classifierData = {json.dumps(classifier_data.to_dict(orient='records'), indent=2)};\n"
+    ]
+
+    # Step 4: Write to file
+    output_path = os.path.join("..", "frontend", "src", "components", "initialData.js")
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    with open(output_path, "w") as f:
+        f.writelines(js_lines)
 
     return {
         "status": "success",
