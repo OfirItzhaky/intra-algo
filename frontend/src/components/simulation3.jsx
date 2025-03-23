@@ -35,13 +35,13 @@ const Simulation3 = () => {
   const width = 900;
   const margin = { left: 0, right: 48, top: 0, bottom: 24 };
     const predictedLine = {
-  accessor: (d) => d.predictedHigh,
+  accessor: (d) => (d ? d.predictedHigh : null),
   stroke: "red",
     options: () => ({ windowSize: 1 })  // 👈 just a placeholder
 
 };
 const actualLine = {
-  accessor: (d) => d.actualHigh,
+  accessor: (d) => (d ? d.actualHigh : null),
   stroke: "blue",
     options: () => ({ windowSize: 1 })  // 👈 just a placeholder
 
@@ -60,10 +60,24 @@ const actualLine = {
     initialData
   );
 
+  console.log("Processed Data:", data);
+  console.log("xScale:", xScale);
+  console.log("xAccessor for first data point:", xAccessor(data[0]));
+  console.log("Date from xAccessor for first data point:", new Date(data[0].date));
+  console.log("Display X Accessor for first data point:", displayXAccessor(data[0]));
+  console.log("xAccessor for last data point:", xAccessor(data[data.length - 1]));
+  console.log("Date from xAccessor for last data point:", new Date(data[data.length - 1].date));
+  console.log("First data point:", data[0]);
+  console.log("Last data point:", data[data.length - 1]);
+  console.log("xAccessor for first data point:", xAccessor(data[0]));
+  console.log("xAccessor for last data point:", xAccessor(data[data.length - 1]));
+
   const pricesDisplayFormat = format(".2f");
   const max = xAccessor(data[data.length - 1]);
   const min = xAccessor(data[Math.max(0, data.length - 100)]);
-  const xExtents = [min, max + 5];
+  const xExtents = [xAccessor(data[0]), xAccessor(data[data.length - 1])];
+
+  console.log("xExtents:", xExtents);
 
   const gridHeight = height - margin.top - margin.bottom;
 
@@ -75,7 +89,7 @@ const actualLine = {
   const yExtents = (data) => {
     return [data.high, data.low];
   };
-  const dateTimeFormat = "%d %b";
+  const dateTimeFormat = "%d %b %H:%M:%S"; // Day, Month, Hour:Minute:Second
   const timeDisplayFormat = timeFormat(dateTimeFormat);
 
 
@@ -93,6 +107,8 @@ const actualLine = {
   const openCloseColor = (data) => {
     return data.close > data.open ? "#26a69a" : "#ef5350";
   };
+
+  console.log("Initial Data:", initialData);
 
   return (
     <ChartCanvas
@@ -115,7 +131,10 @@ const actualLine = {
           gridLinesStrokeStyle={gridColor}
           strokeStyle={axisColor}
           tickLabelFill={axisColor}
-          showTickLabel={false}
+          tickFormat={timeDisplayFormat}
+          showTickLabel={true}
+          ticks={10}
+          tickLabelAngle={-45}
         />
         <YAxis
           showGridLines
