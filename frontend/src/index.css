@@ -30,6 +30,17 @@ html, body, #root {
     margin-bottom: 20px;
 }
 
+.chart-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Center items horizontally */
+}
+
+.chart-inner-container {
+    width: 100%; /* Ensure it takes full width */
+    max-width: 800px; /* Adjust as needed */
+}
+
 .chart-scroll-container {
     width: 100%;
     overflow-x: auto;  /* ✅ Enables horizontal scrolling */
@@ -37,12 +48,6 @@ html, body, #root {
     padding-bottom: 10px;
     display: flex;
     justify-content: center; /* ✅ Center the chart horizontally */
-}
-
-.chart-inner-container {
-    width: 1500px; /* ✅ Ensure enough width for scrolling */
-    min-width: 1500px; /* ✅ Prevent collapse */
-    overflow-x: visible;
 }
 
 /* ✅ Visible scrollbar */
@@ -61,8 +66,7 @@ html, body, #root {
 }
 
 .generate-bar-button {
-    display: block;
-    margin: 10px auto; /* ✅ Control spacing properly */
+    margin: 10px auto; /* Center the button horizontally */
     padding: 12px 24px;
     font-size: 18px;
     font-weight: bold;
@@ -71,9 +75,8 @@ html, body, #root {
     border: none;
     border-radius: 6px;
     cursor: pointer;
+    display: block; /* Ensure it takes full width available */
 }
-
-
 
 .generate-bar-button:hover {
     background-color: #e68900; /* ✅ Darker orange on hover */

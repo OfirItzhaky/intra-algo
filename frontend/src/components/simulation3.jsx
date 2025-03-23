@@ -111,89 +111,97 @@ const actualLine = {
   console.log("Initial Data:", initialData);
 
   return (
-    <ChartCanvas
-      height={height}
-      ratio={3}
-      width={width}
-      margin={margin}
-      data={data}
-      displayXAccessor={displayXAccessor}
-      seriesName="Data"
-      xScale={xScale}
-      xAccessor={xAccessor}
-      xExtents={xExtents}
-      zoomAnchor={lastVisibleItemBasedZoomAnchor}
-    >
+    <div className="chart-container">
+      <div className="chart-inner-container">
+        <ChartCanvas
+          height={height}
+          ratio={3}
+          width={width}
+          margin={margin}
+          data={data}
+          displayXAccessor={displayXAccessor}
+          seriesName="Data"
+          xScale={xScale}
+          xAccessor={xAccessor}
+          xExtents={xExtents}
+          zoomAnchor={lastVisibleItemBasedZoomAnchor}
+        >
 
-      <Chart id={3} height={gridHeight} yExtents={candleChartExtents}>
-        <XAxis
-          showGridLines
-          gridLinesStrokeStyle={gridColor}
-          strokeStyle={axisColor}
-          tickLabelFill={axisColor}
-          tickFormat={timeDisplayFormat}
-          showTickLabel={true}
-          ticks={10}
-          tickLabelAngle={-45}
-        />
-        <YAxis
-          showGridLines
-          gridLinesStrokeStyle={gridColor}
-          strokeStyle={axisColor}
-          tickLabelFill={axisColor}
-          tickFormat={pricesDisplayFormat}
-        />
-        <CandlestickSeries />
-        <LineSeries yAccessor={predictedLine.accessor} strokeStyle={predictedLine.stroke} />
-        <CurrentCoordinate
-          yAccessor={predictedLine.accessor}
-          fillStyle={predictedLine.stroke}
-        />
-        <LineSeries yAccessor={actualLine.accessor} strokeStyle={actualLine.stroke} />
-        <CurrentCoordinate
-          yAccessor={actualLine.accessor}
-          fillStyle={actualLine.stroke}
-        />
-        <MouseCoordinateY
-          rectWidth={margin.right}
-          displayFormat={pricesDisplayFormat}
-        />
-        <EdgeIndicator
-          itemType="last"
-          rectWidth={margin.right}
-          fill={openCloseColor}
-          lineStroke={openCloseColor}
-          displayFormat={pricesDisplayFormat}
-          yAccessor={yEdgeIndicator}
-        />
-        <MovingAverageTooltip
-          origin={[8, 24]}
-          textFill={textColor}
-          options={[
-            {
-              yAccessor: predictedLine.accessor,
-              type: "Predicted",
-              stroke: predictedLine.stroke,
-              windowSize: predictedLine.options().windowSize
-            },
-            {
-              yAccessor: actualLine.accessor,
-              type: "Actual",
-              stroke: actualLine.stroke,
-              windowSize: actualLine.options().windowSize
-            }
-          ]}
-        />
+          <Chart id={3} height={gridHeight} yExtents={candleChartExtents}>
+            <XAxis
+              showGridLines
+              gridLinesStrokeStyle={gridColor}
+              strokeStyle={axisColor}
+              tickLabelFill={axisColor}
+              tickFormat={timeDisplayFormat}
+              showTickLabel={true}
+              ticks={10}
+              tickLabelAngle={-45}
+            />
+            <YAxis
+              showGridLines
+              gridLinesStrokeStyle={gridColor}
+              strokeStyle={axisColor}
+              tickLabelFill={axisColor}
+              tickFormat={pricesDisplayFormat}
+            />
+            <CandlestickSeries />
+            <LineSeries yAccessor={predictedLine.accessor} strokeStyle={predictedLine.stroke} />
+            <CurrentCoordinate
+              yAccessor={predictedLine.accessor}
+              fillStyle={predictedLine.stroke}
+            />
+            <LineSeries yAccessor={actualLine.accessor} strokeStyle={actualLine.stroke} />
+            <CurrentCoordinate
+              yAccessor={actualLine.accessor}
+              fillStyle={actualLine.stroke}
+            />
+            <MouseCoordinateY
+              rectWidth={margin.right}
+              displayFormat={pricesDisplayFormat}
+            />
+            <EdgeIndicator
+              itemType="last"
+              rectWidth={margin.right}
+              fill={openCloseColor}
+              lineStroke={openCloseColor}
+              displayFormat={pricesDisplayFormat}
+              yAccessor={yEdgeIndicator}
+            />
+            <MovingAverageTooltip
+              origin={[8, 24]}
+              textFill={textColor}
+              options={[
+                {
+                  yAccessor: predictedLine.accessor,
+                  type: "Predicted",
+                  stroke: predictedLine.stroke,
+                  windowSize: predictedLine.options().windowSize
+                },
+                {
+                  yAccessor: actualLine.accessor,
+                  type: "Actual",
+                  stroke: actualLine.stroke,
+                  windowSize: actualLine.options().windowSize
+                }
+              ]}
+            />
 
-        <ZoomButtons />
-        <OHLCTooltip
-          origin={[8, 16]}
-          textFill={textColor}
-        />
-      </Chart>
+            <ZoomButtons />
+            <OHLCTooltip
+              origin={[8, 16]}
+              textFill={textColor}
+            />
+          </Chart>
 
-      <CrossHairCursor />
-    </ChartCanvas>
+          <CrossHairCursor />
+        </ChartCanvas>
+
+        <button className="generate-bar-button">
+          Generate Next Bar
+        </button>
+      </div>
+    </div>
   );
 };
 
