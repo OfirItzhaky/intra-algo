@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState, useRef } from "react";
 import ReactDOM from "react-dom";
 import { format } from "d3-format";
 import { timeFormat } from "d3-time-format";
@@ -26,11 +26,15 @@ import {
   withSize
 } from "react-financial-charts";
 import { initialData, PredActualData, classifierData } from "./initialData";
+import axios from 'axios';
+import GenerateNewBarButton from "./generate_new_bar_button"; // ✅ Import the button
 
 const Simulation3 = () => {
   const ScaleProvider = discontinuousTimeScaleProviderBuilder().inputDateAccessor(
     (d) => new Date(d.date)
   );
+  const [isFirstBarGenerated, setIsFirstBarGenerated] = useState(false);
+
   const height = 700;
   const width = 900;
   const margin = { left: 0, right: 48, top: 0, bottom: 24 };
@@ -109,6 +113,37 @@ const actualLine = {
   };
 
   console.log("Initial Data:", initialData);
+
+   const handleNewBarGenerated = (newBar) => {
+        console.log("➕ New Bar Generated (Raw):", newBar);
+
+        const formattedNewBar = {
+            ...newBar,
+            date: new Date(newBar.date)  // 🔹 Convert date string to JavaScript Date
+        };
+
+        setSimulationData(prevData => {
+            let updatedData = [...prevData, formattedNewBar];
+
+            // ✅ Ensure actual high is only added for the previous bar
+            if (updatedData.length > 1) {
+                updatedData[updatedData.length - 2].actualHigh = formattedNewBar.high;
+            }
+
+            console.log("📊 Updated Simulation Data (AFTER SET):", updatedData);
+            return updatedData;
+        });
+
+        setVisibleData(prevData => {
+            let updatedVisibleData = [...prevData, formattedNewBar];
+
+            console.log("📊 Updated Visible Data (AFTER SET):", updatedVisibleData);
+            console.log("📊 Last Bar in Visible Data:", updatedVisibleData[updatedVisibleData.length - 1]);
+
+            setTimeout(scrollToRightMost, 100);  // ✅ Scroll after adding a new bar
+            return [...updatedVisibleData];
+        });
+    };
 
   return (
     <div className="chart-container">
@@ -197,9 +232,13 @@ const actualLine = {
           <CrossHairCursor />
         </ChartCanvas>
 
-        <button className="generate-bar-button">
-          Generate Next Bar
-        </button>
+        <div className="button-container">
+                <GenerateNewBarButton
+                    onNewBarGenerated={handleNewBarGenerated}
+                    isFirstBarGenerated={isFirstBarGenerated}
+                    setIsFirstBarGenerated={setIsFirstBarGenerated}
+                />
+            </div>
       </div>
     </div>
   );
