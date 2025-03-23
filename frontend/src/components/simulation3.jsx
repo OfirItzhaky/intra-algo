@@ -67,6 +67,10 @@ const actualLine = {
 
   const gridHeight = height - margin.top - margin.bottom;
 
+  const gridColor = "#555"; // Greyish color for the grid
+  const axisColor = "#fff"; // White color for the axes
+
+  const textColor = "#fff"; // White color for text
 
   const yExtents = (data) => {
     return [data.high, data.low];
@@ -106,8 +110,20 @@ const actualLine = {
     >
 
       <Chart id={3} height={gridHeight} yExtents={candleChartExtents}>
-        <XAxis showGridLines showTickLabel={false} />
-        <YAxis showGridLines tickFormat={pricesDisplayFormat} />
+        <XAxis
+          showGridLines
+          gridLinesStrokeStyle={gridColor}
+          strokeStyle={axisColor}
+          tickLabelFill={axisColor}
+          showTickLabel={false}
+        />
+        <YAxis
+          showGridLines
+          gridLinesStrokeStyle={gridColor}
+          strokeStyle={axisColor}
+          tickLabelFill={axisColor}
+          tickFormat={pricesDisplayFormat}
+        />
         <CandlestickSeries />
         <LineSeries yAccessor={predictedLine.accessor} strokeStyle={predictedLine.stroke} />
         <CurrentCoordinate
@@ -133,6 +149,7 @@ const actualLine = {
         />
         <MovingAverageTooltip
           origin={[8, 24]}
+          textFill={textColor}
           options={[
             {
               yAccessor: predictedLine.accessor,
@@ -150,7 +167,10 @@ const actualLine = {
         />
 
         <ZoomButtons />
-        <OHLCTooltip origin={[8, 16]} />
+        <OHLCTooltip
+          origin={[8, 16]}
+          textFill={textColor}
+        />
       </Chart>
 
       <CrossHairCursor />
