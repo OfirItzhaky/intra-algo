@@ -22,3 +22,19 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# Python cache and bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# IPython notebook checkpoints
+.ipynb_checkpoints/
+
+# Model files
+*.pkl
+
+# VSCode settings (optional)
+.vscode/
+
+# MacOS system files (optional)
+.DS_Store
