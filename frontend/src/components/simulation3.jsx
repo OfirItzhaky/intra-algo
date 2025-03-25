@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+import { plotDataLengthBarWidth } from "react-financial-charts";
 import ReactDOM from "react-dom";
 import { format } from "d3-format";
 import { timeFormat } from "d3-time-format";
@@ -25,16 +26,29 @@ import {
   withDeviceRatio,
   withSize,
   Label,
-  Annotate
+  Annotate,
+  LabelAnnotation
 } from "react-financial-charts";
+
 import { initialData, PredActualData, classifierData } from "./initialData";
 import axios from 'axios';
 import GenerateNewBarButton from "./generate_new_bar_button"; // ✅ Import the button
 
 const Simulation3 = () => {
   const ScaleProvider = discontinuousTimeScaleProviderBuilder().inputDateAccessor(
-    (d) => new Date(d.date)
-  );
+  d => new Date(d.date)  // ✅ This tells it to use real Date objects internally
+);
+initialData.forEach(d => {
+  if (!(d.date instanceof Date)) {
+    d.date = new Date(d.date);
+  }
+});
+const { data, xScale, xAccessor, displayXAccessor } = ScaleProvider(initialData);
+
+
+
+
+
   const [isFirstBarGenerated, setIsFirstBarGenerated] = useState(false);
 
   const height = 700;
@@ -53,18 +67,22 @@ const actualLine = {
 
 };
 
-    // ✅ Merge predicted and actual highs into initialData before passing to ScaleProvider
+   // ✅ Merge predicted and actual highs into initialData before passing to ScaleProvider
     PredActualData.forEach((p) => {
-      const match = initialData.find((d) => d.date === p.date);
+      const match = initialData.find((d) => {
+        const dateA = d.date instanceof Date ? d.date : new Date(d.date);
+        const dateB = p.date instanceof Date ? p.date : new Date(p.date);
+        return dateA.getTime() === dateB.getTime();
+      });
+
       if (match) {
         match.predictedHigh = p.predictedHigh;
         match.actualHigh = p.actualHigh;
       }
     });
 
-  const { data, xScale, xAccessor, displayXAccessor } = ScaleProvider(
-    initialData
-  );
+
+
 
   console.log("Processed Data:", data);
   console.log("xScale:", xScale);
@@ -91,14 +109,27 @@ const actualLine = {
     lastDate: new Date(data[data.length - 1].date)
   });
 
-  const rightPadding = (max - min) * 0.1;
-  const xExtents = [min, max + rightPadding];
+const lastN = 20;
+const from = new Date(displayXAccessor(data[data.length - lastN]).getTime() - 3 * 5 * 60 * 1000);
+const to = new Date(displayXAccessor(data[data.length - 1]).getTime() + 3 * 5 * 60 * 1000);
+const xExtents = [from, to];
+
+
+
+
+
+
+
+
+console.log("📅 Final xExtents Dates", {
+  from: xExtents[0].toISOString(),
+  to: xExtents[1].toISOString(),
+});
 
   // Log the final xExtents values
-  console.log("📊 xExtents with padding:", {
-    start: new Date(min),
-    end: new Date(max + rightPadding),
-    paddingAmount: rightPadding
+  console.log("📊 xExtents :", {
+    xExtents
+
   });
 
   const gridHeight = height - margin.top - margin.bottom;
@@ -111,19 +142,42 @@ const actualLine = {
   const yExtents = (data) => {
     return [data.high, data.low];
   };
-  const dateTimeFormat = "%d %b %H:%M:%S"; // Day, Month, Hour:Minute:Second
-  const timeDisplayFormat = timeFormat(dateTimeFormat);
+const dateTimeFormat = "%H:%M";  // Just hours and minutes
+const timeDisplayFormat = timeFormat(dateTimeFormat);
 
 
 
-  const candleChartExtents = (data) => {
-    return [data.high, data.low];
-  };
+const candleChartExtents = (d) => {
+  const values = [d.high, d.low];
+  if (d.predictedHigh !== undefined) values.push(d.predictedHigh);
+  if (d.actualHigh !== undefined) values.push(d.actualHigh);
+  return values;
+};
+
+const debugTickFormat = (d) => {
+  console.log("🕒 Tick value:", d);
+  return timeFormat("%H:%M")(d);
+};
 
   const yEdgeIndicator = (data) => {
     return data.close;
   };
 
+const predictedAnnotations = data
+  .filter((d) => d.predictedHigh !== undefined)
+  .map((d) => ({
+    date: d.date,
+    y: d.predictedHigh,
+    label: d.predictedHigh.toFixed(2),
+  }));
+
+const actualAnnotations = data
+  .filter((d) => d.actualHigh !== undefined)
+  .map((d) => ({
+    date: d.date,
+    y: d.actualHigh,
+    label: d.actualHigh.toFixed(2),
+  }));
 
 
   const openCloseColor = (data) => {
@@ -171,10 +225,34 @@ const actualLine = {
     hasActualHigh: data.some(d => d.actualHigh !== undefined),
     hasPredictedHigh: data.some(d => d.predictedHigh !== undefined)
   });
+console.log("📍 Predicted labels to annotate:", data.filter(d => d.predictedHigh != null).map(d => ({
+  date: d.date,
+  value: d.predictedHigh
+})));
+console.log("📍 Actual labels to annotate:", data.filter(d => d.actualHigh != null).map(d => ({
+  date: d.date,
+  value: d.actualHigh
+})));
+console.log("🔍 Sample xAccessor output (should be index or number):", xAccessor(data[0]));
+console.log("📅 Is xAccessor a Date?", xAccessor(data[0]) instanceof Date);  // ❌ Likely false
+console.log("🕓 Actual Date string from data:", data[0].date);
+console.log("📆 displayXAccessor (should be Date):", displayXAccessor(data[0]));
+console.log("📅 Is displayXAccessor returning a Date?", displayXAccessor(data[0]) instanceof Date); // ✅ Should be true
+console.log("📏 Grid Height:", gridHeight);
+console.log("🧠 xAccessor value:", xAccessor(data[0]));
+console.log("🧠 displayXAccessor value:", displayXAccessor(data[0]));
+console.log("📅 xExtents:", xExtents.map(x => x instanceof Date ? x.toISOString() : x));
+
+
+
 
   return (
     <div className="chart-container">
       <div className="chart-inner-container">
+          <div style={{ color: 'white', fontSize: 16, padding: '10px' }}>
+              🧪 Chart loaded with {data.length} bars
+            </div>
+
         <ChartCanvas
           height={height}
           ratio={3}
@@ -184,22 +262,26 @@ const actualLine = {
           displayXAccessor={displayXAccessor}
           seriesName="Data"
           xScale={xScale}
-          xAccessor={xAccessor}
+          xAccessor={d => d.date}
           xExtents={xExtents}
           zoomAnchor={lastVisibleItemBasedZoomAnchor}
         >
 
           <Chart id={3} height={gridHeight} yExtents={candleChartExtents}>
             <XAxis
-              showGridLines
-              gridLinesStrokeStyle={gridColor}
-              strokeStyle={axisColor}
-              tickLabelFill={axisColor}
-              tickFormat={timeDisplayFormat}
-              showTickLabel={true}
-              ticks={10}
-              tickLabelAngle={-45}
+            tickValues={data.map(d => d.date)}
+              tickLabelFill="#ffffff"         // ✅ White text
+              strokeStyle="#ffffff"           // ✅ White axis line
+                tickStrokeStyle="#ffffff"
+                  showTickLabel={true}
+ ticks={8} // ✅ Reduce number of ticks
+
+              tickFormat={(d) => timeFormat("%H:%M")(new Date(d))}
+              tickLabelAngle={15}            // ✅ Rotate for visibility
             />
+
+/>
+
             <YAxis
               showGridLines
               gridLinesStrokeStyle={gridColor}
@@ -207,7 +289,16 @@ const actualLine = {
               tickLabelFill={axisColor}
               tickFormat={pricesDisplayFormat}
             />
-            <CandlestickSeries />
+
+
+            <CandlestickSeries
+              fill={(d) => (d.close > d.open ? "#26a69a" : "#ef5350")}
+              stroke="#ffffff"  // white border for contrast
+              wickStroke="white"                     // white wick
+              candleStrokeWidth={0.6}   // thinner border
+              wickStrokeWidth={0.6}
+              width={() => 10}                       // 🔥 force candle width
+            />
             <LineSeries yAccessor={predictedLine.accessor} strokeStyle={predictedLine.stroke} />
             <LineSeries yAccessor={actualLine.accessor} strokeStyle={actualLine.stroke} />
             <CurrentCoordinate
@@ -222,6 +313,10 @@ const actualLine = {
               rectWidth={margin.right}
               displayFormat={pricesDisplayFormat}
             />
+            <MouseCoordinateX
+              displayFormat={timeDisplayFormat}
+            />
+
             <EdgeIndicator
               itemType="last"
               orient="right"
@@ -241,93 +336,32 @@ const actualLine = {
               lineStroke="blue"
               displayFormat={format(".2f")}
             />
-
-            <MovingAverageTooltip
-              origin={[8, 24]}
-              textFill={textColor}
-              options={[
-                {
-                  yAccessor: predictedLine.accessor,
-                  type: "Predicted",
-                  stroke: predictedLine.stroke,
-                  windowSize: predictedLine.options().windowSize
-                },
-                {
-                  yAccessor: actualLine.accessor,
-                  type: "Actual",
-                  stroke: actualLine.stroke,
-                  windowSize: actualLine.options().windowSize
-                }
-              ]}
+             <Annotate
+              with={LabelAnnotation}
+              when={d => d.predictedHigh !== undefined}
+              usingProps={{
+                yAccessor: d => d.predictedHigh,
+                    y: d => d.predictedHigh + 1.5,   // ⬆️ 1.5 points above the line
+                fill: "red",
+                text: d => d.predictedHigh.toFixed(2),
+                fontSize: 11,
+                textAnchor: "middle"
+              }}
             />
 
-            {data.map((d, i) => {
-              // Debug log for each label's position
-              console.log(`📍 Label Position (Predicted) for index ${i}:`, {
-                x: xAccessor(d),
-                y: d.predictedHigh,
-                date: d.date,
-                value: d.predictedHigh?.toFixed(2)
-              });
 
-              if (d.predictedHigh) {
-                return (
-                  <Label
-                    key={`pred-${i}`}
-                    x={xAccessor(d)}
-                    y={d.predictedHigh}
-                    text={d.predictedHigh.toFixed(2)}
-                    fontFamily="Helvetica"
-                    fontSize={10}
-                    fill="red"
-                    textAnchor="middle"
-                  />
-                );
-              }
-              return null;
-            })}
-
-            {data.map((d, i) => {
-              // Debug log for each label's position
-              console.log(`📍 Label Position (Actual) for index ${i}:`, {
-                x: xAccessor(d),
-                y: d.actualHigh,
-                date: d.date,
-                value: d.actualHigh?.toFixed(2)
-              });
-
-              if (d.actualHigh) {
-                return (
-                  <Label
-                    key={`actual-${i}`}
-                    x={xAccessor(d)}
-                    y={d.actualHigh}
-                    text={d.actualHigh.toFixed(2)}
-                    fontFamily="Helvetica"
-                    fontSize={10}
-                    fill="blue"
-                    textAnchor="middle"
-                  />
-                );
-              }
-              return null;
-            })}
-
-            <SingleValueTooltip
-              yAccessor={predictedLine.accessor}
-              yLabel="Predicted"
-              yDisplayFormat={format(".2f")}
-              origin={[8, 16]}
-              valueFill="red"
-            />
-
-            <SingleValueTooltip
-              yAccessor={actualLine.accessor}
-              yLabel="Actual"
-              yDisplayFormat={format(".2f")}
-              origin={[8, 32]}
-              valueFill="blue"
-            />
+              <Annotate
+                  with={LabelAnnotation}
+                  when={d => d.actualHigh !== undefined}
+                  usingProps={{
+                    yAccessor: d => d.actualHigh,
+                    fill: "blue",
+                    text: d => d.actualHigh.toFixed(2),
+                    fontSize: 11,
+                    textAnchor: "middle",
+                    dy: -10  // ⬆️ move label upward by 10px from the line
+                  }}
+                />
 
             <ZoomButtons />
             <OHLCTooltip
