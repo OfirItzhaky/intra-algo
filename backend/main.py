@@ -14,6 +14,7 @@ from regression_model_trainer import RegressionModelTrainer
 from label_generator import LabelGenerator
 from feature_generator import FeatureGenerator
 from data_loader import DataLoader
+import re
 
 app = FastAPI()
 
@@ -521,19 +522,67 @@ def generate_new_bar(validate: bool = False):
                                            ignore_index=True)  # ✅ Append to history
     classifier_historical_data = classifier_historical_data.drop_duplicates(subset=["Date", "Time"],
                                                                             keep="first")  # ✅ Avoid duplicate rows
+
+    # Read the file
+    file_path = os.path.join("..", "frontend", "src", "components", "initialData.js")
+    with open(file_path, "r") as f:
+        content = f.read()
+
+    # Extract JSON strings using regex
+    initial_data_str = re.search(r"export let initialData = (\[.*?\]);", content, re.DOTALL).group(1)
+    pred_actual_data_str = re.search(r"export let PredActualData = (\[.*?\]);", content, re.DOTALL).group(1)
+    classifier_data_str = re.search(r"export let classifierData = (\[.*?\]);", content, re.DOTALL).group(1)
+
+    # Parse JSON
+    initialData = json.loads(initial_data_str)
+    PredActualData = json.loads(pred_actual_data_str)
+    classifierData = json.loads(classifier_data_str)
+
+    PredActualData[-1]["actualHigh"] = float(new_bar.High)
+
+    # Now you can append new data to these lists
+    initialData.append({
+        "date": f"{new_bar.Date} {new_bar.Time}",
+        "open": float(new_bar.Open),
+        "high": float(new_bar.High),
+        "low": float(new_bar.Low),
+        "close": float(new_bar.Close)
+    })
+
+    PredActualData.append({
+        "date": f"{new_bar.Date} {new_bar.Time}",
+        "actualHigh": None,
+        "predictedHigh": float(new_bar.Predicted_High)
+    })
+
+    classifierData.append({
+        "date": f"{new_bar.Date} {new_bar.Time}",
+        "rf": int(new_bar.RandomForest),
+        "lt": int(new_bar.LightGBM),
+        "xg": int(new_bar.XGBoost)
+    })
+
+    # Save updated data
+    with open(file_path, "w") as f:
+        f.write(f"export let initialData = {json.dumps(initialData, indent=2)};\n")
+        f.write(f"export let PredActualData = {json.dumps(PredActualData, indent=2)};\n")
+        f.write(f"export let classifierData = {json.dumps(classifierData, indent=2)};\n")
+        
+    
     first_bar_processed = True
+
     return {
         "status": "success",
         "new_bar": {
-            "date": f"{new_bar.Date} {new_bar.Time}",  # ✅ Combine Date and Time
-            "open": float(new_bar.Open),  # ✅ Convert NumPy types
+            "date": f"{new_bar.Date} {new_bar.Time}",
+            "open": float(new_bar.Open),
             "high": float(new_bar.High),
             "low": float(new_bar.Low),
             "close": float(new_bar.Close),
-            "volume": int(new_bar.Volume),  # ✅ Ensure volume is int
-            "actualHigh": None,  # ✅ Placeholder since actualHigh is only updated later
+            "volume": int(new_bar.Volume),
+            "actualHigh": None,
             "predictedHigh": float(new_bar.Predicted_High),
-            "rf": int(new_bar.RandomForest),  # ✅ Ensure lowercase keys
+            "rf": int(new_bar.RandomForest),
             "lt": int(new_bar.LightGBM),
             "xg": int(new_bar.XGBoost),
         }
