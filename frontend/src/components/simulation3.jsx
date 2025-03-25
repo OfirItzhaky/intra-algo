@@ -79,9 +79,25 @@ const actualLine = {
   const pricesDisplayFormat = format(".2f");
   const max = xAccessor(data[data.length - 1]);
   const min = xAccessor(data[Math.max(0, data.length - 100)]);
-  const xExtents = [xAccessor(data[0]), xAccessor(data[data.length - 1])];
+  
+  // Add debug logging
+  console.log("🎯 xAccessor values:", {
+    min: min,
+    max: max,
+    dataLength: data.length,
+    firstDate: new Date(data[0].date),
+    lastDate: new Date(data[data.length - 1].date)
+  });
 
-  console.log("xExtents:", xExtents);
+  const rightPadding = (max - min) * 0.1;
+  const xExtents = [min, max + rightPadding];
+
+  // Log the final xExtents values
+  console.log("📊 xExtents with padding:", {
+    start: new Date(min),
+    end: new Date(max + rightPadding),
+    paddingAmount: rightPadding
+  });
 
   const gridHeight = height - margin.top - margin.bottom;
 
