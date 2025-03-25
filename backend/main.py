@@ -695,11 +695,14 @@ def restart_simulation():
     # ✅ Reset first bar tracking
     first_bar_processed = False
 
-    print("🔄 Simulation restarted successfully! Simulation data restored.")
+    # ✅ Call initialize_simulation to reset the initialData.js file
+    initialize_simulation()
+
+    print("🔄 Simulation restarted successfully! Simulation data and initialData.js restored.")
 
     return {
         "status": "success",
-        "message": "Simulation restarted to initial state."
+        "message": "Simulation restarted to initial state and initialData.js reset."
     }
 
 

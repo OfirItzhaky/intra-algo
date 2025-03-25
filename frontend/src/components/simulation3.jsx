@@ -23,7 +23,9 @@ import {
   MouseCoordinateY,
   ZoomButtons,
   withDeviceRatio,
-  withSize
+  withSize,
+  Label,
+  Annotate
 } from "react-financial-charts";
 import { initialData, PredActualData, classifierData } from "./initialData";
 import axios from 'axios';
@@ -161,6 +163,15 @@ const actualLine = {
         });
     };
 
+  // Add debug logs for data
+  console.log("🔍 Chart Data Overview:", {
+    totalDataPoints: data.length,
+    firstPoint: data[0],
+    lastPoint: data[data.length - 1],
+    hasActualHigh: data.some(d => d.actualHigh !== undefined),
+    hasPredictedHigh: data.some(d => d.predictedHigh !== undefined)
+  });
+
   return (
     <div className="chart-container">
       <div className="chart-inner-container">
@@ -198,11 +209,11 @@ const actualLine = {
             />
             <CandlestickSeries />
             <LineSeries yAccessor={predictedLine.accessor} strokeStyle={predictedLine.stroke} />
+            <LineSeries yAccessor={actualLine.accessor} strokeStyle={actualLine.stroke} />
             <CurrentCoordinate
               yAccessor={predictedLine.accessor}
               fillStyle={predictedLine.stroke}
             />
-            <LineSeries yAccessor={actualLine.accessor} strokeStyle={actualLine.stroke} />
             <CurrentCoordinate
               yAccessor={actualLine.accessor}
               fillStyle={actualLine.stroke}
@@ -213,12 +224,24 @@ const actualLine = {
             />
             <EdgeIndicator
               itemType="last"
-              rectWidth={margin.right}
-              fill={openCloseColor}
-              lineStroke={openCloseColor}
-              displayFormat={pricesDisplayFormat}
-              yAccessor={yEdgeIndicator}
+              orient="right"
+              edgeAt="right"
+              yAccessor={predictedLine.accessor}
+              fill="red"
+              lineStroke="red"
+              displayFormat={format(".2f")}
             />
+
+            <EdgeIndicator
+              itemType="last"
+              orient="right"
+              edgeAt="right"
+              yAccessor={actualLine.accessor}
+              fill="blue"
+              lineStroke="blue"
+              displayFormat={format(".2f")}
+            />
+
             <MovingAverageTooltip
               origin={[8, 24]}
               textFill={textColor}
@@ -236,6 +259,74 @@ const actualLine = {
                   windowSize: actualLine.options().windowSize
                 }
               ]}
+            />
+
+            {data.map((d, i) => {
+              // Debug log for each label's position
+              console.log(`📍 Label Position (Predicted) for index ${i}:`, {
+                x: xAccessor(d),
+                y: d.predictedHigh,
+                date: d.date,
+                value: d.predictedHigh?.toFixed(2)
+              });
+
+              if (d.predictedHigh) {
+                return (
+                  <Label
+                    key={`pred-${i}`}
+                    x={xAccessor(d)}
+                    y={d.predictedHigh}
+                    text={d.predictedHigh.toFixed(2)}
+                    fontFamily="Helvetica"
+                    fontSize={10}
+                    fill="red"
+                    textAnchor="middle"
+                  />
+                );
+              }
+              return null;
+            })}
+
+            {data.map((d, i) => {
+              // Debug log for each label's position
+              console.log(`📍 Label Position (Actual) for index ${i}:`, {
+                x: xAccessor(d),
+                y: d.actualHigh,
+                date: d.date,
+                value: d.actualHigh?.toFixed(2)
+              });
+
+              if (d.actualHigh) {
+                return (
+                  <Label
+                    key={`actual-${i}`}
+                    x={xAccessor(d)}
+                    y={d.actualHigh}
+                    text={d.actualHigh.toFixed(2)}
+                    fontFamily="Helvetica"
+                    fontSize={10}
+                    fill="blue"
+                    textAnchor="middle"
+                  />
+                );
+              }
+              return null;
+            })}
+
+            <SingleValueTooltip
+              yAccessor={predictedLine.accessor}
+              yLabel="Predicted"
+              yDisplayFormat={format(".2f")}
+              origin={[8, 16]}
+              valueFill="red"
+            />
+
+            <SingleValueTooltip
+              yAccessor={actualLine.accessor}
+              yLabel="Actual"
+              yDisplayFormat={format(".2f")}
+              origin={[8, 32]}
+              valueFill="blue"
             />
 
             <ZoomButtons />
