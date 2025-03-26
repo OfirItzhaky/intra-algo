@@ -10,7 +10,8 @@ import {
   ChartCanvas,
   CurrentCoordinate,
   CandlestickSeries,
-
+ ScatterSeries,
+  CircleMarker ,
   LineSeries,
   MovingAverageTooltip,
   OHLCTooltip,
@@ -81,7 +82,25 @@ const actualLine = {
       }
     });
 
+// ✅ Merge classifier predictions into initialData
+classifierData.forEach((c) => {
+  const match = initialData.find((d) => {
+    const dateA = d.date instanceof Date ? d.date : new Date(d.date);
+    const dateB = c.date instanceof Date ? c.date : new Date(c.date);
+    return dateA.getTime() === dateB.getTime();
+  });
 
+  if (match) {
+    match.rf = c.rf;
+    match.lt = c.lt;
+    match.xg = c.xg;
+  }
+});
+
+const classifierColorMap = {
+  0: "#ff5252",  // Red for "bad"
+  1: "#00e676"   // Green for "good"
+};
 
 
   console.log("Processed Data:", data);
@@ -171,13 +190,7 @@ const predictedAnnotations = data
     label: d.predictedHigh.toFixed(2),
   }));
 
-const actualAnnotations = data
-  .filter((d) => d.actualHigh !== undefined)
-  .map((d) => ({
-    date: d.date,
-    y: d.actualHigh,
-    label: d.actualHigh.toFixed(2),
-  }));
+
 
 
   const openCloseColor = (data) => {
@@ -336,32 +349,6 @@ console.log("📅 xExtents:", xExtents.map(x => x instanceof Date ? x.toISOStrin
               lineStroke="blue"
               displayFormat={format(".2f")}
             />
-             <Annotate
-              with={LabelAnnotation}
-              when={d => d.predictedHigh !== undefined}
-              usingProps={{
-                yAccessor: d => d.predictedHigh,
-                    y: d => d.predictedHigh + 1.5,   // ⬆️ 1.5 points above the line
-                fill: "red",
-                text: d => d.predictedHigh.toFixed(2),
-                fontSize: 11,
-                textAnchor: "middle"
-              }}
-            />
-
-
-              <Annotate
-                  with={LabelAnnotation}
-                  when={d => d.actualHigh !== undefined}
-                  usingProps={{
-                    yAccessor: d => d.actualHigh,
-                    fill: "blue",
-                    text: d => d.actualHigh.toFixed(2),
-                    fontSize: 11,
-                    textAnchor: "middle",
-                    dy: -10  // ⬆️ move label upward by 10px from the line
-                  }}
-                />
 
             <ZoomButtons />
             <OHLCTooltip
@@ -369,6 +356,63 @@ console.log("📅 xExtents:", xExtents.map(x => x instanceof Date ? x.toISOStrin
               textFill={textColor}
             />
           </Chart>
+         <Chart
+  id={4}
+  height={80}
+  origin={(w, h) => [0, h - 80]} // Pinned to bottom
+  yExtents={[0, 3]}              // Enough room for RF=2, LT=1, XG=0
+>
+  <XAxis
+    showTickLabel={false}
+    strokeStyle="white"
+    tickLabelFill="white"
+  />
+
+  <YAxis
+    ticks={3}
+    tickValues={[2.5, 1.5, 0.5]}  // Fixed classifier positions
+    strokeStyle="white"
+    tickLabelFill="white"
+    tickFormat={(d) => {
+      if (d === 2.5) return "RF";
+      if (d === 1.5) return "LT";
+      if (d === 0.5) return "XG";
+      return "";
+    }}
+  />
+
+
+<ScatterSeries
+  yAccessor={(d) => d.rf !== undefined ? 2.5 : null}
+  marker={CircleMarker}
+  markerProps={{ r: 8,fillStyle: (d) => d.rf === 1 ? "green" : "red",
+    strokeStyle: (d) => d.rf === 1 ? "green" : "red",   }}
+  highlightOnHover={false}
+/>
+
+<ScatterSeries
+  yAccessor={(d) => d.lt !== undefined ? 1.5 : null}
+  marker={CircleMarker}
+  markerProps={{ r: 8, fillStyle: (d) => d.rf === 1 ? "green" : "red",
+    strokeStyle: (d) => d.rf === 1 ? "green" : "red", }}
+  highlightOnHover={false}
+/>
+
+<ScatterSeries
+  yAccessor={(d) => d.xg !== undefined ? 0.5 : null}
+  marker={CircleMarker}
+  markerProps={{ r: 8,fillStyle: (d) => d.rf === 1 ? "green" : "red",
+    strokeStyle: (d) => d.rf === 1 ? "green" : "red",  }}
+  highlightOnHover={false}
+/>
+
+
+
+
+
+</Chart>
+
+
 
           <CrossHairCursor />
         </ChartCanvas>
