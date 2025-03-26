@@ -393,7 +393,7 @@ console.log("📅 xExtents:", xExtents.map(x => x instanceof Date ? x.toISOStrin
 <ScatterSeries
   yAccessor={(d) => d.lt !== undefined ? 1.5 : null}
   marker={CircleMarker}
-  markerProps={{ r: 8, fillStyle: (d) => d.rf === 1 ? "green" : "red",
+  markerProps={{ r: 8, fillStyle: (d) => d.lt === 1 ? "green" : "red",
     strokeStyle: (d) => d.rf === 1 ? "green" : "red", }}
   highlightOnHover={false}
 />
@@ -401,7 +401,7 @@ console.log("📅 xExtents:", xExtents.map(x => x instanceof Date ? x.toISOStrin
 <ScatterSeries
   yAccessor={(d) => d.xg !== undefined ? 0.5 : null}
   marker={CircleMarker}
-  markerProps={{ r: 8,fillStyle: (d) => d.rf === 1 ? "green" : "red",
+  markerProps={{ r: 8,fillStyle: (d) => d.xg === 1 ? "green" : "red",
     strokeStyle: (d) => d.rf === 1 ? "green" : "red",  }}
   highlightOnHover={false}
 />
