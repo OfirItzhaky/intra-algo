@@ -33,7 +33,7 @@ class ElasticNetStrategy(bt.Strategy):
         self.open_trade_time = None
         self.trades = []
 
-    def next_no_intrabar(self):
+    def next(self):
         """
         Entry logic for the strategy (non-intrabar version).
 
@@ -105,7 +105,7 @@ class ElasticNetStrategy(bt.Strategy):
             self.entry_price = entry_price
             self.open_trade_time = dt
 
-    def notify_order_no_intrabar(self, order):
+    def notify_order(self, order):
         """
         Handles order status updates and trade logging for the non-intrabar strategy.
 
