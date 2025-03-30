@@ -1,5 +1,9 @@
+import pandas as pd
+from pandasgui import show
+
 from analyzer_load_eda import ModelLoaderAndExplorer
 from analyzer_cerebro_strategy_engine import CerebroStrategyEngine
+from analyzer_dashboard import AnalyzerDashboard
 
 # === Initialize and Load Everything ===
 model_loader = ModelLoaderAndExplorer(
@@ -61,5 +65,34 @@ strategy_engine = CerebroStrategyEngine(
 
 results = strategy_engine.run_backtest()
 
+# === Access Results After Backtest ===
+strat = results[0]  # The strategy instance
+
+# You already have a reference to the engine, so just use it:
+final_value = strategy_engine.cerebro.broker.getvalue()
+print(f"📦 Final Portfolio Value: {final_value:.2f}")
+
+print(f"✅ Total Closed Trades: {len(strat.trades)}")
+
+
+# === Initialize the Dashboard Plotting Utility ===
+dashboard = AnalyzerDashboard(
+    df_strategy=df_regression_preds,
+    df_classifiers=df_classifier_preds
+)
+
+# === Step 1: Validate Trades for Plotting ===
+valid_trades = dashboard.validate_trades_for_plotting(strat.trades)
+
+# === Step 2: Plot Using Plotly ===
+dashboard.plot_trades_and_predictions(valid_trades)
+
+# === Show Trades in Interactive Table ===
+df_trades = pd.DataFrame(strat.trades)
+show(df_trades)
+
+
+# === Show Equity Curve with Drawdown ===
+dashboard.plot_equity_curve_with_drawdown(df_trades)
 
 print("Done")
