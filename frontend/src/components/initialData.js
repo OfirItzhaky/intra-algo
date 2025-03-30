@@ -2728,6 +2728,27 @@ export let initialData = [
     "high": 6177.0,
     "low": 6173.25,
     "close": 6176.5
+  },
+  {
+    "date": "01/22/2025 18:25",
+    "open": 6176.5,
+    "high": 6177.5,
+    "low": 6175.0,
+    "close": 6177.0
+  },
+  {
+    "date": "01/22/2025 18:30",
+    "open": 6177.25,
+    "high": 6181.75,
+    "low": 6176.75,
+    "close": 6181.75
+  },
+  {
+    "date": "01/22/2025 18:35",
+    "open": 6181.5,
+    "high": 6183.75,
+    "low": 6181.0,
+    "close": 6182.75
   }
 ];
 export let PredActualData = [
@@ -4680,6 +4701,21 @@ export let PredActualData = [
     "date": "2025-01-22 18:20:00",
     "actualHigh": 6177.5,
     "predictedHigh": 6177.331056026261
+  },
+  {
+    "date": "01/22/2025 18:25",
+    "actualHigh": 6181.75,
+    "predictedHigh": 6178.104824489927
+  },
+  {
+    "date": "01/22/2025 18:30",
+    "actualHigh": 6183.75,
+    "predictedHigh": 6183.412679536565
+  },
+  {
+    "date": "01/22/2025 18:35",
+    "actualHigh": null,
+    "predictedHigh": 6184.906556601635
   }
 ];
 export let classifierData = [
@@ -7022,5 +7058,23 @@ export let classifierData = [
     "rf": 1.0,
     "lt": 1.0,
     "xg": 1.0
+  },
+  {
+    "date": "01/22/2025 18:25",
+    "rf": 0,
+    "lt": 0,
+    "xg": 0
+  },
+  {
+    "date": "01/22/2025 18:30",
+    "rf": 1,
+    "lt": 1,
+    "xg": 1
+  },
+  {
+    "date": "01/22/2025 18:35",
+    "rf": 1,
+    "lt": 1,
+    "xg": 1
   }
 ];
