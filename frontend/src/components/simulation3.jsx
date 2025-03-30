@@ -127,9 +127,9 @@ const classifierColorMap = {
     firstDate: new Date(data[0].date),
     lastDate: new Date(data[data.length - 1].date)
   });
-
 const lastN = 20;
-const from = new Date(displayXAccessor(data[data.length - lastN]).getTime() - 3 * 5 * 60 * 1000);
+const startIdx = Math.max(0, data.length - lastN);
+const from = new Date(displayXAccessor(data[startIdx]).getTime() - 3 * 5 * 60 * 1000);
 const to = new Date(displayXAccessor(data[data.length - 1]).getTime() + 3 * 5 * 60 * 1000);
 const xExtents = [from, to];
 
@@ -293,7 +293,7 @@ console.log("📅 xExtents:", xExtents.map(x => x instanceof Date ? x.toISOStrin
               tickLabelAngle={15}            // ✅ Rotate for visibility
             />
 
-/>
+
 
             <YAxis
               showGridLines

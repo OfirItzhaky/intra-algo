@@ -3,21 +3,40 @@ import React, { useState } from 'react';
 function StartSimulationButton() {
     const [loading, setLoading] = useState(false);
 
-    const handleClick = () => {
-        if (loading) return; // Prevent multiple clicks
+    const handleClick = async () => {
+        if (loading) return;
 
-        console.log('🚀 Opening Simulation Window...');
         setLoading(true);
+        console.log('🚀 Initializing and Opening Simulation...');
 
-        // Open a new simulation window
-        const simWindow = window.open(
-            "/simulation", // We’ll define this route in React
-            "_blank",
-            "width=1000,height=600,resizable=yes,scrollbars=yes"
-        );
+        try {
+            // First call the backend to initialize simulation data
+            const response = await fetch("http://localhost:8000/restart-simulation/");
+            if (!response.ok) throw new Error(`Init failed: ${response.status}`);
 
-        if (!simWindow) {
-            console.error("❌ Failed to open simulation window. Check popup blockers.");
+            const data = await response.json();
+
+            if (data.status === "success") {
+                console.log("✅ Simulation initialized successfully");
+
+                // Open simulation window
+                const simWindow = window.open(
+                    "/simulation",
+                    "_blank",
+                    "width=1000,height=600,resizable=yes,scrollbars=yes"
+                );
+
+                if (!simWindow) {
+                    console.error("❌ Failed to open simulation window. Check popup blockers.");
+                    window.alert("❌ Failed to open simulation window. Check popup blockers.");
+                }
+            } else {
+                console.error("❌ Backend init failed:", data.message);
+                window.alert(`❌ Backend error: ${data.message}`);
+            }
+        } catch (error) {
+            console.error("🚨 Simulation start failed:", error);
+            window.alert("🚨 Error initializing simulation.");
         }
 
         setLoading(false);
