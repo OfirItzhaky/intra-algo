@@ -150,9 +150,7 @@ class ModelLoaderAndExplorer:
         plt.tight_layout()
         plt.show()
 
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import pandas as pd
+
 
     def plot_trade_volume_and_avg(self, df: pd.DataFrame) -> None:
         """

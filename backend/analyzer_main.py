@@ -1,4 +1,5 @@
 from analyzer_load_eda import ModelLoaderAndExplorer
+from analyzer_cerebro_strategy_engine import CerebroStrategyEngine
 
 # === Initialize and Load Everything ===
 model_loader = ModelLoaderAndExplorer(
@@ -25,20 +26,40 @@ model_loader.plot_high_confidence_by_hour(df_regression_preds)
 
 model_loader.plot_trade_volume_and_avg(df_regression_preds)
 
+
+
 # === Constants ===
 TICK_SIZE = 0.25
-TICK_VALUE = 1.25
+TICK_DOLLAR_VALUE = 1.25
 CONTRACT_SIZE = 1
 STARTING_CASH = 10000.0
 
-# === Export core variables ===
-__all__ = [
-    "regression_trainer",
-    "classifier_trainer",
-    "df_regression_preds",
-    "df_classifier_preds",
-    "TICK_SIZE",
-    "TICK_VALUE",
-    "CONTRACT_SIZE",
-    "STARTING_CASH"
-]
+TARGET_TICKS = 10
+STOP_TICKS = 10
+MIN_DIST = 3.0
+MAX_DIST = 20.0
+MIN_CLASSIFIER_SIGNALS = 0
+SESSION_START = "10:00"
+SESSION_END = "23:00"
+
+# === Run Strategy via Cerebro Engine ===
+strategy_engine = CerebroStrategyEngine(
+    df_strategy=df_regression_preds,
+    df_classifiers=df_classifier_preds,
+    initial_cash=STARTING_CASH,
+    tick_size=TICK_SIZE,
+    tick_value=TICK_DOLLAR_VALUE,
+    contract_size=CONTRACT_SIZE,
+    target_ticks=TARGET_TICKS,
+    stop_ticks=STOP_TICKS,
+    min_dist=MIN_DIST,
+    max_dist=MAX_DIST,
+    min_classifier_signals=MIN_CLASSIFIER_SIGNALS,
+    session_start=SESSION_START,
+    session_end=SESSION_END
+)
+
+results = strategy_engine.run_backtest()
+
+
+print("Done")
