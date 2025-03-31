@@ -1,6 +1,5 @@
 import backtrader as bt
 import pandas as pd
-from datetime import time, datetime
 
 class ElasticNetStrategy(bt.Strategy):
     """
@@ -146,3 +145,113 @@ class ElasticNetStrategy(bt.Strategy):
         """
         dt = self.datas[0].datetime.datetime(0)
         print(f"[{dt}] {txt}")
+
+import backtrader as bt
+from typing import Optional, List, Dict
+
+
+class ElasticNetIntrabarStrategy(bt.Strategy):
+    """
+    Backtrader strategy that uses predicted highs and classifier signals on 5-minute bars,
+    while scanning 1-minute bars for intrabar TP/SL execution.
+    """
+
+    params = dict(
+        min_dist=3.0,                # Minimum delta (Predicted - Close) to consider a trade
+        max_dist=20.0,               # Maximum delta
+        target_ticks=10,            # Take profit in ticks
+        stop_ticks=10,              # Stop loss in ticks
+        slippage=0.0,               # Entry slippage
+        force_exit=True,            # Force exit at session end
+        session_start='10:00',
+        session_end='23:00',
+        tick_value=1.25,
+        contract_size=1,
+        min_classifier_signals=3,   # Minimum number of 1s in classifiers
+        tick_size=0.25              # Tick size to scale TP/SL
+    )
+
+    def __init__(self):
+        self.order: Optional[bt.Order] = None
+        self.entry_price: Optional[float] = None
+        self.open_trade_time: Optional[str] = None
+        self.trades: List[Dict] = []
+        self.last_entry_time: Optional[str] = None
+
+    def next(self):
+        dt_5min = self.datas[0].datetime.datetime(0)
+        dt_1min = self.datas[1].datetime.datetime(0)
+
+        print(f"\U0001f9e0 Bar time: {dt_5min} | {dt_1min}")
+
+        # ✅ Skip duplicate 5-min bar
+        if self.last_entry_time == dt_5min:
+            return
+        self.last_entry_time = dt_5min
+
+        # ✅ Only use 5-min aligned bars
+        if dt_5min.minute % 5 != 0:
+            print(f"\u274c Skipping non-5-min bar: {dt_5min}")
+            return
+
+        current_time = dt_5min.strftime('%H:%M')
+
+        if self.position and self.p.force_exit and current_time >= self.p.session_end:
+            self.close()
+            self.order = None
+            return
+
+        if self.position or self.order:
+            return
+
+        main = self.datas[0]       # 5-min data
+        intrabar = self.datas[1]   # 1-min data
+
+        close = main.close[0]
+        predicted = main.predicted_high[0]
+        delta = predicted - close
+
+        print(f"\U0001f52c At {dt_5min} — Close: {close:.2f}, Predicted: {predicted:.2f}, Delta: {delta:.2f}")
+
+        if self.p.min_classifier_signals > 0:
+            try:
+                green_count = sum(int(main.__getattr__(clf)[0]) for clf in ['RandomForest', 'LightGBM', 'XGBoost'])
+            except Exception:
+                return
+            if green_count < self.p.min_classifier_signals:
+                return
+
+        if self.p.min_dist <= delta <= self.p.max_dist:
+            print(f"\U0001f50d Trade candidate found at {dt_5min}, delta: {delta:.2f}")
+            entry_price = main.open[0] + self.p.slippage
+            tp = entry_price + self.p.target_ticks * self.p.tick_size
+            sl = entry_price - self.p.stop_ticks * self.p.tick_size
+            entry_time = intrabar.datetime.datetime(0)
+
+            for i in range(1, 6):
+                if len(intrabar) <= i:
+                    break
+
+                hi = intrabar.high[i]
+                lo = intrabar.low[i]
+                exit_price = None
+
+                print(f"⏱ Scanning 1-min at {intrabar.datetime.datetime(i)} → hi: {hi}, lo: {lo}")
+
+                if lo <= sl:
+                    exit_price = sl
+                elif hi >= tp:
+                    exit_price = tp
+
+                if exit_price is not None:
+                    ticks = (exit_price - entry_price) / self.p.tick_size
+                    pnl = ticks * self.p.contract_size * self.p.tick_value
+                    self.trades.append({
+                        "entry_time": entry_time,
+                        "exit_time": intrabar.datetime.datetime(i),
+                        "entry_price": entry_price,
+                        "exit_price": exit_price,
+                        "pnl": pnl
+                    })
+                    print(f"✅ Trade recorded — ENTRY: {entry_time}, EXIT: {intrabar.datetime.datetime(i)}, PnL: {pnl:.2f}")
+                    return

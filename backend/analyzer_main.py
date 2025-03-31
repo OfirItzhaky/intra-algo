@@ -85,14 +85,41 @@ dashboard = AnalyzerDashboard(
 valid_trades = dashboard.validate_trades_for_plotting(strat.trades)
 
 # === Step 2: Plot Using Plotly ===
-dashboard.plot_trades_and_predictions(valid_trades)
+# dashboard.plot_trades_and_predictions(valid_trades)
 
 # === Show Trades in Interactive Table ===
 df_trades = pd.DataFrame(strat.trades)
-show(df_trades)
+# show(df_trades)
 
 
 # === Show Equity Curve with Drawdown ===
-dashboard.plot_equity_curve_with_drawdown(df_trades)
+# dashboard.plot_equity_curve_with_drawdown(df_trades)
+
+# dashboard.analyze_trade_duration_buckets(df_trades)
+
+# === Load 1-minute bars for exit logic ===
+df_1min = model_loader.load_1min_bars("MES_1_MINUTE_JAN_13_JAN_21.txt")
+
+df_1min_updated, missing_1min_bars = model_loader.validate_and_fill_1min_bars(
+    df_1min=df_1min,
+    df_test_results=df_regression_preds,
+    session_start=SESSION_START,
+    session_end=SESSION_END
+)
+
+# Optional: quick check
+if missing_1min_bars:
+    print(f"🚨 Missing bars detected: {len(missing_1min_bars)} total")
+
+# === Run Intrabar Strategy with 1-Min Exits ===
+results_intrabar = strategy_engine.run_intrabar_backtest(df_1min_updated)
+
+# Access instance
+strat_intrabar = results_intrabar[0]
+
+# Final value print
+final_value_intrabar = strategy_engine.cerebro.broker.getvalue()
+print(f"📦 Final Portfolio Value (Intrabar): {final_value_intrabar:.2f}")
+print(f"✅ Total Closed Trades (Intrabar): {len(strat_intrabar.trades)}")
 
 print("Done")

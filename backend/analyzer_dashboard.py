@@ -1,6 +1,6 @@
 import pandas as pd
 import plotly.graph_objects as go
-
+import plotly.express as px
 class AnalyzerDashboard:
     """
     Visual interface for analyzing strategy performance, trade validity, and classifier signals.
@@ -237,3 +237,65 @@ class AnalyzerDashboard:
         )
 
         fig.show()
+
+    def analyze_trade_duration_buckets(self, df_trades: pd.DataFrame) -> None:
+        """
+        Analyzes how long trades were held in minutes and buckets the distribution.
+
+        Args:
+            df_trades (pd.DataFrame): Trades with 'entry_time' and 'exit_time' columns.
+
+        Returns:
+            None – prints summary and shows a bar chart.
+        """
+        df = df_trades.copy()
+        df["entry_time"] = pd.to_datetime(df["entry_time"])
+        df["exit_time"] = pd.to_datetime(df["exit_time"])
+
+        # Calculate duration in minutes
+        df["duration_min"] = (df["exit_time"] - df["entry_time"]).dt.total_seconds() / 60
+
+        # Bucket durations
+        def bucketize(x):
+            if x <= 1:
+                return "1 min"
+            elif x <= 2:
+                return "2 min"
+            elif x <= 3:
+                return "3 min"
+            elif x <= 4:
+                return "4 min"
+            elif x <= 5:
+                return "5 min"
+            elif x <= 10:
+                return "6–10 min"
+            else:
+                return ">10 min"
+
+        df["duration_bucket"] = df["duration_min"].apply(bucketize)
+
+        # All possible buckets
+        ordered_labels = ["1 min", "2 min", "3 min", "4 min", "5 min", "6–10 min", ">10 min"]
+
+        # Count and reindex to force all buckets to appear (even with 0)
+        bucket_counts = df["duration_bucket"].value_counts().reindex(ordered_labels, fill_value=0)
+        bucket_df = bucket_counts.reset_index()
+        bucket_df.columns = ["duration_bucket", "count"]
+
+        # Print summary
+        print("📊 Trade Duration Distribution (minutes):")
+        print(bucket_df.set_index("duration_bucket")["count"])
+
+        # Plot
+        import plotly.express as px
+        fig = px.bar(
+            bucket_df,
+            x="duration_bucket",
+            y="count",
+            labels={"duration_bucket": "Duration Bucket", "count": "Number of Trades"},
+            title="⏱ Trade Duration Distribution",
+            template="plotly_white"
+        )
+        fig.show()
+
+
