@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
@@ -297,5 +298,121 @@ class AnalyzerDashboard:
             template="plotly_white"
         )
         fig.show()
+
+    def calculate_strategy_metrics(self, df_trades: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculates key performance metrics from a trade list and returns them as a DataFrame.
+        """
+
+        df = df_trades.copy()
+        df['pnl'] = df['pnl'].astype(float)
+        df['date'] = pd.to_datetime(df['entry_time']).dt.date
+        df['duration_min'] = (pd.to_datetime(df['exit_time']) - pd.to_datetime(
+            df['entry_time'])).dt.total_seconds() / 60
+
+        wins = df[df['pnl'] > 0]
+        losses = df[df['pnl'] < 0]
+        net_pnl = df['pnl'].sum()
+        profit_factor = wins['pnl'].sum() / abs(losses['pnl'].sum()) if not losses.empty else np.nan
+        win_rate = len(wins) / len(df) * 100 if len(df) > 0 else np.nan
+
+        max_consec_losses = max(
+            (list(map(len, "".join(['L' if p < 0 else 'W' for p in df['pnl']]).split('W')))), default=0
+        )
+
+        outlier_thresh = df['pnl'].std() * 3
+        outliers = df[np.abs(df['pnl'] - df['pnl'].mean()) > outlier_thresh]
+
+        metrics = {
+            "💰 Overall Performance": {
+                "Total Net PnL ($)": net_pnl,
+                "Profit Factor": profit_factor,
+            },
+            "🎯 Trade Quality Metrics": {
+                "Win Rate (%)": win_rate,
+                "Average Win ($)": wins['pnl'].mean() if not wins.empty else np.nan,
+                "Average Loss ($)": losses['pnl'].mean() if not losses.empty else np.nan,
+                "Win/Loss Ratio": (wins['pnl'].mean() / abs(losses['pnl'].mean()))
+                if not wins.empty and not losses.empty else np.nan,
+                "Largest Win ($)": wins['pnl'].max() if not wins.empty else np.nan,
+                "Largest Loss ($)": losses['pnl'].min() if not losses.empty else np.nan,
+            },
+            "📅 Time-Based Metrics": {
+                "Avg Daily PnL ($)": df.groupby('date')['pnl'].sum().mean(),
+                "Trades per Day": df.groupby('date').size().mean(),
+                "Avg Trade Duration (min)": df['duration_min'].mean(),
+            },
+            "⚠️ Risk / Drawdown Metrics": {
+                "Max Drawdown ($)": df['pnl'].cumsum().cummax().sub(df['pnl'].cumsum()).max(),
+                "Max Drawdown (%)": 100 * df['pnl'].cumsum().cummax().sub(df['pnl'].cumsum()).div(
+                    df['pnl'].cumsum().cummax().replace(0, np.nan)
+                ).max(),
+                "Max Consecutive Losses": max_consec_losses,
+            },
+            "📊 Distribution / Reliability": {
+                "PnL Std Dev": df['pnl'].std(),
+                "Outlier Count (>3σ)": len(outliers),
+            }
+        }
+
+        # Flatten to single-row DataFrame
+        final_rows = {}
+        for section, vals in metrics.items():
+            for k, v in vals.items():
+                final_rows[f"{section} | {k}"] = v
+
+        return pd.DataFrame([final_rows])
+
+    import plotly.graph_objects as go
+
+    def display_metrics_plotly(self, df: pd.DataFrame) -> None:
+        import plotly.graph_objects as go
+
+        df = df.transpose().reset_index()
+        df.columns = ["Metric", "Value"]
+
+        # Custom formatting for each metric
+        formatting = {
+            "💰 Overall Performance | Total Net PnL ($)": lambda v: f"${v:,.2f}",
+            "💰 Overall Performance | Profit Factor": lambda v: f"{v:.2f}",
+            "🎯 Trade Quality Metrics | Win Rate (%)": lambda v: f"{v:.2f}%",
+            "🎯 Trade Quality Metrics | Average Win ($)": lambda v: f"${v:.2f}",
+            "🎯 Trade Quality Metrics | Average Loss ($)": lambda v: f"${v:.2f}",
+            "🎯 Trade Quality Metrics | Win/Loss Ratio": lambda v: f"${v:.2f}",
+            "🎯 Trade Quality Metrics | Largest Win ($)": lambda v: f"${v:.2f}",
+            "🎯 Trade Quality Metrics | Largest Loss ($)": lambda v: f"${v:.2f}",
+            "📅 Time-Based Metrics | Avg Daily PnL ($)": lambda v: f"${v:.2f}",
+            "📅 Time-Based Metrics | Trades per Day": lambda v: f"{v:.2f}",
+            "📅 Time-Based Metrics | Avg Trade Duration (min)": lambda v: f"{v:.2f} min",
+            "⚠️ Risk / Drawdown Metrics | Max Drawdown ($)": lambda v: f"${v:.2f}",
+            "⚠️ Risk / Drawdown Metrics | Max Drawdown (%)": lambda v: f"{v:.2f}%",
+            "⚠️ Risk / Drawdown Metrics | Max Consecutive Losses": lambda v: f"${v:.2f}",
+            "📊 Distribution / Reliability | PnL Std Dev": lambda v: f"${v:.2f}",
+            "📊 Distribution / Reliability | Outlier Count (>3σ)": lambda v: f"{v:.2f}"
+        }
+
+        df["Value"] = df.apply(lambda row: formatting.get(row["Metric"], lambda v: f"{v:.2f}")(row["Value"]), axis=1)
+
+        fig = go.Figure(data=[go.Table(
+            header=dict(values=["📊 Metric", "📈 Value"],
+                        fill_color='lightgray',
+                        font=dict(size=20, color='black'),
+                        align='left'),
+            cells=dict(
+                values=[df["Metric"], df["Value"]],
+                fill_color='white',
+                align='left',
+                font=dict(size=20),  # Keep your larger font
+                height=30  # 🔧 Increase row height to prevent overlap
+            )
+
+        )])
+
+        fig.update_layout(width=1400, height=900, margin=dict(t=40, b=40))
+        fig.show()
+
+
+
+
 
 

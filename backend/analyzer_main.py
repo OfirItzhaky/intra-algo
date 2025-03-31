@@ -131,4 +131,12 @@ dashboard.plot_equity_curve_with_drawdown(df_trades_intrabar)
 
 show(df_trades_intrabar)
 
+df_metrics = dashboard.calculate_strategy_metrics(df_trades_intrabar)
+
+# Option 4 – Plotly
+dashboard.display_metrics_plotly(df_metrics)
+
+
+
+
 print("Done")
