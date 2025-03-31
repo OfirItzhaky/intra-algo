@@ -197,3 +197,97 @@ class ModelLoaderAndExplorer:
         ax.legend()
         plt.tight_layout()
         plt.show()
+
+    def load_1min_bars(self, path: str) -> pd.DataFrame:
+        """
+        Load 1-minute OHLC data for intrabar exit logic.
+
+        Args:
+            path (str): File path to the CSV or TXT file containing 1-min data.
+
+        Returns:
+            pd.DataFrame: OHLC data indexed by datetime (Date_Time).
+        """
+        df = pd.read_csv(path, sep=",", parse_dates=[["Date", "Time"]])
+        df.set_index("Date_Time", inplace=True)
+        df.sort_index(inplace=True)
+        return df
+
+    def validate_and_fill_1min_bars(
+            self,
+            df_1min: pd.DataFrame,
+            df_test_results: pd.DataFrame,
+            session_start: str = "10:00",
+            session_end: str = "23:00"
+    ) -> pd.DataFrame:
+        """
+        Checks that all expected 1-minute bars exist between 5-min strategy intervals (inclusive).
+        Also fills missing 23:00 bars using 22:59. Prints any gaps found.
+
+        Args:
+            df_1min (pd.DataFrame): 1-min OHLC data, datetime index.
+            df_test_results (pd.DataFrame): Strategy results with 'Date' and 'Time' columns.
+            session_start (str): e.g. '10:00'
+            session_end (str): e.g. '23:00'
+
+        Returns:
+            pd.DataFrame: Updated 1-min dataframe with filled bars if needed.
+        """
+        # Ensure proper datetime index for 1-min data
+        df_1min.index = pd.to_datetime(df_1min.index)
+        df_1min = df_1min.sort_index()
+
+        # Convert 5-min strategy df into datetime index using Date + Time
+        df_test_results = df_test_results.copy()
+        df_test_results["Timestamp"] = pd.to_datetime(df_test_results["Date"] + " " + df_test_results["Time"])
+        df_test_results = df_test_results.set_index("Timestamp")
+
+        # Filter strategy bars within session time
+        session_start_time = pd.to_datetime(session_start).time()
+        session_end_time = pd.to_datetime(session_end).time()
+
+        valid_5min_bars = df_test_results[
+            (df_test_results.index.time >= session_start_time) &
+            (df_test_results.index.time <= session_end_time)
+            ]
+        valid_5min_times = sorted(valid_5min_bars.index)
+
+        # Build expected 1-min bars (inclusive)
+        expected_1min_set = set()
+        for i in range(len(valid_5min_times) - 1):
+            start = valid_5min_times[i]
+            end = valid_5min_times[i + 1]
+            expected_range = pd.date_range(start=start, end=end, freq="T")
+            expected_1min_set.update(expected_range)
+
+        # Fill missing 23:00 bars using 22:59
+        filled = []
+        for ts in expected_1min_set:
+            if ts.strftime("%H:%M") == "23:00" and ts not in df_1min.index:
+                ts_prev = ts - pd.Timedelta(minutes=1)
+                if ts_prev in df_1min.index:
+                    df_1min.loc[ts] = df_1min.loc[ts_prev]
+                    filled.append(ts)
+
+        # Final missing check
+        missing_after_fill = sorted(expected_1min_set - set(df_1min.index))
+        session_missing = [ts for ts in missing_after_fill if session_start_time <= ts.time() <= session_end_time]
+
+        # Print results
+        if filled:
+            print("🛠️ Artificially filled 23:00 bars using 22:59:")
+            for ts in filled:
+                print(ts)
+
+        if session_missing:
+            print("⚠️ Warning: Some 1-min bars are missing. This may impact intrabar exits.")
+
+            # TODO: Add user-facing alert system if trades fall on these times.
+            # Suggestion: block execution or alert in UI if exits cannot be simulated accurately.
+
+        return df_1min, session_missing  # renamed for clarity
+
+        # TODO 🚨: Add pre-check for missing 1-min bars that overlap with strategy entries.
+        # TODO: If bars like 22:49–23:00 are missing, warn user that trades near those times won't exit properly.
+        # TODO: Ideal: Show alert in console or future UI panel.
+

@@ -109,3 +109,46 @@ class CerebroStrategyEngine:
         print("🚀 Running backtest...")
         self.results = self.cerebro.run()
         return self.results
+
+    def run_intrabar_backtest(self, df_1min: pd.DataFrame) -> list:
+        """
+        Adds ElasticNetIntrabarStrategy with 5-min and 1-min data,
+        sets broker settings, and runs the backtest.
+        """
+        from analyzer_strategy_blueprint import ElasticNetIntrabarStrategy
+
+        df_prepared = self.prepare_data()
+
+        data_5min = CustomClassifierData(dataname=df_prepared)
+
+        df_1min.index = pd.to_datetime(df_1min.index)
+        df_1min = df_1min.sort_index()
+        data_1min = bt.feeds.PandasData(dataname=df_1min)
+
+        self.cerebro.addstrategy(
+            ElasticNetIntrabarStrategy,
+            tick_size=self.tick_size,
+            tick_value=self.tick_value,
+            contract_size=self.contract_size,
+            target_ticks=self.target_ticks,
+            stop_ticks=self.stop_ticks,
+            min_dist=self.min_dist,
+            max_dist=self.max_dist,
+            min_classifier_signals=self.min_classifier_signals,
+            session_start=self.session_start,
+            session_end=self.session_end
+        )
+
+        self.cerebro.adddata(data_5min)  # 5-min
+        self.cerebro.adddata(data_1min)  # 1-min
+
+        self.cerebro.broker.setcash(self.initial_cash)
+        self.cerebro.broker.setcommission(
+            commission=0.0,
+            mult=self.contract_size * self.tick_value / self.tick_size
+        )
+
+        print("🚀 Running intrabar backtest...")
+        self.results = self.cerebro.run()
+        return self.results
+
