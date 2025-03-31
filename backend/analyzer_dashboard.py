@@ -411,6 +411,114 @@ class AnalyzerDashboard:
         fig.update_layout(width=1400, height=900, margin=dict(t=40, b=40))
         fig.show()
 
+    def display_strategy_and_metrics_side_by_side(self, df_metrics: pd.DataFrame, strategy_params: dict) -> None:
+        """
+        Display strategy performance metrics and parameters side-by-side using Plotly tables.
+        """
+        import plotly.graph_objects as go
+
+        # --- Prepare Metrics Table ---
+        df_metrics = df_metrics.transpose().reset_index()
+        df_metrics.columns = ["Metric", "Value"]
+
+        formatting = {
+            "💰 Overall Performance | Total Net PnL ($)": lambda v: f"${v:,.2f}",
+            "💰 Overall Performance | Profit Factor": lambda v: f"{v:.2f}",
+            "🎯 Trade Quality Metrics | Win Rate (%)": lambda v: f"{v:.2f}%",
+            "🎯 Trade Quality Metrics | Average Win ($)": lambda v: f"${v:.2f}",
+            "🎯 Trade Quality Metrics | Average Loss ($)": lambda v: f"${v:.2f}",
+            "🎯 Trade Quality Metrics | Win/Loss Ratio": lambda v: f"{v:.2f}",
+            "🎯 Trade Quality Metrics | Largest Win ($)": lambda v: f"${v:.2f}",
+            "🎯 Trade Quality Metrics | Largest Loss ($)": lambda v: f"${v:.2f}",
+            "📅 Time-Based Metrics | Avg Daily PnL ($)": lambda v: f"${v:.2f}",
+            "📅 Time-Based Metrics | Trades per Day": lambda v: f"{v:.2f}",
+            "📅 Time-Based Metrics | Avg Trade Duration (min)": lambda v: f"{v:.2f} min",
+            "⚠️ Risk / Drawdown Metrics | Max Drawdown ($)": lambda v: f"${v:.2f}",
+            "⚠️ Risk / Drawdown Metrics | Max Drawdown (%)": lambda v: f"{v:.2f}%",
+            "⚠️ Risk / Drawdown Metrics | Max Consecutive Losses": lambda v: f"{v:.2f}",
+            "📊 Distribution / Reliability | PnL Std Dev": lambda v: f"${v:.2f}",
+            "📊 Distribution / Reliability | Outlier Count (>3σ)": lambda v: f"{v:.2f}"
+        }
+
+        df_metrics["Value"] = df_metrics.apply(
+            lambda row: formatting.get(row["Metric"], lambda v: f"{v:.2f}")(row["Value"]), axis=1
+        )
+
+
+        # --- Prepare Strategy Params Table ---
+        df_params = pd.DataFrame(list(strategy_params.items()), columns=["Parameter", "Value"])
+        df_params["Value"] = df_params.apply(
+            lambda row: f"${row['Value']:.2f}" if isinstance(row["Value"], (int, float)) and "tick" not in row[
+                "Parameter"].lower()
+            else row["Value"],
+            axis=1
+        )
+
+        param_formatting = {
+            "Strategy Class": lambda v: str(v),
+            "Tick Size": lambda v: f"{float(str(v).replace('$', '').replace(',', '')):.2f}",
+            "Tick Value ($)": lambda v: f"${float(str(v).replace('$', '').replace(',', '')):.2f}",
+            "Contract Size": lambda v: f"{float(str(v).replace('$', '').replace(',', '')):.2f}",
+            "Target Ticks": lambda v: f"{int(float(str(v).replace('$', '').replace(',', '')))}",
+            "Stop Ticks": lambda v: f"{int(float(str(v).replace('$', '').replace(',', '')))}",
+            "Min Distance (pts)": lambda v: f"{float(str(v).replace('$', '').replace(',', '')):.2f} pts",
+            "Max Distance (pts)": lambda v: f"{float(str(v).replace('$', '').replace(',', '')):.2f} pts",
+            "Min Classifier Signals": lambda v: f"{int(float(str(v).replace('$', '').replace(',', '')))}",
+            "Session Start": lambda v: str(v),
+            "Session End": lambda v: str(v),
+            "Initial Cash ($)": lambda v: f"${float(str(v).replace('$', '').replace(',', '')):,.2f}",
+        }
+
+        df_params["Value"] = df_params.apply(
+            lambda row: param_formatting.get(row["Parameter"], lambda v: f"{v}")(row["Value"]),
+            axis=1
+        )
+
+        # --- Create Plotly Subplots ---
+        from plotly.subplots import make_subplots
+
+        fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=["📊 Strategy Metrics", "🧠 Strategy Parameters"],
+            specs=[[{"type": "table"}, {"type": "table"}]]
+        )
+
+        fig.add_trace(go.Table(
+            header=dict(values=["📊 Metric", "📈 Value"],
+                        fill_color='lightgray',
+                        font=dict(size=18, color='black'),
+                        align='left'),
+            cells=dict(
+                values=[df_metrics["Metric"], df_metrics["Value"]],
+                fill_color='white',
+                align='left',
+                font=dict(size=18),
+                height=30
+            )
+        ), row=1, col=1)
+
+        fig.add_trace(go.Table(
+            header=dict(values=["⚙️ Parameter", "🔢 Value"],
+                        fill_color='lightgray',
+                        font=dict(size=18, color='black'),
+                        align='left'),
+            cells=dict(
+                values=[df_params["Parameter"], df_params["Value"]],
+                fill_color='white',
+                align='left',
+                font=dict(size=18),
+                height=30
+            )
+        ), row=1, col=2)
+
+        fig.update_layout(
+            width=1600,
+            height=900,
+            margin=dict(t=40, b=40)
+        )
+
+        fig.show()
+
 
 
 
