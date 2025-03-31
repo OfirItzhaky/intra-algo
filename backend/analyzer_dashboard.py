@@ -41,11 +41,7 @@ class AnalyzerDashboard:
             columns={"Open": "open", "High": "high", "Low": "low", "Close": "close"}
         )
 
-        # ✅ Filter trades that exist in the OHLC datetime index
-        valid_trades = trade_df[
-            trade_df["entry_time"].isin(ohlc_df.index) &
-            trade_df["exit_time"].isin(ohlc_df.index)
-            ].copy()
+        valid_trades =trade_df[trade_df["entry_time"].isin(self.df_strategy.index)].copy()
 
         print(f"✅ Valid trades for plotting: {len(valid_trades)} / {len(trade_df)}")
         return valid_trades
@@ -519,7 +515,141 @@ class AnalyzerDashboard:
 
         fig.show()
 
+    def plot_trades_and_predictions_intrabar_1_min(self, trade_df: pd.DataFrame, df_1min: pd.DataFrame) -> None:
+        """
+        Visualize intrabar trades and predictions using 1-min bars, highlighting 5-min bars with filled candles.
 
+        Args:
+            trade_df (pd.DataFrame): Trade records with entry/exit times and prices.
+            df_1min (pd.DataFrame): 1-minute OHLC data with datetime index.
+
+        Returns:
+            None – displays interactive chart.
+        """
+        import plotly.graph_objects as go
+
+        # Ensure datetime index
+        df = df_1min.copy()
+        df.index = pd.to_datetime(df.index)
+
+        # Detect 5-min anchor bars (filled) vs. 1-min (hollow)
+        df["is_5min"] = df.index.to_series().dt.minute % 5 == 0
+        df["bar_color"] = df.apply(
+            lambda row: "rgba(0,255,0,0.6)" if row["Open"] < row["Close"] else "rgba(255,0,0,0.6)",
+            axis=1
+        )
+        df["line_color"] = df.apply(
+            lambda row: "green" if row["Open"] < row["Close"] else "red",
+            axis=1
+        )
+
+        # Start chart
+        fig = go.Figure()
+
+        # 1-min bars (all)
+        fig.add_trace(go.Candlestick(
+            x=df.index,
+            open=df["Open"],
+            high=df["High"],
+            low=df["Low"],
+            close=df["Close"],
+            increasing_line_color="green",
+            decreasing_line_color="red",
+            increasing_fillcolor="rgba(0,0,0,0)",  # Hollow
+            decreasing_fillcolor="rgba(0,0,0,0)",  # Hollow
+            name="1-min Bars"
+        ))
+
+        # Overlay filled 5-min bars
+        df_5min = df[df["is_5min"]]
+        fig.add_trace(go.Bar(
+            x=df_5min.index,
+            y=df_5min["Close"],
+            width=60 * 1000,  # 1 minute in ms
+            marker_color=df_5min["bar_color"],
+            opacity=0.3,
+            name="5-min Fills",
+            hoverinfo="skip"
+        ))
+
+        # Add predicted and actual highs
+        if "Predicted" in df.columns:
+            fig.add_trace(go.Scatter(
+                x=df.index,
+                y=df["Predicted"],
+                mode="lines+markers",
+                name="Predicted High",
+                line=dict(color="orange")
+            ))
+        if "Next_High" in df.columns:
+            fig.add_trace(go.Scatter(
+                x=df.index,
+                y=df["Next_High"],
+                mode="lines+markers",
+                name="Actual High",
+                line=dict(color="blue")
+            ))
+
+        # Add trades (lines + markers)
+        visible_trades = 0
+        for _, row in trade_df.iterrows():
+            entry_time = pd.to_datetime(row["entry_time"])
+            exit_time = pd.to_datetime(row["exit_time"])
+            entry_price = row["entry_price"]
+            exit_price = row["exit_price"]
+            pnl = row["pnl"]
+            color = "limegreen" if pnl >= 0 else "red"
+
+            # Line
+            fig.add_trace(go.Scatter(
+                x=[entry_time, exit_time],
+                y=[entry_price, exit_price],
+                mode="lines",
+                line=dict(color=color, width=3),
+                showlegend=False
+            ))
+
+            # Entry marker
+            fig.add_trace(go.Scatter(
+                x=[entry_time],
+                y=[entry_price],
+                mode="markers+text",
+                text=[f'Buy @ {entry_price:.2f}'],
+                textposition="bottom center",
+                marker=dict(symbol="triangle-up", color="lime", size=12),
+                showlegend=False
+            ))
+
+            # Exit marker
+            fig.add_trace(go.Scatter(
+                x=[exit_time],
+                y=[exit_price],
+                mode="markers+text",
+                text=[f'Sell @ {exit_price:.2f}'],
+                textposition="top center",
+                marker=dict(symbol="triangle-down", color="red", size=12),
+                showlegend=False
+            ))
+            visible_trades += 1
+
+        print(f"🧮 Trades plotted on chart: {visible_trades} / {len(trade_df)}")
+        y_min = min(df_1min["Low"].min(), trade_df["entry_price"].min(), trade_df["exit_price"].min())
+        y_max = max(df_1min["High"].max(), trade_df["entry_price"].max(), trade_df["exit_price"].max())
+
+
+        # Layout
+        fig.update_layout(
+            title="📈 Intrabar Strategy — 1-min Chart (with 5-min Highlights)",
+            xaxis_title="Time",
+            yaxis_title="Price",
+            template="plotly_dark",
+            xaxis_rangeslider_visible=False,
+            yaxis=dict(range=[y_min * 0.98, y_max * 1.02]),
+            height=750,
+            margin=dict(t=40, b=30)
+        )
+
+        fig.show()
 
 
 

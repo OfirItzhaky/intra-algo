@@ -200,6 +200,8 @@ class ElasticNetIntrabarStrategy(bt.Strategy):
         if self.position or self.order:
             return
 
+        if current_time < self.p.session_start or current_time >= self.p.session_end:
+            return
         main = self.datas[0]
         intrabar = self.datas[1]
 
@@ -220,10 +222,17 @@ class ElasticNetIntrabarStrategy(bt.Strategy):
 
         if self.p.min_dist <= delta <= self.p.max_dist:
             print(f"🔍 Trade candidate found at {dt_5min}, delta: {delta:.2f}")
-            entry_price = main.open[0] + self.p.slippage
+
+            # 🔁 Use NEXT 5-min bar to get proper entry price/time
+            if len(main) < 2:
+                print(f"⚠️ Not enough bars to access next entry bar")
+                return
+
+            entry_price = main.open[-1] + self.p.slippage  # open of next 5-min bar
+            entry_time = main.datetime.datetime(-1)  # Match the time to the next 5-min bar
+
             tp = entry_price + self.p.target_ticks * self.p.tick_size
             sl = entry_price - self.p.stop_ticks * self.p.tick_size
-            entry_time = intrabar.datetime.datetime(0)
 
             for i in range(1, 6):
                 if len(intrabar) <= i:
