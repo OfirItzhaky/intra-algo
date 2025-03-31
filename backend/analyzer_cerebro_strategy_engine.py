@@ -1,6 +1,7 @@
 import backtrader as bt
 import pandas as pd
 from analyzer_strategy_blueprint import ElasticNetStrategy  # Make sure it's correct path
+from analyzer_strategy_blueprint import ElasticNetIntrabarStrategy
 
 class CustomClassifierData(bt.feeds.PandasData):
     """
@@ -110,22 +111,46 @@ class CerebroStrategyEngine:
         self.results = self.cerebro.run()
         return self.results
 
-    def run_intrabar_backtest(self, df_1min: pd.DataFrame) -> list:
+    def run_intrabar_backtest_fresh(self, df_5min: pd.DataFrame, df_classifiers: pd.DataFrame,
+                                    df_1min: pd.DataFrame) -> tuple:
         """
-        Adds ElasticNetIntrabarStrategy with 5-min and 1-min data,
-        sets broker settings, and runs the backtest.
+        Run intrabar strategy with clean Cerebro setup and full merge logic like notebook.
         """
-        from analyzer_strategy_blueprint import ElasticNetIntrabarStrategy
+        cerebro_intrabar = bt.Cerebro()
+        cerebro_intrabar.broker.setcash(self.initial_cash)
+        cerebro_intrabar.broker.setcommission(commission=0.0,
+                                              mult=self.contract_size * self.tick_value / self.tick_size)
 
-        df_prepared = self.prepare_data()
+        df_classifiers.index = pd.to_datetime(df_classifiers.index)
+        df_5min["datetime"] = pd.to_datetime(df_5min["Date"] + " " + df_5min["Time"])
+        df_5min.set_index("datetime", inplace=True)
 
-        data_5min = CustomClassifierData(dataname=df_prepared)
 
-        df_1min.index = pd.to_datetime(df_1min.index)
-        df_1min = df_1min.sort_index()
-        data_1min = bt.feeds.PandasData(dataname=df_1min)
 
-        self.cerebro.addstrategy(
+        print("📋 BEFORE MERGE — df_5min columns:")
+        print([col for col in df_5min.columns if "RandomForest" in col or "LightGBM" in col or "XGBoost" in col])
+
+        print("\n📋 df_classifiers columns:")
+        print(df_classifiers.columns.tolist())
+
+        print("\n🔎 Sample values from df_classifiers:")
+        print(df_classifiers.dropna().head(3))
+
+        print(f"\n🧮 Shape before merge — df_5min: {df_5min.shape}, df_classifiers: {df_classifiers.shape}")
+
+        classifier_cols = [col for col in df_5min.columns if
+                           any(clf in col for clf in ["RandomForest", "LightGBM", "XGBoost"])]
+        df_5min.drop(columns=classifier_cols, inplace=True, errors="ignore")
+
+        df_merged = df_5min.merge(df_classifiers, how="left", left_index=True, right_index=True)
+        df_merged["predicted_high"] = df_merged["Predicted"]
+
+        if self.min_classifier_signals > 0:
+            classifier_start = df_classifiers.index.min()
+            print(f"⏳ Using classifier data from: {classifier_start}")
+            df_merged = df_merged[df_merged.index >= classifier_start]
+
+        cerebro_intrabar.addstrategy(
             ElasticNetIntrabarStrategy,
             tick_size=self.tick_size,
             tick_value=self.tick_value,
@@ -139,16 +164,14 @@ class CerebroStrategyEngine:
             session_end=self.session_end
         )
 
-        self.cerebro.adddata(data_5min)  # 5-min
-        self.cerebro.adddata(data_1min)  # 1-min
+        data_5min = CustomClassifierData(dataname=df_merged)
+        df_1min.index = pd.to_datetime(df_1min.index)
+        df_1min = df_1min.sort_index()
+        data_1min = bt.feeds.PandasData(dataname=df_1min)
 
-        self.cerebro.broker.setcash(self.initial_cash)
-        self.cerebro.broker.setcommission(
-            commission=0.0,
-            mult=self.contract_size * self.tick_value / self.tick_size
-        )
+        cerebro_intrabar.adddata(data_5min)
+        cerebro_intrabar.adddata(data_1min)
 
-        print("🚀 Running intrabar backtest...")
-        self.results = self.cerebro.run()
-        return self.results
-
+        print("🚀 Running intrabar backtest with fresh engine...")
+        results = cerebro_intrabar.run()
+        return results, cerebro_intrabar
