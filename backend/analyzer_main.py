@@ -96,10 +96,10 @@ df_trades = pd.DataFrame(strat.trades)
 # dashboard.plot_equity_curve_with_drawdown(df_trades)
 
 # dashboard.analyze_trade_duration_buckets(df_trades)
-
 # === Load 1-minute bars for exit logic ===
 df_1min = model_loader.load_1min_bars("MES_1_MINUTE_JAN_13_JAN_21.txt")
 
+# ✅ Validate and fill 1-min bars needed for exit simulation
 df_1min_updated, missing_1min_bars = model_loader.validate_and_fill_1min_bars(
     df_1min=df_1min,
     df_test_results=df_regression_preds,
@@ -107,19 +107,28 @@ df_1min_updated, missing_1min_bars = model_loader.validate_and_fill_1min_bars(
     session_end=SESSION_END
 )
 
-# Optional: quick check
+# 🚨 Optional: Alert for missing 1-min bars
 if missing_1min_bars:
     print(f"🚨 Missing bars detected: {len(missing_1min_bars)} total")
+    for m in missing_1min_bars[:10]:  # show only a few
+        print(m)
 
-# === Run Intrabar Strategy with 1-Min Exits ===
-results_intrabar = strategy_engine.run_intrabar_backtest(df_1min_updated)
-
-# Access instance
+# === Run Intrabar Strategy using the updated 1-min data
+results_intrabar, cerebro_intrabar = strategy_engine.run_intrabar_backtest_fresh(
+    df_regression_preds, df_classifier_preds, df_1min_updated
+)
 strat_intrabar = results_intrabar[0]
 
-# Final value print
+# === Final Portfolio Stats
 final_value_intrabar = strategy_engine.cerebro.broker.getvalue()
 print(f"📦 Final Portfolio Value (Intrabar): {final_value_intrabar:.2f}")
 print(f"✅ Total Closed Trades (Intrabar): {len(strat_intrabar.trades)}")
+
+# === Format and Visualize Trades
+df_trades_intrabar = pd.DataFrame(strat_intrabar.trades)
+dashboard.plot_equity_curve_with_drawdown(df_trades_intrabar)
+
+
+show(df_trades_intrabar)
 
 print("Done")
