@@ -136,6 +136,21 @@ df_metrics = dashboard.calculate_strategy_metrics(df_trades_intrabar)
 # Option 4 – Plotly
 dashboard.display_metrics_plotly(df_metrics)
 
+strategy_params = {
+    "Strategy Class": type(strat_intrabar).__name__,
+    "Tick Size": TICK_SIZE,
+    "Tick Value ($)": TICK_DOLLAR_VALUE,
+    "Contract Size": CONTRACT_SIZE,
+    "Target Ticks": TARGET_TICKS,
+    "Stop Ticks": STOP_TICKS,
+    "Min Distance (Points)": MIN_DIST,
+    "Max Distance (Points)": MAX_DIST,
+    "Min Classifier Signals": MIN_CLASSIFIER_SIGNALS,
+    "Session Start": SESSION_START,
+    "Session End": SESSION_END,
+    "Initial Cash ($)": STARTING_CASH,
+}
+dashboard.display_strategy_and_metrics_side_by_side(df_metrics, strategy_params)
 
 
 
