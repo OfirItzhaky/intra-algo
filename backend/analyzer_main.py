@@ -47,55 +47,59 @@ SESSION_START = "10:00"
 SESSION_END = "23:00"
 
 # === Run Strategy via Cerebro Engine ===
-strategy_engine = CerebroStrategyEngine(
-    df_strategy=df_regression_preds,
-    df_classifiers=df_classifier_preds,
-    initial_cash=STARTING_CASH,
-    tick_size=TICK_SIZE,
-    tick_value=TICK_DOLLAR_VALUE,
-    contract_size=CONTRACT_SIZE,
-    target_ticks=TARGET_TICKS,
-    stop_ticks=STOP_TICKS,
-    min_dist=MIN_DIST,
-    max_dist=MAX_DIST,
-    min_classifier_signals=MIN_CLASSIFIER_SIGNALS,
-    session_start=SESSION_START,
-    session_end=SESSION_END
-)
-
-results = strategy_engine.run_backtest()
+# strategy_engine = CerebroStrategyEngine(
+#     df_strategy=df_regression_preds,
+#     df_classifiers=df_classifier_preds,
+#     initial_cash=STARTING_CASH,
+#     tick_size=TICK_SIZE,
+#     tick_value=TICK_DOLLAR_VALUE,
+#     contract_size=CONTRACT_SIZE,
+#     target_ticks=TARGET_TICKS,
+#     stop_ticks=STOP_TICKS,
+#     min_dist=MIN_DIST,
+#     max_dist=MAX_DIST,
+#     min_classifier_signals=MIN_CLASSIFIER_SIGNALS,
+#     session_start=SESSION_START,
+#     session_end=SESSION_END
+# )
+#
+# results = strategy_engine.run_backtest()
 
 # === Access Results After Backtest ===
-strat = results[0]  # The strategy instance
+# strat = results[0]  # The strategy instance
 
-# You already have a reference to the engine, so just use it:
-final_value = strategy_engine.cerebro.broker.getvalue()
-print(f"📦 Final Portfolio Value: {final_value:.2f}")
+# # You already have a reference to the engine, so just use it:
+# final_value = strategy_engine.cerebro.broker.getvalue()
+# print(f"📦 Final Portfolio Value: {final_value:.2f}")
+#
+# print(f"✅ Total Closed Trades: {len(strat.trades)}")
+#
+#
+# # === Initialize the Dashboard Plotting Utility ===
+# dashboard = AnalyzerDashboard(
+#     df_strategy=df_regression_preds,
+#     df_classifiers=df_classifier_preds
+# )
 
-print(f"✅ Total Closed Trades: {len(strat.trades)}")
-
-
-# === Initialize the Dashboard Plotting Utility ===
-dashboard = AnalyzerDashboard(
-    df_strategy=df_regression_preds,
-    df_classifiers=df_classifier_preds
-)
-
-# === Step 1: Validate Trades for Plotting ===
-valid_trades = dashboard.validate_trades_for_plotting(strat.trades)
-
-# === Step 2: Plot Using Plotly ===
+# # === Step 1: Validate Trades for Plotting ===
+# valid_trades = dashboard.validate_trades_for_plotting(strat.trades)
+#
+# # === Step 2: Plot Using Plotly ===
 # dashboard.plot_trades_and_predictions(valid_trades)
-
-# === Show Trades in Interactive Table ===
-df_trades = pd.DataFrame(strat.trades)
+#
+# # === Show Trades in Interactive Table ===
+# df_trades = pd.DataFrame(strat.trades)
 # show(df_trades)
 
 
 # === Show Equity Curve with Drawdown ===
 # dashboard.plot_equity_curve_with_drawdown(df_trades)
-
+#
 # dashboard.analyze_trade_duration_buckets(df_trades)
+
+#todo#################### INTRABAR ###############################
+
+
 # === Load 1-minute bars for exit logic ===
 df_1min = model_loader.load_1min_bars("MES_1_MINUTE_JAN_13_JAN_21.txt")
 
@@ -113,28 +117,61 @@ if missing_1min_bars:
     for m in missing_1min_bars[:10]:  # show only a few
         print(m)
 
+strategy_engine_intrabar = CerebroStrategyEngine(
+    df_strategy=df_regression_preds,
+    df_classifiers=df_classifier_preds,
+    initial_cash=STARTING_CASH,
+    tick_size=TICK_SIZE,
+    tick_value=TICK_DOLLAR_VALUE,
+    contract_size=CONTRACT_SIZE,
+    target_ticks=TARGET_TICKS,
+    stop_ticks=STOP_TICKS,
+    min_dist=MIN_DIST,
+    max_dist=MAX_DIST,
+    min_classifier_signals=MIN_CLASSIFIER_SIGNALS,
+    session_start=SESSION_START,
+    session_end=SESSION_END
+)
+
 # === Run Intrabar Strategy using the updated 1-min data
-results_intrabar, cerebro_intrabar = strategy_engine.run_intrabar_backtest_fresh(
+results_intrabar, cerebro_intrabar = strategy_engine_intrabar.run_intrabar_backtest_fresh(
     df_regression_preds, df_classifier_preds, df_1min_updated
 )
 strat_intrabar = results_intrabar[0]
 
 # === Final Portfolio Stats
-final_value_intrabar = strategy_engine.cerebro.broker.getvalue()
+
+
+final_value_intrabar = strategy_engine_intrabar.cerebro.broker.getvalue()
 print(f"📦 Final Portfolio Value (Intrabar): {final_value_intrabar:.2f}")
 print(f"✅ Total Closed Trades (Intrabar): {len(strat_intrabar.trades)}")
 
 # === Format and Visualize Trades
 df_trades_intrabar = pd.DataFrame(strat_intrabar.trades)
-dashboard.plot_equity_curve_with_drawdown(df_trades_intrabar)
+
+# === Create NEW Dashboard Instance for Intrabar Analysis ===
+dashboard_intrabar = AnalyzerDashboard(
+    df_strategy=df_regression_preds,
+    df_classifiers=df_classifier_preds
+)
+
+
+
+dashboard_intrabar.plot_equity_curve_with_drawdown(df_trades_intrabar)
+
+
+
+# ✅ Plot intrabar trades with new method
+dashboard_intrabar.plot_trades_and_predictions_intrabar_1_min(
+    trade_df=df_trades_intrabar,
+    df_1min=df_1min_updated
+)
 
 
 show(df_trades_intrabar)
+df_metrics = dashboard_intrabar.calculate_strategy_metrics(df_trades_intrabar)
 
-df_metrics = dashboard.calculate_strategy_metrics(df_trades_intrabar)
 
-# Option 4 – Plotly
-dashboard.display_metrics_plotly(df_metrics)
 
 strategy_params = {
     "Strategy Class": type(strat_intrabar).__name__,
@@ -150,7 +187,7 @@ strategy_params = {
     "Session End": SESSION_END,
     "Initial Cash ($)": STARTING_CASH,
 }
-dashboard.display_strategy_and_metrics_side_by_side(df_metrics, strategy_params)
+dashboard_intrabar.display_strategy_and_metrics_side_by_side(df_metrics, strategy_params)
 
 
 
