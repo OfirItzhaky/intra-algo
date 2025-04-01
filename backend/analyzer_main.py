@@ -4,6 +4,7 @@ from pandasgui import show
 from analyzer_load_eda import ModelLoaderAndExplorer
 from analyzer_cerebro_strategy_engine import CerebroStrategyEngine
 from analyzer_dashboard import AnalyzerDashboard
+from analyzer_strategy_blueprint import Long5min1minStrategy  # Make sure path is correct
 
 # === Initialize and Load Everything ===
 model_loader = ModelLoaderAndExplorer(
@@ -111,14 +112,19 @@ df_1min_updated, missing_1min_bars = model_loader.validate_and_fill_1min_bars(
     session_end=SESSION_END
 )
 
-# 🚨 Optional: Alert for missing 1-min bars
-if missing_1min_bars:
-    print(f"🚨 Missing bars detected: {len(missing_1min_bars)} total")
-    for m in missing_1min_bars[:10]:  # show only a few
-        print(m)
+df_1min_enriched = model_loader.enrich_1min_with_predictions(
+    df_1min=df_1min_updated,
+    df_regression_preds=df_regression_preds,
+    df_classifier_preds=df_classifier_preds
+)
 
-strategy_engine_intrabar = CerebroStrategyEngine(
-    df_strategy=df_regression_preds,
+
+
+
+# === Run New Strategy on 1-min enriched data ===
+
+strategy_engine = CerebroStrategyEngine(
+    df_strategy=df_regression_preds,   # used to extract base predictions
     df_classifiers=df_classifier_preds,
     initial_cash=STARTING_CASH,
     tick_size=TICK_SIZE,
@@ -133,18 +139,29 @@ strategy_engine_intrabar = CerebroStrategyEngine(
     session_end=SESSION_END
 )
 
-# === Run Intrabar Strategy using the updated 1-min data
-results_intrabar, cerebro_intrabar = strategy_engine_intrabar.run_intrabar_backtest_fresh(
-    df_regression_preds, df_classifier_preds, df_1min_updated
+results_5min1min, cerebro = strategy_engine.run_backtest_Long5min1minStrategy(
+    df_5min=df_regression_preds,
+    df_1min=df_1min_enriched,
+    strategy_class=Long5min1minStrategy
 )
-strat_intrabar = results_intrabar[0]
+
+
+
+strat_intrabar = results_5min1min[0]
 
 # === Final Portfolio Stats
 
 
-final_value_intrabar = strategy_engine_intrabar.cerebro.broker.getvalue()
+final_value_intrabar = final_value = cerebro.broker.getvalue()
+
 print(f"📦 Final Portfolio Value (Intrabar): {final_value_intrabar:.2f}")
-print(f"✅ Total Closed Trades (Intrabar): {len(strat_intrabar.trades)}")
+trade_analysis = strat_intrabar.analyzers.trades.get_analysis()
+closed_trades = trade_analysis.total.closed if 'total' in trade_analysis and 'closed' in trade_analysis.total else 0
+print(f"✅ Total Closed Trades (Intrabar): {closed_trades}")
+
+
+# 🚨 Optional: Alert for missing 1-min bars
+
 
 # === Format and Visualize Trades
 df_trades_intrabar = pd.DataFrame(strat_intrabar.trades)

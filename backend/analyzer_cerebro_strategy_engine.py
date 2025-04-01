@@ -1,7 +1,6 @@
 import backtrader as bt
 import pandas as pd
 from analyzer_strategy_blueprint import ElasticNetStrategy  # Make sure it's correct path
-from analyzer_strategy_blueprint import ElasticNetIntrabarStrategy
 
 class CustomClassifierData(bt.feeds.PandasData):
     """
@@ -111,47 +110,37 @@ class CerebroStrategyEngine:
         self.results = self.cerebro.run()
         return self.results
 
-    def run_intrabar_backtest_fresh(self, df_5min: pd.DataFrame, df_classifiers: pd.DataFrame,
-                                    df_1min: pd.DataFrame) -> tuple:
-        """
-        Run intrabar strategy with clean Cerebro setup and full merge logic like notebook.
-        """
-        cerebro_intrabar = bt.Cerebro()
-        cerebro_intrabar.broker.setcash(self.initial_cash)
-        cerebro_intrabar.broker.setcommission(commission=0.0,
-                                              mult=self.contract_size * self.tick_value / self.tick_size)
 
-        df_classifiers.index = pd.to_datetime(df_classifiers.index)
+
+    def run_backtest_Long5min1minStrategy(self, df_5min: pd.DataFrame, df_1min: pd.DataFrame, strategy_class) -> tuple:
+        """
+        Runs Long5min1minStrategy using fresh Cerebro setup with both 5-min and 1-min data.
+
+        Parameters:
+            df_5min (pd.DataFrame): 5-minute strategy DataFrame with predictions and classifiers.
+            df_1min (pd.DataFrame): 1-minute OHLC data.
+            strategy_class: The Backtrader strategy class to use (e.g., Long5min1minStrategy).
+
+        Returns:
+            tuple: (results, cerebro) from Backtrader engine.
+        """
+        cerebro = bt.Cerebro()
+        cerebro.broker.setcash(self.initial_cash)
+        cerebro.broker.setcommission(
+            commission=0.0,
+            mult=self.contract_size * self.tick_value / self.tick_size
+        )
+
+        df_5min = df_5min.copy()
         df_5min["datetime"] = pd.to_datetime(df_5min["Date"] + " " + df_5min["Time"])
         df_5min.set_index("datetime", inplace=True)
+        df_5min["predicted_high"] = df_5min["Predicted"]
 
+        df_5min.index = pd.to_datetime(df_5min.index)
+        df_1min.index = pd.to_datetime(df_1min.index)
 
-
-        print("📋 BEFORE MERGE — df_5min columns:")
-        print([col for col in df_5min.columns if "RandomForest" in col or "LightGBM" in col or "XGBoost" in col])
-
-        print("\n📋 df_classifiers columns:")
-        print(df_classifiers.columns.tolist())
-
-        print("\n🔎 Sample values from df_classifiers:")
-        print(df_classifiers.dropna().head(3))
-
-        print(f"\n🧮 Shape before merge — df_5min: {df_5min.shape}, df_classifiers: {df_classifiers.shape}")
-
-        classifier_cols = [col for col in df_5min.columns if
-                           any(clf in col for clf in ["RandomForest", "LightGBM", "XGBoost"])]
-        df_5min.drop(columns=classifier_cols, inplace=True, errors="ignore")
-
-        df_merged = df_5min.merge(df_classifiers, how="left", left_index=True, right_index=True)
-        df_merged["predicted_high"] = df_merged["Predicted"]
-
-        if self.min_classifier_signals > 0:
-            classifier_start = df_classifiers.index.min()
-            print(f"⏳ Using classifier data from: {classifier_start}")
-            df_merged = df_merged[df_merged.index >= classifier_start]
-
-        cerebro_intrabar.addstrategy(
-            ElasticNetIntrabarStrategy,
+        cerebro.addstrategy(
+            strategy_class,
             tick_size=self.tick_size,
             tick_value=self.tick_value,
             contract_size=self.contract_size,
@@ -164,14 +153,14 @@ class CerebroStrategyEngine:
             session_end=self.session_end
         )
 
-        data_5min = CustomClassifierData(dataname=df_merged)
-        df_1min.index = pd.to_datetime(df_1min.index)
-        df_1min = df_1min.sort_index()
+        data_5min = CustomClassifierData(dataname=df_5min)
         data_1min = bt.feeds.PandasData(dataname=df_1min)
 
-        cerebro_intrabar.adddata(data_5min)
-        cerebro_intrabar.adddata(data_1min)
+        cerebro.adddata(data_5min)  # Main data feed
+        cerebro.adddata(data_1min)  # Intrabar data feed
 
-        print("🚀 Running intrabar backtest with fresh engine...")
-        results = cerebro_intrabar.run()
-        return results, cerebro_intrabar
+        cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
+
+        print("🚀 Running Long5min1minStrategy backtest...")
+        results = cerebro.run()
+        return results, cerebro
