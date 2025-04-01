@@ -572,22 +572,29 @@ class AnalyzerDashboard:
             hoverinfo="skip"
         ))
 
+
         # Add predicted and actual highs
         if "Predicted" in df.columns:
+
             fig.add_trace(go.Scatter(
                 x=df.index,
                 y=df["Predicted"],
-                mode="lines+markers",
+                mode='lines+markers',
                 name="Predicted High",
-                line=dict(color="orange")
+                line=dict(color="orange"),
+                marker=dict(symbol='x', size=8),
+                connectgaps=True
             ))
+
         if "Next_High" in df.columns:
             fig.add_trace(go.Scatter(
                 x=df.index,
                 y=df["Next_High"],
-                mode="lines+markers",
+                mode='lines+markers',
                 name="Actual High",
-                line=dict(color="blue")
+                line=dict(color="skyblue", dash='dash'),
+                marker=dict(symbol='circle', size=6),
+                connectgaps=True
             ))
 
         # Add trades (lines + markers)

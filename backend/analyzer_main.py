@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from pandasgui import show
 import backtrader as bt
@@ -112,6 +113,7 @@ df_1min_updated, missing_1min_bars = model_loader.validate_and_fill_1min_bars(
     session_start=SESSION_START,
     session_end=SESSION_END
 )
+df_1min_updated.drop(columns=["PredHigh"], inplace=True)
 
 df_1min_enriched = model_loader.enrich_1min_with_predictions(
     df_1min=df_1min_updated,
@@ -120,6 +122,7 @@ df_1min_enriched = model_loader.enrich_1min_with_predictions(
 )
 
 
+df_1min_enriched.drop(columns=["Actual"], inplace=True)
 
 
 # === Run New Strategy on 1-min enriched data ===
@@ -165,11 +168,28 @@ print(f"📦 Final Portfolio Value (Intrabar): {final_value_intrabar:.2f}")
 dashboard_intrabar.plot_equity_curve_with_drawdown(df_trades_intrabar)
 
 
+def get_next_5_high(i, highs):
+    future_window = highs[i+1:i+6]  # i+1 to i+5 inclusive (5 bars ahead)
+    return future_window.max() if len(future_window) == 5 else np.nan
+
+high_series = df_1min_enriched["High"].values
+df_1min_enriched["Next_High"] = [
+    get_next_5_high(i, high_series) if pd.notna(df_1min_enriched["Predicted"].iloc[i]) else np.nan
+    for i in range(len(df_1min_enriched))
+]
+
+
+# Apply only where Predicted is not zero
+df_1min_enriched["Next_High"] = np.where(df_1min_enriched["Predicted"] != 0, df_1min_enriched["Next_High"], np.nan)
+# Clean up
+df_1min_enriched["Predicted"] = df_1min_enriched["Predicted"].replace(0, np.nan)
+df_1min_enriched.loc[df_1min_enriched["Predicted"].isna(), "Next_High"] = np.nan
+
 
 # ✅ Plot intrabar trades with new method
 dashboard_intrabar.plot_trades_and_predictions_intrabar_1_min(
     trade_df=df_trades_intrabar,
-    df_1min=df_1min_updated
+    df_1min=df_1min_enriched
 )
 
 
