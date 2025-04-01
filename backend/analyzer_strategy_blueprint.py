@@ -1,6 +1,8 @@
 import backtrader as bt
 import pandas as pd
-
+from matplotlib.dates import num2date
+from backtrader.utils.date import num2date
+import pytz
 class ElasticNetStrategy(bt.Strategy):
     """
     A basic strategy using predicted highs from regression models (e.g., ElasticNet),
@@ -150,7 +152,10 @@ import backtrader as bt
 from typing import Optional, List, Dict
 
 
-class ElasticNetIntrabarStrategy(bt.Strategy):
+import backtrader as bt
+import datetime
+
+class Long5min1minStrategy(bt.Strategy):
     params = dict(
         min_dist=3.0,
         max_dist=20.0,
@@ -162,104 +167,93 @@ class ElasticNetIntrabarStrategy(bt.Strategy):
         session_end='23:00',
         tick_value=1.25,
         contract_size=1,
-        min_classifier_signals=3,
         tick_size=0.25,
+        min_classifier_signals=0,
     )
 
     def __init__(self):
         self.order = None
-        self.entry_price = None
-        self.open_trade_time = None
+        self.pending_entry = None
+        self.last_bar_time = None
         self.trades = []
+        self.last_entry_price = None
+        self.last_exit_price = None
         self.last_entry_time = None
+        self.last_exit_time = None
 
     def next(self):
-        dt_5min = self.datas[0].datetime.datetime(0)
-        dt_1min = self.datas[1].datetime.datetime(0)
+        dt = self.datas[0].datetime.datetime(0)
+        current_time = dt.time()
 
-        print(f"🧠 Bar time: {dt_5min} | {dt_1min}")
-        print(f"🧪 Checking bar: {dt_5min} → minute = {dt_5min.minute}")
-
-        # ✅ Skip if already processed this 5-min bar
-        if self.last_entry_time == dt_5min:
+        if current_time < datetime.datetime.strptime(self.p.session_start, "%H:%M").time():
             return
-        self.last_entry_time = dt_5min
-
-        # ✅ Only allow entries at 5-minute intervals
-        if dt_5min.minute % 5 != 0:
-            print(f"🚫 Skipping non-5-min bar: {dt_5min}")
-            return
-
-        current_time = dt_5min.strftime('%H:%M')
-
-        if self.position and self.p.force_exit and current_time >= self.p.session_end:
-            self.close()
-            self.order = None
+        if current_time >= datetime.datetime.strptime(self.p.session_end, "%H:%M").time():
+            if self.position and self.p.force_exit:
+                self.close()
             return
 
         if self.position or self.order:
             return
 
-        if current_time < self.p.session_start or current_time >= self.p.session_end:
+        # ✅ Only trigger entry logic on 5-min aligned bars
+        if dt.minute % 5 != 0:
             return
-        main = self.datas[0]
-        intrabar = self.datas[1]
 
-        close = main.close[0]
-        predicted = main.predicted_high[0]
-        delta = predicted - close
+        pred = getattr(self.data, 'predicted_high', None)
+        close = self.data.close[0]
+        if pred is None or pd.isna(pred[0]):
+            return
 
-        print(f"🔬 At {dt_5min} — Close: {close:.2f}, Predicted: {predicted:.2f}, Delta: {delta:.2f}")
+        delta = pred[0] - close
+        if not (self.p.min_dist <= delta <= self.p.max_dist):
+            return
 
+        # ✅ Check classifier signals
         if self.p.min_classifier_signals > 0:
-            try:
-                green_count = sum(
-                    int(self.datas[0].__getattr__(clf)[0]) for clf in ['RandomForest', 'LightGBM', 'XGBoost'])
-            except Exception:
-                return
-            if green_count < self.p.min_classifier_signals:
-                return
-
-        if self.p.min_dist <= delta <= self.p.max_dist:
-            print(f"🔍 Trade candidate found at {dt_5min}, delta: {delta:.2f}")
-
-            # 🔁 Use NEXT 5-min bar to get proper entry price/time
-            if len(main) < 2:
-                print(f"⚠️ Not enough bars to access next entry bar")
+            signal_count = sum(
+                int(getattr(self.data, clf, [0])[0] == 1)
+                for clf in ['RandomForest', 'LightGBM', 'XGBoost']
+                if hasattr(self.data, clf)
+            )
+            if signal_count < self.p.min_classifier_signals:
                 return
 
-            entry_price = main.open[-1] + self.p.slippage  # open of next 5-min bar
-            entry_time = main.datetime.datetime(-1)  # Match the time to the next 5-min bar
+        print(f"🟡 SIGNAL MATCH at {dt} → delta: {delta:.2f}, close: {close:.2f}, predicted: {pred[0]:.2f}")
+        self.buy(exectype=bt.Order.Market)
 
-            tp = entry_price + self.p.target_ticks * self.p.tick_size
-            sl = entry_price - self.p.stop_ticks * self.p.tick_size
+    def notify_trade(self, trade):
+        dt = self.datas[0].datetime.datetime(0)
 
-            for i in range(1, 6):
-                if len(intrabar) <= i:
-                    break
-                hi = intrabar.high[i]
-                lo = intrabar.low[i]
-                print(f"⏱ Scanning 1-min at {intrabar.datetime.datetime(i)} → hi: {hi}, lo: {lo}")
+        # 🟢 Store entry price when trade opens
+        if trade.isopen and self.last_entry_price is None:
+            self.last_entry_price = self.data.open[0]
+            self.last_entry_time = dt
+            print(f"🟢 Trade opened @ {self.last_entry_price:.2f} on {dt}")
 
-                exit_price = None
-                if lo <= sl:
-                    exit_price = sl
-                elif hi >= tp:
-                    exit_price = tp
+        # 🔴 Store exit price when trade closes
+        elif trade.isclosed:
+            self.last_exit_price = self.data.open[0]
+            self.last_exit_time = dt
+            pnl = trade.pnl
 
-                if exit_price is not None:
-                    ticks = (exit_price - entry_price) / self.p.tick_size
-                    pnl = ticks * self.p.contract_size * self.p.tick_value
-                    self.trades.append({
-                        "entry_time": entry_time,
-                        "exit_time": intrabar.datetime.datetime(i),
-                        "entry_price": entry_price,
-                        "exit_price": exit_price,
-                        "pnl": pnl
-                    })
-                    print(
-                        f"✅ Trade recorded — ENTRY: {entry_time}, EXIT: {intrabar.datetime.datetime(i)}, PnL: {pnl:.2f}")
-                    return
+            print(f"🔴 Trade closed. Exit: {self.last_exit_price:.2f} on {dt}, PnL: {pnl:.2f}")
+
+            self.trades.append({
+                "entry_time": self.last_entry_time,
+                "exit_time": self.last_exit_time,
+                "entry_price": self.last_entry_price,
+                "exit_price": self.last_exit_price,
+                "pnl": pnl
+            })
+
+            # Reset
+            self.last_entry_price = None
+            self.last_exit_price = None
+            self.last_entry_time = None
+            self.last_exit_time = None
+
+
+
 
 
 
