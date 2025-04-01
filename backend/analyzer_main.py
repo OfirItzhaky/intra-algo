@@ -1,5 +1,6 @@
 import pandas as pd
 from pandasgui import show
+import backtrader as bt
 
 from analyzer_load_eda import ModelLoaderAndExplorer
 from analyzer_cerebro_strategy_engine import CerebroStrategyEngine
@@ -145,32 +146,25 @@ results_5min1min, cerebro = strategy_engine.run_backtest_Long5min1minStrategy(
     strategy_class=Long5min1minStrategy
 )
 
+dashboard_intrabar = AnalyzerDashboard(
+    df_strategy=df_regression_preds,
+    df_classifiers=df_classifier_preds
+)
+df_trades_intrabar = dashboard_intrabar.build_trade_dataframe_from_orders(list(cerebro.broker.orders))
 
 
-strat_intrabar = results_5min1min[0]
-
-# === Final Portfolio Stats
 
 
 final_value_intrabar = final_value = cerebro.broker.getvalue()
 
 print(f"📦 Final Portfolio Value (Intrabar): {final_value_intrabar:.2f}")
-trade_analysis = strat_intrabar.analyzers.trades.get_analysis()
-closed_trades = trade_analysis.total.closed if 'total' in trade_analysis and 'closed' in trade_analysis.total else 0
-print(f"✅ Total Closed Trades (Intrabar): {closed_trades}")
+# trade_analysis = results_5min1min.analyzers.trades.get_analysis()
+# closed_trades = trade_analysis.total.closed if 'total' in trade_analysis and 'closed' in trade_analysis.total else 0
+# print(f"✅ Total Closed Trades (Intrabar): {closed_trades}")
 
 
-# 🚨 Optional: Alert for missing 1-min bars
 
 
-# === Format and Visualize Trades
-df_trades_intrabar = pd.DataFrame(strat_intrabar.trades)
-
-# === Create NEW Dashboard Instance for Intrabar Analysis ===
-dashboard_intrabar = AnalyzerDashboard(
-    df_strategy=df_regression_preds,
-    df_classifiers=df_classifier_preds
-)
 
 
 

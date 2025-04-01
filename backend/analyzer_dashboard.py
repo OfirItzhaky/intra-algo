@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
+import backtrader as bt
 class AnalyzerDashboard:
     """
     Visual interface for analyzing strategy performance, trade validity, and classifier signals.
@@ -651,6 +651,51 @@ class AnalyzerDashboard:
 
         fig.show()
 
+    def build_trade_dataframe_from_orders(self, order_list: list) -> pd.DataFrame:
+        """
+        Construct a clean trade DataFrame from filled BUY and SELL orders after strategy run.
+
+        Args:
+            order_list (List[bt.Order]): List of all broker orders.
+
+        Returns:
+            pd.DataFrame: Clean trade log with entry/exit times, prices, PnL, duration.
+        """
+        orders_df = pd.DataFrame([{
+            'ref': o.ref,
+            'type': 'SELL' if o.issell() else 'BUY',
+            'status': o.getstatusname(),
+            'exec_type': o.exectype,
+            'submitted_price': o.created.price,
+            'filled_price': o.executed.price if o.status == bt.Order.Completed else None,
+            'executed_dt': bt.num2date(o.executed.dt) if o.status == bt.Order.Completed else None
+        } for o in order_list])
+
+        # Filter only completed and sort
+        orders_df = orders_df[orders_df['status'] == 'Completed'].copy()
+        orders_df.sort_values(by='executed_dt', inplace=True)
+
+        trades = []
+        buy_stack = []
+
+        for _, row in orders_df.iterrows():
+            if row['type'] == 'BUY':
+                buy_stack.append(row)
+            elif row['type'] == 'SELL' and buy_stack:
+                buy = buy_stack.pop(0)
+                sell = row
+                entry_time = buy['executed_dt']
+                exit_time = sell['executed_dt']
+                trades.append({
+                    'entry_time': entry_time,
+                    'entry_price': buy['filled_price'],
+                    'exit_time': exit_time,
+                    'exit_price': sell['filled_price'],
+                    'pnl': sell['filled_price'] - buy['filled_price'],
+                    'duration_min': (exit_time - entry_time).total_seconds() / 60
+                })
+
+        return pd.DataFrame(trades)
 
 
 

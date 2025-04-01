@@ -180,6 +180,8 @@ class Long5min1minStrategy(bt.Strategy):
         self.last_exit_price = None
 
     def next(self):
+
+
         dt = self.datas[0].datetime.datetime(0)
         print(f"🕒 Current dt: {dt}, Previous bar time: {self.last_bar_time}")
 
@@ -216,29 +218,39 @@ class Long5min1minStrategy(bt.Strategy):
         delta = pred - close
         if not (self.p.min_dist <= delta <= self.p.max_dist):
             return
+        else:
+            # ✅ Check classifier signals
+            if self.p.min_classifier_signals > 0:
+                signal_count = sum(
+                    int(getattr(self.data, clf, [0])[0] == 1)
+                    for clf in ['RandomForest', 'LightGBM', 'XGBoost']
+                    if hasattr(self.data, clf)
+                )
+                if signal_count < self.p.min_classifier_signals:
+                    return
 
-        # ✅ Check classifier signals
-        if self.p.min_classifier_signals > 0:
-            signal_count = sum(
-                int(getattr(self.data, clf, [0])[0] == 1)
-                for clf in ['RandomForest', 'LightGBM', 'XGBoost']
-                if hasattr(self.data, clf)
+            print(f"🟡 SIGNAL MATCH at {dt} → delta: {delta:.2f}, close: {close:.2f}, predicted: {pred:.2f}")
+            tp = close + self.p.target_ticks * self.p.tick_size
+            sl = close - self.p.stop_ticks * self.p.tick_size
+
+            self.buy_bracket(
+                exectype=bt.Order.Market,
+                price=close,  # not used in Market orders, but required
+                size=1,
+                limitprice=tp,
+                stopprice=sl
             )
-            if signal_count < self.p.min_classifier_signals:
-                return
-
-        print(f"🟡 SIGNAL MATCH at {dt} → delta: {delta:.2f}, close: {close:.2f}, predicted: {pred:.2f}")
-        tp = close + self.p.target_ticks * self.p.tick_size
-        sl = close - self.p.stop_ticks * self.p.tick_size
-
-        self.buy_bracket(
-            exectype=bt.Order.Market,
-            price=close,  # not used in Market orders, but required
-            size=1,
-            limitprice=tp,
-            stopprice=sl
-        )
-
+            orders = list(self.broker.orders)
+            orders_df = pd.DataFrame([{
+                'ref': o.ref,
+                'type': 'SELL' if o.issell() else 'BUY',
+                'status': o.getstatusname(),
+                'exec_type': o.exectype,
+                'submitted_price': o.created.price,
+                'filled_price': o.executed.price if o.status == bt.Order.Completed else None,
+                'executed_dt': bt.num2date(o.executed.dt) if o.status == bt.Order.Completed else None
+            } for o in orders])
+            print("test")
     def notify_trade(self, trade):
         if trade.isclosed:
             orders = list(self.broker.orders)
