@@ -138,6 +138,8 @@ class CerebroStrategyEngine:
 
         df_5min.index = pd.to_datetime(df_5min.index)
         df_1min.index = pd.to_datetime(df_1min.index)
+        df_1min = df_1min.asfreq('T')  # 'T' = 1 minute
+        df_1min = df_1min.rename(columns={"Predicted": "predicted_high"})
 
         cerebro.addstrategy(
             strategy_class,
@@ -154,9 +156,10 @@ class CerebroStrategyEngine:
         )
 
         data_5min = CustomClassifierData(dataname=df_5min)
-        data_1min = bt.feeds.PandasData(dataname=df_1min)
+        data_1min = CustomClassifierData(dataname=df_1min)
+        print(data_1min.lines.getlinealiases())  # ⬅️ BREAK HERE
 
-        cerebro.adddata(data_5min)  # Main data feed
+        # cerebro.adddata(data_5min)  # Main data feed
         cerebro.adddata(data_1min)  # Intrabar data feed
 
         cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
