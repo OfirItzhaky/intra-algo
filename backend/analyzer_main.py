@@ -152,20 +152,14 @@ dashboard_intrabar = AnalyzerDashboard(
 )
 df_trades_intrabar = dashboard_intrabar.build_trade_dataframe_from_orders(list(cerebro.broker.orders))
 
+df_trades_intrabar["pnl"] = df_trades_intrabar["pnl"] / TICK_SIZE * TICK_DOLLAR_VALUE
 
 
 
 final_value_intrabar = final_value = cerebro.broker.getvalue()
 
 print(f"📦 Final Portfolio Value (Intrabar): {final_value_intrabar:.2f}")
-# trade_analysis = results_5min1min.analyzers.trades.get_analysis()
-# closed_trades = trade_analysis.total.closed if 'total' in trade_analysis and 'closed' in trade_analysis.total else 0
-# print(f"✅ Total Closed Trades (Intrabar): {closed_trades}")
-
-
-
-
-
+#
 
 
 dashboard_intrabar.plot_equity_curve_with_drawdown(df_trades_intrabar)
@@ -185,7 +179,7 @@ df_metrics = dashboard_intrabar.calculate_strategy_metrics(df_trades_intrabar)
 
 
 strategy_params = {
-    "Strategy Class": type(strat_intrabar).__name__,
+    "Strategy Class": type(results_5min1min).__name__,
     "Tick Size": TICK_SIZE,
     "Tick Value ($)": TICK_DOLLAR_VALUE,
     "Contract Size": CONTRACT_SIZE,
