@@ -178,11 +178,15 @@ class Long5min1minStrategy(bt.Strategy):
         self.trades = []
         self.last_entry_price = None
         self.last_exit_price = None
-        self.last_entry_time = None
-        self.last_exit_time = None
 
     def next(self):
         dt = self.datas[0].datetime.datetime(0)
+        print(f"🕒 Current dt: {dt}, Previous bar time: {self.last_bar_time}")
+
+        if self.last_bar_time == dt:
+            return
+        self.last_bar_time = dt
+
         current_time = dt.time()
 
         if current_time < datetime.datetime.strptime(self.p.session_start, "%H:%M").time():
@@ -191,7 +195,11 @@ class Long5min1minStrategy(bt.Strategy):
             if self.position and self.p.force_exit:
                 self.close()
             return
-
+        # ✅ Capture entry price when position just opened
+        if self.position and self.position.size > 0 and self.last_entry_price is None:
+            self.last_entry_price = self.position.price
+            print(f"📥 Position opened at {self.last_entry_price:.2f}")
+            return
         if self.position or self.order:
             return
 
@@ -199,12 +207,13 @@ class Long5min1minStrategy(bt.Strategy):
         if dt.minute % 5 != 0:
             return
 
-        pred = getattr(self.data, 'predicted_high', None)
+        pred = self.data.predicted_high[0]
+        print(f"🔍 At {self.datas[0].datetime.datetime(0)}, Predicted High = {pred}")
         close = self.data.close[0]
-        if pred is None or pd.isna(pred[0]):
+        if pred is None or pd.isna(pred):
             return
 
-        delta = pred[0] - close
+        delta = pred - close
         if not (self.p.min_dist <= delta <= self.p.max_dist):
             return
 
@@ -218,39 +227,54 @@ class Long5min1minStrategy(bt.Strategy):
             if signal_count < self.p.min_classifier_signals:
                 return
 
-        print(f"🟡 SIGNAL MATCH at {dt} → delta: {delta:.2f}, close: {close:.2f}, predicted: {pred[0]:.2f}")
-        self.buy(exectype=bt.Order.Market)
+        print(f"🟡 SIGNAL MATCH at {dt} → delta: {delta:.2f}, close: {close:.2f}, predicted: {pred:.2f}")
+        tp = close + self.p.target_ticks * self.p.tick_size
+        sl = close - self.p.stop_ticks * self.p.tick_size
+
+        self.buy_bracket(
+            exectype=bt.Order.Market,
+            price=close,  # not used in Market orders, but required
+            size=1,
+            limitprice=tp,
+            stopprice=sl
+        )
 
     def notify_trade(self, trade):
-        dt = self.datas[0].datetime.datetime(0)
+        if trade.isclosed:
+            orders = list(self.broker.orders)
+            orders_df = pd.DataFrame([{
+                'ref': o.ref,
+                'type': 'SELL' if o.issell() else 'BUY',
+                'status': o.getstatusname(),
+                'exec_type': o.exectype,
+                'submitted_price': o.created.price,
+                'filled_price': o.executed.price if o.status == bt.Order.Completed else None,
+                'executed_dt': bt.num2date(o.executed.dt) if o.status == bt.Order.Completed else None
+            } for o in orders])
 
-        # 🟢 Store entry price when trade opens
-        if trade.isopen and self.last_entry_price is None:
-            self.last_entry_price = self.data.open[0]
-            self.last_entry_time = dt
-            print(f"🟢 Trade opened @ {self.last_entry_price:.2f} on {dt}")
+            # 🟢 Extract last filled SELL
+            last_filled_sell = orders_df[(orders_df['type'] == 'SELL') & (orders_df['status'] == 'Completed')].iloc[-1]
+            exit_price_from_orders = last_filled_sell['filled_price']
 
-        # 🔴 Store exit price when trade closes
-        elif trade.isclosed:
-            self.last_exit_price = self.data.open[0]
-            self.last_exit_time = dt
             pnl = trade.pnl
+            entry_time = bt.num2date(trade.dtopen, tz=pytz.UTC)
+            exit_time = bt.num2date(trade.dtclose, tz=pytz.UTC)
 
-            print(f"🔴 Trade closed. Exit: {self.last_exit_price:.2f} on {dt}, PnL: {pnl:.2f}")
+            # ✅ Use the actual prices from trade object
+            entry_price = self.last_entry_price  # Entry price
+            exit_price = trade.price  # Might be same if not split — we improve this below
+            self.exit_orders_sent = False
+
+            print(f"🌐 Trade closed. PnL: {pnl:.2f}")
+            print(f"🧾 Stored from trade — Entry: {entry_price}, Exit: {exit_price}")
 
             self.trades.append({
-                "entry_time": self.last_entry_time,
-                "exit_time": self.last_exit_time,
-                "entry_price": self.last_entry_price,
-                "exit_price": self.last_exit_price,
+                "entry_time": entry_time,
+                "exit_time": exit_time,
+                "entry_price": entry_price,
+                "exit_price": exit_price_from_orders,
                 "pnl": pnl
             })
-
-            # Reset
-            self.last_entry_price = None
-            self.last_exit_price = None
-            self.last_entry_time = None
-            self.last_exit_time = None
 
 
 
