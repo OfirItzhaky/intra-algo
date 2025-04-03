@@ -74,3 +74,46 @@ class LabelGenerator:
         print("✅ Elastic Net label 'Next_High' added.")
         return df
 
+    def long_good_bar_label_all(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Labels all bars. Label = 1 if predicted high > prev close AND actual high ≥ predicted high.
+        Others are labeled as 0.
+        """
+        df = df.copy()
+
+        required_columns = ["Prev_Close", "Prev_Predicted_High", "High"]
+        for col in required_columns:
+            if col not in df.columns:
+                raise ValueError(f"Missing required column: {col}")
+
+        df["long_good_bar_label"] = np.where(
+            (df["Prev_Predicted_High"] > df["Prev_Close"]) & (df["High"] >= df["Prev_Predicted_High"]),
+            1,
+            0
+        )
+
+        print("✅ All-bar long label applied (1 = bullish + actual ≥ predicted).")
+        return df
+
+    def long_good_bar_label_bullish_only(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Labels only bars where previous predicted high > previous close and actual high ≥ predicted high.
+        Only applies to bullish setups.
+        """
+        df = df.copy()
+
+        required_columns = ["Prev_Close", "Prev_Predicted_High", "High"]
+        for col in required_columns:
+            if col not in df.columns:
+                raise ValueError(f"Missing required column: {col}")
+
+        df = df[df["Prev_Predicted_High"] > df["Prev_Close"]]  # Filter bullish only
+
+        df["long_good_bar_label"] = np.where(
+            df["High"] >= df["Prev_Predicted_High"],
+            1,
+            0
+        )
+
+        print("✅ Bullish-only label applied (1 = actual ≥ predicted).")
+        return df
