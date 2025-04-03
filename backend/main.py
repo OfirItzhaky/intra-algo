@@ -15,6 +15,7 @@ from label_generator import LabelGenerator
 from feature_generator import FeatureGenerator
 from data_loader import DataLoader
 import re
+from imblearn.over_sampling import SMOTE
 
 app = FastAPI()
 
@@ -372,9 +373,14 @@ def train_classifiers():
 
     print(f"✅ Classifier Training set: {len(classifier_X_train)} samples, Test set: {len(classifier_X_test)} samples")
 
+    # ✅ Apply SMOTE to the training data only
+    smote = SMOTE(random_state=42)
+    classifier_X_train_bal, classifier_y_train_bal = smote.fit_resample(classifier_X_train, classifier_y_train)
+
+    print(f"✅ SMOTE applied: Balanced training size = {len(classifier_X_train_bal)}")
     # ✅ Initialize classifier trainer and train all classifiers
     classifier_trainer = ClassifierModelTrainer()
-    classifier_trainer.train_all_classifiers(classifier_X_train, classifier_y_train, classifier_X_test, classifier_y_test, trainer)
+    classifier_trainer.train_all_classifiers(classifier_X_train_bal, classifier_y_train_bal, classifier_X_test, classifier_y_test, trainer)
 
     def extract_metrics(results):
         return {
@@ -390,7 +396,7 @@ def train_classifiers():
     return {
         "status": "success",
         "message": "Classifier training complete!",
-        "classifier_train_size": len(classifier_X_train),
+        "classifier_train_size": len(classifier_X_train_bal),
         "classifier_test_size": len(classifier_X_test),
         "classifier_predictions": classifier_trainer.classifier_predictions_df.to_dict(orient="records"),  # ✅ Store predictions
         "rf_results": extract_metrics(classifier_trainer.rf_results),
