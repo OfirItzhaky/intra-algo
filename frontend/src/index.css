@@ -154,3 +154,65 @@ html, body, #root {
     text-anchor: end;
 } */
 
+/* Add this to your CSS file to style the label method selector */
+.label-method-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 300px;
+  margin: 5px;
+}
+
+.label-method-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.label-method-label {
+  color: white;
+  width: 120px;
+  margin-right: 10px;
+  white-space: nowrap;
+}
+
+.label-method-select {
+  flex: 1;
+  padding: 5px;
+  background-color: #1e293b;
+  color: #a7f3d0;
+  border: 1px solid #4b5563;
+  border-radius: 3px;
+}
+
+.label-method-button {
+  width: 100%;
+  background-color: #85c440;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.label-method-button:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.label-method-result {
+  background-color: rgba(133, 196, 64, 0.2);
+  border-left: 3px solid #85c440;
+  padding: 8px;
+  margin-top: 8px;
+  color: white;
+  font-size: 0.9em;
+  border-radius: 0 3px 3px 0;
+}
+
+.label-method-error {
+  color: #f87171;
+  margin-top: 5px;
+  font-size: 0.9em;
+}
+

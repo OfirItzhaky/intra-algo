@@ -74,7 +74,11 @@ function DataSummaryBar({
                             </tr>
                         </thead>
                         <tbody>
-                            {Object.entries(classifierResults).map(([model, results]) => (
+                            {Object.entries(classifierResults).map(([model, results]) => {
+                                // Skip the cv_results entry
+                                if (model === 'cv_results') return null;
+                                
+                                return (
                                 <React.Fragment key={model}>
                                     {/* ✅ Overall Results */}
                                     <tr>
@@ -94,9 +98,34 @@ function DataSummaryBar({
                                         <td>N/A</td> {/* Accuracy is not relevant per label */}
                                     </tr>
                                 </React.Fragment>
-                            ))}
+                            )})}
                         </tbody>
                     </table>
+                    
+                    {/* ✅ Cross-Validation Results Table */}
+                    {classifierResults.cv_results && (
+                        <div style={{ marginTop: '15px', paddingTop: '10px', borderTop: '1px dashed #a78bfa' }}>
+                            <strong>🔄 Cross-Validation Performance:</strong>
+                            <table style={cvTableStyle}>
+                                <thead>
+                                    <tr>
+                                        <th style={{...cvHeaderStyle, textAlign: 'left'}}>Classifier</th>
+                                        <th style={cvHeaderStyle}>F1 (Label 1)</th>
+                                        <th style={cvHeaderStyle}>Precision (Label 1)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {Object.entries(classifierResults.cv_results).map(([model, results]) => (
+                                        <tr key={model} style={model === 'XGBoost' ? cvBestResultStyle : null}>
+                                            <td style={cvCellStyle}>{model}</td>
+                                            <td style={cvValueStyle}>{results?.F1_Label_1 !== undefined ? (results.F1_Label_1 * 100).toFixed(1) + "%" : "N/A"}</td>
+                                            <td style={cvValueStyle}>{results?.Precision_Label_1 !== undefined ? (results.Precision_Label_1 * 100).toFixed(1) + "%" : "N/A"}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
@@ -159,6 +188,44 @@ const tableStyle = {
 // ✅ Style for Label 1 Rows
 const labelOneStyle = {
     color: "#4ade80",
+    fontWeight: "bold",
+    fontSize: "1.1em"
+};
+
+// ✅ Style for CV Table
+const cvTableStyle = {
+    width: '100%',
+    marginTop: '10px',
+    borderCollapse: 'collapse',
+    textAlign: 'center',
+    backgroundColor: '#1e293b',
+    color: '#a78bfa', // Purple color for CV table
+    tableLayout: 'fixed' // Force equal column widths
+};
+
+// ✅ Style for CV headers to keep them on one line
+const cvHeaderStyle = {
+    whiteSpace: 'nowrap',
+    padding: '0 10px',
+    textAlign: 'center',
+    borderBottom: '1px solid #4c347a'
+};
+
+// ✅ Style for CV cell (first column)
+const cvCellStyle = {
+    textAlign: 'left',
+    padding: '3px 10px'
+};
+
+// ✅ Style for CV value cells (numeric data)
+const cvValueStyle = {
+    textAlign: 'center',
+    padding: '3px 10px'
+};
+
+// ✅ Style for best CV model
+const cvBestResultStyle = {
+    color: "#c4b5fd",
     fontWeight: "bold",
     fontSize: "1.1em"
 };

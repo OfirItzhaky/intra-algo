@@ -334,14 +334,18 @@ def train_regression_model(request: TrainRegressionRequest):
         "mse_filtered": mse_filtered,
         "r2_filtered": r2_filtered,
     }
-@app.post("/train-classifiers/")
-def train_classifiers():
-    global classifier_trainer  # ✅ Ensure classifier_trainer is globally stored
-
+@app.post("/generate-classifier-labels/")
+def generate_classifier_labels(label_method: str = Query(..., description="Label method to use")):
+    global trainer, labeled_data_for_training, classifier_labels_generated
+    
+    # Initialize the flag if it doesn't exist
+    if 'classifier_labels_generated' not in globals():
+        classifier_labels_generated = False
+    
     if trainer is None or trainer.y_test_filtered is None or trainer.predictions_filtered is None:
-        return {"status": "error", "message": "Classifier training skipped due to missing regression results."}
+        return {"status": "error", "message": "Classifier label generation skipped due to missing regression results."}
 
-    print("📑 Training Classifiers using Regression Predictions...")
+    print(f"🏷️ Generating Classifier Labels using method: {label_method}")
 
     if trainer.x_test_with_meta is None:
         return {"status": "error", "message": "Meta columns are missing in x_test_with_meta."}
@@ -359,22 +363,86 @@ def train_classifiers():
     # ✅ Drop NaNs before classification label generation
     data_selected_filtered = data_selected_filtered.dropna(subset=["Predicted_High", "Prev_Close", "Prev_Predicted_High"])
 
-    # ✅ Generate classification labels
+    # ✅ Generate selected classification labels
     label_gen = LabelGenerator()
-    df_with_labels = label_gen.add_good_bar_label(data_selected_filtered)
+    
+    # Apply the selected labeling method
+    if label_method == "add_good_bar_label":
+        df_with_labels = label_gen.add_good_bar_label(data_selected_filtered)
+        label_column = "good_bar_prediction_outside_of_boundary"
+    elif label_method == "long_good_bar_label_all":
+        df_with_labels = label_gen.long_good_bar_label_all(data_selected_filtered)
+        label_column = "long_good_bar_label"
+    elif label_method == "long_good_bar_label_bullish_only":
+        df_with_labels = label_gen.long_good_bar_label_bullish_only(data_selected_filtered)
+        label_column = "long_good_bar_label"
+    else:
+        return {"status": "error", "message": f"Invalid labeling method: {label_method}"}
+    
     if df_with_labels is None or df_with_labels.empty:
         return {"status": "error", "message": "Failed to generate labels for classification."}
 
+    # Store the labeled data for training later
+    labeled_data_for_training = df_with_labels.copy()
+    
+    # Set the flag indicating labels have been generated
+    classifier_labels_generated = True
+    
+    # Also store which label method and column were used
+    global classifier_label_method, classifier_label_column
+    classifier_label_method = label_method
+    classifier_label_column = label_column
+    
+    # Calculate some statistics about the generated labels
+    total_labels = len(df_with_labels)
+    positive_labels = df_with_labels[label_column].sum()
+    positive_percentage = (positive_labels / total_labels) * 100
+    
+    return {
+        "status": "success",
+        "message": f"Successfully generated {label_method} labels",
+        "total_labels": total_labels,
+        "positive_labels": int(positive_labels),
+        "positive_percentage": round(positive_percentage, 2),
+        "label_column": label_column,
+        "label_method": label_method
+    }
+
+@app.post("/train-classifiers/")
+def train_classifiers():
+    global classifier_trainer, labeled_data_for_training, classifier_labels_generated
+    
+    # Initialize the flag if it doesn't exist
+    if 'classifier_labels_generated' not in globals():
+        classifier_labels_generated = False
+    
+    # Check if labels have been generated
+    if not classifier_labels_generated or labeled_data_for_training is None:
+        return {
+            "status": "error", 
+            "message": "Please generate classifier labels first using the 'Generate Classifier Label' button!"
+        }
+
+    if trainer is None or trainer.y_test_filtered is None or trainer.predictions_filtered is None:
+        return {"status": "error", "message": "Classifier training skipped due to missing regression results."}
+
+    print("📑 Training Classifiers using pre-generated labels...")
+    
+    # Use the pre-generated labels
+    df_with_labels = labeled_data_for_training
+    target_column = classifier_label_column
+    
     # ✅ Prepare dataset for classification
     processor = DataProcessor()
     classifier_X_train, classifier_y_train, classifier_X_test, classifier_y_test = processor.prepare_dataset_for_regression_sequential(
         data=df_with_labels.drop(columns=["Predicted_High", "Next_High"], errors="ignore"),
-        target_column="good_bar_prediction_outside_of_boundary",
+        target_column=target_column,
         drop_target=True,
         split_ratio=0.8
     )
 
     print(f"✅ Classifier Training set: {len(classifier_X_train)} samples, Test set: {len(classifier_X_test)} samples")
+    print(f"✅ Using target column: {target_column} from method: {classifier_label_method}")
 
     # ✅ Apply SMOTE to the training data only
     smote = SMOTE(random_state=42)
@@ -405,12 +473,18 @@ def train_classifiers():
     cv_lgbm_result = next((item for item in cv_smote_results if item["Model"] == "LightGBM"), {})
     cv_xgb_result = next((item for item in cv_smote_results if item["Model"] == "XGBoost"), {})
 
+    # Reset flags after successful training
+    classifier_labels_generated = False
+    labeled_data_for_training = None
+
     return {
         "status": "success",
-        "message": "Classifier training complete!",
+        "message": f"Classifier training complete using '{classifier_label_method}' labels!",
         "classifier_train_size": len(classifier_X_train_bal),
         "classifier_test_size": len(classifier_X_test),
         "classifier_predictions": classifier_trainer.classifier_predictions_df.to_dict(orient="records"),
+        "target_column": target_column,
+        "label_method": classifier_label_method,
 
         # 🔵 Non-CV Metrics
         "rf_results": extract_metrics(classifier_trainer.rf_results),
@@ -421,7 +495,6 @@ def train_classifiers():
         "cv_rf_results": cv_rf_result,
         "cv_lgbm_results": cv_lgbm_result,
         "cv_xgb_results": cv_xgb_result,
-
 
         # Optional full table for export/comparison
         "cv_results_df": cv_smote_results  # optional for rendering if needed
@@ -752,8 +825,6 @@ def restart_simulation():
         "status": "success",
         "message": "Simulation restarted to initial state and initialData.js reset."
     }
-
-
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
