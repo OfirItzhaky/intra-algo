@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-function GenerateClassifierLabelButton() {
+function GenerateClassifierLabelButton({ onLabelMethodChange, onLabelGenerated }) {
     const [loading, setLoading] = useState(false);
     const [labelMethod, setLabelMethod] = useState('add_good_bar_label');
     const [result, setResult] = useState(null);
@@ -12,6 +12,14 @@ function GenerateClassifierLabelButton() {
         { value: 'long_good_bar_label_all', label: 'Long Good Bar (All Bars)' },
         { value: 'long_good_bar_label_bullish_only', label: 'Long Good Bar (Bullish Only)' }
     ];
+
+    // When labelMethod changes, update the parent component
+    useEffect(() => {
+        const selectedMethod = labelMethods.find(m => m.value === labelMethod);
+        if (selectedMethod) {
+            onLabelMethodChange(labelMethod, selectedMethod.label);
+        }
+    }, [labelMethod, onLabelMethodChange]);
 
     const handleClick = async () => {
         setLoading(true);
@@ -29,6 +37,10 @@ function GenerateClassifierLabelButton() {
             if (data.status === 'success') {
                 console.log("🏷️ Label generation successful:", data);
                 setResult(data);
+                // Notify parent component
+                if (onLabelGenerated) {
+                    onLabelGenerated(data);
+                }
             } else {
                 console.error("⚠️ Label generation failed:", data.message);
                 setError(data.message);
