@@ -5,41 +5,47 @@ function TrainClassifiersButton({ onClassificationComplete }) {  // ✅ Fix prop
     const [loading, setLoading] = useState(false);
 
     const handleClick = async () => {
-    setLoading(true);
-    setError(null);
+        setLoading(true);
+        setError(null);
 
-    try {
-        const response = await fetch("http://127.0.0.1:8000/train-classifiers/", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-        });
-
-        const result = await response.json();
-
-        if (result.status === "success") {
-            console.log("✅ Classifiers successfully trained!", result);
-
-            // ✅ Fix: Correctly pass classifier results
-            onClassificationComplete({
-                RandomForest: result.rf_results,
-                LightGBM: result.lgbm_results,
-                XGBoost: result.xgb_results
+        try {
+            const response = await fetch("http://127.0.0.1:8000/train-classifiers/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
             });
-        } else {
-            console.error("⚠️ Classifier training failed:", result.message);
-            setError(result.message);
+
+            const result = await response.json();
+
+            if (result.status === "success") {
+                console.log("✅ Classifiers successfully trained!", result);
+
+                // ✅ Pass both standard and CV results
+                onClassificationComplete({
+                    // Standard metrics
+                    RandomForest: result.rf_results,
+                    LightGBM: result.lgbm_results,
+                    XGBoost: result.xgb_results,
+                    // Cross-validation metrics
+                    cv_results: {
+                        RandomForest: result.cv_rf_results,
+                        LightGBM: result.cv_lgbm_results,
+                        XGBoost: result.cv_xgb_results
+                    }
+                });
+            } else {
+                console.error("⚠️ Classifier training failed:", result.message);
+                setError(result.message);
+            }
+        } catch (err) {
+            console.error("🚨 API request failed:", err);
+            setError("Failed to connect to the server.");
         }
-    } catch (err) {
-        console.error("🚨 API request failed:", err);
-        setError("Failed to connect to the server.");
-    }
 
-    setLoading(false);
-};
-
+        setLoading(false);
+    };
 
     return (
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', margin: '5px' }}>
             <button
                 onClick={handleClick}
                 disabled={loading}
@@ -50,13 +56,23 @@ function TrainClassifiersButton({ onClassificationComplete }) {  // ✅ Fix prop
                     border: "none",
                     borderRadius: "5px",
                     cursor: loading ? "not-allowed" : "pointer",
-                    margin: "5px",
                 }}
             >
                 {loading ? "⏳ Training..." : "📑 Train Classifiers"}
             </button>
 
-            {error && <p style={{ color: "red" }}>⚠️ {error}</p>}
+            {error && (
+                <div style={{ 
+                    color: '#f87171', 
+                    marginTop: '5px', 
+                    fontSize: '0.9em',
+                    backgroundColor: 'rgba(248, 113, 113, 0.1)',
+                    padding: '5px',
+                    borderRadius: '5px' 
+                }}>
+                    ⚠️ {error}
+                </div>
+            )}
         </div>
     );
 }
