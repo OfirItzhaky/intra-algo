@@ -17,6 +17,9 @@ from data_loader import DataLoader
 import re
 from imblearn.over_sampling import SMOTE
 
+from fastapi.responses import Response
+import matplotlib.pyplot as plt
+from io import BytesIO
 app = FastAPI()
 
 
@@ -392,24 +395,40 @@ def train_classifiers():
             "recall_1": results["evaluation_metrics"]["1"]["recall"],
             "f1_1": results["evaluation_metrics"]["1"]["f1-score"],
         }
+    # ✅ Run and store cross-val SMOTE metrics
+    X_all = pd.concat([classifier_X_train_bal, classifier_X_test])
+    y_all = pd.concat([classifier_y_train_bal, classifier_y_test])
+    cv_smote_results = classifier_trainer.evaluate_with_cross_val_smote(X_all, y_all, label="Current")
+
+    # ✅ Extract individual CV results from list of dicts
+    cv_rf_result = next((item for item in cv_smote_results if item["Model"] == "RandomForest"), {})
+    cv_lgbm_result = next((item for item in cv_smote_results if item["Model"] == "LightGBM"), {})
+    cv_xgb_result = next((item for item in cv_smote_results if item["Model"] == "XGBoost"), {})
 
     return {
         "status": "success",
         "message": "Classifier training complete!",
         "classifier_train_size": len(classifier_X_train_bal),
         "classifier_test_size": len(classifier_X_test),
-        "classifier_predictions": classifier_trainer.classifier_predictions_df.to_dict(orient="records"),  # ✅ Store predictions
+        "classifier_predictions": classifier_trainer.classifier_predictions_df.to_dict(orient="records"),
+
+        # 🔵 Non-CV Metrics
         "rf_results": extract_metrics(classifier_trainer.rf_results),
         "lgbm_results": extract_metrics(classifier_trainer.lgbm_results),
         "xgb_results": extract_metrics(classifier_trainer.xgb_results),
+
+        # 🟣 Cross-Validation Metrics (with SMOTE)
+        "cv_rf_results": cv_rf_result,
+        "cv_lgbm_results": cv_lgbm_result,
+        "cv_xgb_results": cv_xgb_result,
+
+
+        # Optional full table for export/comparison
+        "cv_results_df": cv_smote_results  # optional for rendering if needed
     }
 
 
 
-from fastapi.responses import Response
-import matplotlib.pyplot as plt
-import seaborn as sns
-from io import BytesIO
 
 @app.get("/debug-regression-figure/")
 def debug_regression_figure():

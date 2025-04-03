@@ -1,11 +1,11 @@
-import numpy as np
 import pandas as pd
 from sklearn.metrics import classification_report, accuracy_score
 from sklearn.ensemble import RandomForestClassifier
 import lightgbm as lgb
 import xgboost as xgb
-from tqdm import tqdm
-
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import classification_report
+from imblearn.over_sampling import SMOTE
 class ClassifierModelTrainer:
     """
     A class to train and evaluate classifiers for predicting 'good bar' classifications.
@@ -181,3 +181,87 @@ class ClassifierModelTrainer:
             "LightGBM": lgbm_pred[0],
             "XGBoost": xgb_pred[0]
         }
+
+
+
+    def evaluate_with_cross_val_smote(self, X_all, y_all, label="N/A"):
+        """
+        Perform StratifiedKFold Cross-Validation with SMOTE applied in each fold.
+
+        Parameters:
+            X_all (pd.DataFrame): Combined train + test features
+            y_all (pd.Series): Combined train + test labels
+            label (str): Optional label tag to group this variant
+
+        Returns:
+            List[Dict]: Metrics per model (F1, Precision for Label 1 & 0)
+        """
+        print(f"\n📊 CV + SMOTE Evaluation – {label}")
+
+        # ✅ Use tuned model builders (same params as your main training flow)
+        model_builders = {
+            'RandomForest': lambda: RandomForestClassifier(
+                class_weight="balanced",
+                max_depth=10,
+                min_samples_leaf=5,
+                min_samples_split=10,
+                n_estimators=100,
+                random_state=42
+            ),
+            'LightGBM': lambda: lgb.LGBMClassifier(
+                objective="binary",
+                boosting_type="gbdt",
+                learning_rate=0.05,
+                num_leaves=31,
+                max_depth=10,
+                min_child_samples=10,
+                verbose=-1,
+                random_state=42
+            ),
+            'XGBoost': lambda: xgb.XGBClassifier(
+                objective="binary:logistic",
+                eval_metric="logloss",
+                learning_rate=0.05,
+                max_depth=10,
+                n_estimators=100,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                verbosity=1,
+                random_state=42
+            )
+        }
+
+        results = []
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+        for model_name, build_model in model_builders.items():
+            y_true_all = []
+            y_pred_all = []
+
+            for train_idx, test_idx in skf.split(X_all, y_all):
+                X_fold_train, y_fold_train = X_all.iloc[train_idx], y_all.iloc[train_idx]
+                X_fold_test, y_fold_test = X_all.iloc[test_idx], y_all.iloc[test_idx]
+
+                smote = SMOTE(random_state=42)
+                X_resampled, y_resampled = smote.fit_resample(X_fold_train, y_fold_train)
+
+                model = build_model()
+                model.fit(X_resampled, y_resampled)
+                y_pred = model.predict(X_fold_test)
+
+                y_true_all.extend(y_fold_test)
+                y_pred_all.extend(y_pred)
+
+            report = classification_report(y_true_all, y_pred_all, output_dict=True, zero_division=0)
+            results.append({
+                "Variant": label,
+                "Model": model_name,
+                "F1_Label_1": report['1']['f1-score'],
+                "Precision_Label_1": report['1']['precision'],
+                "Precision_Label_0": report['0']['precision']
+            })
+            print(
+                f"  ✅ {model_name} | F1: {report['1']['f1-score']:.3f} | Prec1: {report['1']['precision']:.3f} | Prec0: {report['0']['precision']:.3f}"
+            )
+
+        return results

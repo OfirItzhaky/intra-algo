@@ -117,3 +117,40 @@ class LabelGenerator:
 
         print("✅ Bullish-only label applied (1 = actual ≥ predicted).")
         return df
+
+    def long_good_bar_label_bullish_only_goal_b(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Goal B: Labels bar T as 1 if current bar's High ≥ current Predicted_High AND Predicted_High > Close.
+        Focused on bullish cases.
+        """
+        df = df.copy()
+
+        required_columns = ["Close", "Predicted_High", "High"]
+        for col in required_columns:
+            if col not in df.columns:
+                raise ValueError(f"Missing required column: {col}")
+
+        # Only consider bullish bars where prediction > close
+        df = df[df["Predicted_High"] > df["Close"]]
+
+        df["long_good_bar_label"] = (df["High"] >= df["Predicted_High"]).astype(int)
+
+        print("✅ Goal B Bullish Label applied (1 = this bar's High ≥ this bar's Predicted_High).")
+        return df
+
+    def long_good_bar_label_all_goal_b(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Goal B: Labels bar T as 1 if this bar's High ≥ Predicted_High.
+        No bullish condition applied — all bars are labeled.
+        """
+        df = df.copy()
+
+        required_columns = ["Predicted_High", "High"]
+        for col in required_columns:
+            if col not in df.columns:
+                raise ValueError(f"Missing required column: {col}")
+
+        df["long_good_bar_label"] = (df["High"] >= df["Predicted_High"]).astype(int)
+
+        print("✅ Goal B ALL Label applied (1 = High ≥ Predicted_High).")
+        return df
