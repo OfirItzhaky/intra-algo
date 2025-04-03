@@ -10,7 +10,9 @@ function GenerateClassifierLabelButton({ onLabelMethodChange, onLabelGenerated }
     const labelMethods = [
         { value: 'add_good_bar_label', label: 'Standard Label (Good Bar Prediction)' },
         { value: 'long_good_bar_label_all', label: 'Long Good Bar (All Bars)' },
-        { value: 'long_good_bar_label_bullish_only', label: 'Long Good Bar (Bullish Only)' }
+        { value: 'long_good_bar_label_bullish_only', label: 'Long Good Bar (Bullish Only)' },
+        { value: 'long_good_bar_label_all_goal_c', label: 'Next Bar Prediction (All Bars)' },
+        { value: 'long_good_bar_label_bullish_only_goal_c', label: 'Next Bar Prediction (Bullish Only)' }
     ];
 
     // When labelMethod changes, update the parent component

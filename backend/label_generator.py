@@ -48,7 +48,7 @@ class LabelGenerator:
             (df["High"] < df["Prev_Close"]) & (df["High"] > df["Prev_Predicted_High"])
         ]
 
-        labels = [1, 0, 1, 0]
+        labels = [1, 0, 0, 0]
 
         # ✅ Ensure all rows get a valid label (change default from -1 to 0)
         df["good_bar_prediction_outside_of_boundary"] = np.select(conditions, labels, default=0)
@@ -153,4 +153,57 @@ class LabelGenerator:
         df["long_good_bar_label"] = (df["High"] >= df["Predicted_High"]).astype(int)
 
         print("✅ Goal B ALL Label applied (1 = High ≥ Predicted_High).")
+        return df
+
+    def long_good_bar_label_all_goal_c(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Goal C: Labels bar T as 1 if next bar's High ≥ this bar's Predicted_High.
+        Applies to ALL bars.
+        """
+        df = df.copy()
+
+        # ✅ Drop unnecessary columns if present (leftover from other flows)
+        for col in ["Prev_Close", "Prev_Predicted_High"]:
+            if col in df.columns:
+                df.drop(columns=col, inplace=True)
+
+        # ✅ Ensure required columns exist
+        required_columns = ["Predicted_High", "High"]
+        for col in required_columns:
+            if col not in df.columns:
+                raise ValueError(f"Missing required column: {col}")
+
+        # ✅ Shift High by -1 to access bar T+1's High
+        df["Next_High"] = df["High"].shift(-1)
+
+        # ✅ Assign label = 1 if Next_High ≥ Predicted_High
+        df["long_good_bar_label"] = (df["Next_High"] >= df["Predicted_High"]).astype(int)
+
+        print("✅ Goal C ALL Label applied (1 = Next High ≥ Predicted High).")
+        return df
+
+    def long_good_bar_label_bullish_only_goal_c(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Goal C: Labels bar T as 1 if:
+        - bar's Predicted_High > Close (bullish setup)
+        - AND next bar's High ≥ this bar's Predicted_High
+
+        Applies to bullish setups only.
+        """
+        df = df.copy()
+
+        required_columns = ["Predicted_High", "High", "Close"]
+        for col in required_columns:
+            if col not in df.columns:
+                raise ValueError(f"Missing required column: {col}")
+
+        df["Next_High"] = df["High"].shift(-1)
+
+        # Filter bullish only setups
+        df = df[df["Predicted_High"] > df["Close"]]
+
+        # Assign label
+        df["long_good_bar_label"] = (df["Next_High"] >= df["Predicted_High"]).astype(int)
+
+        print("✅ Goal C Bullish Label applied (1 = bullish setup + Next High ≥ Predicted High).")
         return df

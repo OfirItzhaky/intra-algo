@@ -15,13 +15,21 @@ function DataSummaryBar({
         if (!method) return "";
         
         // Convert from snake_case to readable format
-        return method
+        let formattedMethod = method
             .replace('add_', '')
             .replace('long_', '')
+            .replace('_goal_c', '')  // Remove goal_c suffix
             .replace(/_/g, ' ')
             .split(' ')
             .map(word => word.charAt(0).toUpperCase() + word.slice(1))
             .join(' ');
+            
+        // Add "Next Bar" prefix for goal_c methods
+        if (method.includes('goal_c')) {
+            formattedMethod = 'Next Bar ' + formattedMethod;
+        }
+        
+        return formattedMethod;
     };
 
     return (
