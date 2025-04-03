@@ -376,6 +376,12 @@ def generate_classifier_labels(label_method: str = Query(..., description="Label
     elif label_method == "long_good_bar_label_bullish_only":
         df_with_labels = label_gen.long_good_bar_label_bullish_only(data_selected_filtered)
         label_column = "long_good_bar_label"
+    elif label_method == "long_good_bar_label_all_goal_c":
+        df_with_labels = label_gen.long_good_bar_label_all_goal_c(data_selected_filtered)
+        label_column = "long_good_bar_label"
+    elif label_method == "long_good_bar_label_bullish_only_goal_c":
+        df_with_labels = label_gen.long_good_bar_label_bullish_only_goal_c(data_selected_filtered)
+        label_column = "long_good_bar_label"
     else:
         return {"status": "error", "message": f"Invalid labeling method: {label_method}"}
     

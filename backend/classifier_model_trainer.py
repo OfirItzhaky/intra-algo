@@ -24,6 +24,10 @@ class ClassifierModelTrainer:
 
         print("✅ ClassifierModelTrainer initialized!")
 
+    def copy(self):
+        import copy
+        return copy.deepcopy(self)
+
     def train_random_forest(self, X_train, y_train, X_test, y_test):
         print("\n🚀 Training RandomForest...")
 
