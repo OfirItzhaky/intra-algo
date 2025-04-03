@@ -24,6 +24,11 @@ function App() {
     const [regressionMetrics, setRegressionMetrics] = useState(null);
     const [classifierResults, setClassifierResults] = useState(null);
     const [classifierVisualization, setClassifierVisualization] = useState(null);
+    // Add state for the currently selected label method
+    const [currentLabelMethod, setCurrentLabelMethod] = useState({
+        method: 'add_good_bar_label',
+        displayName: 'Good Bar Label'
+    });
 
     const handleSummaryLoaded = (summary) => {
         if (summary?.dataType === 'training') {
@@ -44,6 +49,31 @@ function App() {
                 setSimulatingSummary(summary);  // ✅ Fallback if no fixed data
             }
         }
+    };
+
+    // Handle label method change
+    const handleLabelMethodChange = (method, displayName) => {
+        setCurrentLabelMethod({
+            method,
+            displayName
+        });
+    };
+
+    // Handle label generation completion
+    const handleLabelGenerated = (result) => {
+        // No need to do anything specific here unless you want to update UI
+        console.log("Label generated:", result);
+    };
+
+    // Add debugging for classifier results
+    const handleClassifierComplete = (results) => {
+        console.log("🔄 App received classifier results:", results);
+        // Ensure the label method is included in the results
+        setClassifierResults({
+            ...results,
+            labelMethod: currentLabelMethod.method,
+            labelDisplayName: currentLabelMethod.displayName
+        });
     };
 
     const handleSimulationRestart = async () => {
@@ -81,6 +111,7 @@ function App() {
                                 regressionMetrics={regressionMetrics}
                                 classifierResults={classifierResults}
                                 classifierVisualization={classifierVisualization}
+                                currentLabelMethod={currentLabelMethod}
                             />
 
                             <div className="button-group">
@@ -90,8 +121,14 @@ function App() {
                                 <GenerateLabelsButton onLabelsGenerated={setLabelSummary} />
                                 <TrainRegressionModelButton onRegressionComplete={setRegressionMetrics} />
                                 <VisualizeRegressionButton /> {/* Visualize Regression */}
-                                <GenerateClassifierLabelButton /> {/* New Generate Classifier Label Button */}
-                                <TrainClassifiersButton onClassificationComplete={setClassifierResults} />
+                                <GenerateClassifierLabelButton 
+                                    onLabelMethodChange={handleLabelMethodChange}
+                                    onLabelGenerated={handleLabelGenerated}
+                                /> {/* Generate Classifier Label Button */}
+                                <TrainClassifiersButton 
+                                    onClassificationComplete={handleClassifierComplete}
+                                    currentLabelMethod={currentLabelMethod}
+                                />
                                 <VisualizeClassifiersButton onVisualizationComplete={setClassifierVisualization} />
                                 <StartSimulationButton />
                                 <RestartSimulationButton onRestart={handleSimulationRestart} />

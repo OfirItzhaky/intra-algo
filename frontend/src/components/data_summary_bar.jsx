@@ -10,6 +10,20 @@ function DataSummaryBar({
 }) {
     console.log("🔍 Debugging Classifier Results:", classifierResults); // ✅ Debug Log
 
+    // Format the label method nicely
+    const formatLabelMethod = (method) => {
+        if (!method) return "";
+        
+        // Convert from snake_case to readable format
+        return method
+            .replace('add_', '')
+            .replace('long_', '')
+            .replace(/_/g, ' ')
+            .split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+    };
+
     return (
         <div style={barStyle}>
             <h4 style={{ marginBottom: '10px', textDecoration: 'underline' }}>📊 Current Data Summary</h4>
@@ -62,7 +76,15 @@ function DataSummaryBar({
             {/* ✅ Classifier Results Table */}
             {classifierResults && (
                 <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #facc15' }}>
-                    <strong>🤖 Classifier Performance:</strong>
+                    <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                        <strong>🤖 Classifier Performance:</strong>
+                        <span style={{...labelMethodStyle, fontSize: '1em', padding: '3px 10px'}}>
+                            Label: <span style={{fontWeight: 'bold'}}>
+                                {classifierResults.labelDisplayName || 
+                                 (classifierResults.labelMethod ? formatLabelMethod(classifierResults.labelMethod) : "Good Bar Label")}
+                            </span>
+                        </span>
+                    </div>
                     <table style={tableStyle}>
                         <thead>
                             <tr>
@@ -75,8 +97,8 @@ function DataSummaryBar({
                         </thead>
                         <tbody>
                             {Object.entries(classifierResults).map(([model, results]) => {
-                                // Skip the cv_results entry
-                                if (model === 'cv_results') return null;
+                                // Skip the cv_results entry and other non-model properties
+                                if (model === 'cv_results' || model === 'labelMethod' || model === 'targetColumn') return null;
                                 
                                 return (
                                 <React.Fragment key={model}>
@@ -105,7 +127,15 @@ function DataSummaryBar({
                     {/* ✅ Cross-Validation Results Table */}
                     {classifierResults.cv_results && (
                         <div style={{ marginTop: '15px', paddingTop: '10px', borderTop: '1px dashed #a78bfa' }}>
-                            <strong>🔄 Cross-Validation Performance:</strong>
+                            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                                <strong>🔄 Cross-Validation Performance:</strong>
+                                <span style={{...cvLabelMethodStyle, fontSize: '1em', padding: '3px 10px'}}>
+                                    Label: <span style={{fontWeight: 'bold'}}>
+                                        {classifierResults.labelDisplayName || 
+                                         (classifierResults.labelMethod ? formatLabelMethod(classifierResults.labelMethod) : "Good Bar Label")}
+                                    </span>
+                                </span>
+                            </div>
                             <table style={cvTableStyle}>
                                 <thead>
                                     <tr>
@@ -174,6 +204,27 @@ const errorStyle = {
     backgroundColor: "rgba(248, 113, 113, 0.15)" // ✅ Light red background
 };
 
+// ✅ Style for label method display
+const labelMethodStyle = {
+    color: "#fb923c", // Changed to orange instead of yellow
+    fontSize: '0.9em',
+    padding: "2px 8px",
+    borderRadius: "4px",
+    backgroundColor: "rgba(251, 146, 60, 0.15)",  // Orange background
+    border: "1px solid rgba(251, 146, 60, 0.3)",
+    fontWeight: "500"
+};
+
+// ✅ Style for CV label method display
+const cvLabelMethodStyle = {
+    color: "#c084fc", // Changed to brighter purple
+    fontSize: '0.9em',
+    padding: "2px 8px",
+    borderRadius: "4px",
+    backgroundColor: "rgba(192, 132, 252, 0.15)", // Bright purple background
+    border: "1px solid rgba(192, 132, 252, 0.3)",
+    fontWeight: "500"
+};
 
 // ✅ Style for Classifier Results Table
 const tableStyle = {

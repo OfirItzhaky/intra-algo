@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-function TrainClassifiersButton({ onClassificationComplete }) {  // ✅ Fix prop name to match App.jsx
+function TrainClassifiersButton({ onClassificationComplete, currentLabelMethod }) {
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
 
@@ -18,9 +18,10 @@ function TrainClassifiersButton({ onClassificationComplete }) {  // ✅ Fix prop
 
             if (result.status === "success") {
                 console.log("✅ Classifiers successfully trained!", result);
+                console.log("✅ Using label method:", currentLabelMethod);
 
-                // ✅ Pass both standard and CV results
-                onClassificationComplete({
+                // Create the results object with label method info
+                const classifierResults = {
                     // Standard metrics
                     RandomForest: result.rf_results,
                     LightGBM: result.lgbm_results,
@@ -30,8 +31,14 @@ function TrainClassifiersButton({ onClassificationComplete }) {  // ✅ Fix prop
                         RandomForest: result.cv_rf_results,
                         LightGBM: result.cv_lgbm_results,
                         XGBoost: result.cv_xgb_results
-                    }
-                });
+                    },
+                    // Label information from props (most accurate)
+                    labelMethod: currentLabelMethod.method,
+                    labelDisplayName: currentLabelMethod.displayName
+                };
+
+                // Pass results to parent component
+                onClassificationComplete(classifierResults);
             } else {
                 console.error("⚠️ Classifier training failed:", result.message);
                 setError(result.message);
