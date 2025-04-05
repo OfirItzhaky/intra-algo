@@ -18,6 +18,7 @@ class ClassifierModelTrainer:
         self.rf_results = None
         self.lgbm_results = None
         self.xgb_results = None
+        self.xgboost_num_classes = 0  # 0 = binary by default; set to >2 for multi-class
 
         # ✅ Store combined predictions for visualization
         self.classifier_predictions_df = None
@@ -92,32 +93,53 @@ class ClassifierModelTrainer:
     def train_xgboost(self, X_train, y_train, X_test, y_test):
         print("\n🚀 Training XGBoost...")
 
-        xgboost_params = {
-            "objective": "binary:logistic",
-            "eval_metric": "logloss",
-            "learning_rate": 0.05,
-            "max_depth": 10,
-            "n_estimators": 100,
-            "subsample": 0.8,
-            "colsample_bytree": 0.8,
-            "verbosity": 1
-        }
+        # ✅ Choose objective based on number of classes
+        if self.xgboost_num_classes > 2:
+            xgboost_params = {
+                "objective": "multi:softprob",
+                "eval_metric": "mlogloss",
+                "num_class": self.xgboost_num_classes,
+                "learning_rate": 0.05,
+                "max_depth": 10,
+                "n_estimators": 100,
+                "subsample": 0.8,
+                "colsample_bytree": 0.8,
+                "use_label_encoder": False,
+                "verbosity": 1
+            }
+        else:
+            xgboost_params = {
+                "objective": "binary:logistic",
+                "eval_metric": "logloss",
+                "learning_rate": 0.05,
+                "max_depth": 10,
+                "n_estimators": 100,
+                "subsample": 0.8,
+                "colsample_bytree": 0.8,
+                "verbosity": 1
+            }
 
+        # ✅ Train model
         xgb_model = xgb.XGBClassifier(**xgboost_params)
         xgb_model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
 
-        probabilities = xgb_model.predict_proba(X_test)[:, 1]
-        predictions = (probabilities >= 0.5).astype(int)
+        # ✅ Predict and evaluate
+        if self.xgboost_num_classes > 2:
+            predictions = xgb_model.predict(X_test)
+        else:
+            probabilities = xgb_model.predict_proba(X_test)[:, 1]
+            predictions = (probabilities >= 0.5).astype(int)
+
         accuracy = accuracy_score(y_test, predictions)
 
         print("\n📊 XGBoost Evaluation:")
-        print(classification_report(y_test, predictions))
+        print(classification_report(y_test, predictions, zero_division=0))
         print(f"\n🎯 XGBoost Accuracy: {accuracy:.4f}")
 
         return {
             "model": xgb_model,
             "accuracy": accuracy,
-            "evaluation_metrics": classification_report(y_test, predictions, output_dict=True),
+            "evaluation_metrics": classification_report(y_test, predictions, output_dict=True, zero_division=0),
             "predictions": predictions
         }
 
