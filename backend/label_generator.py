@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 
 class LabelGenerator:
@@ -206,4 +207,69 @@ class LabelGenerator:
         df["long_good_bar_label"] = (df["Next_High"] >= df["Predicted_High"]).astype(int)
 
         print("✅ Goal C Bullish Label applied (1 = bullish setup + Next High ≥ Predicted High).")
+        return df
+
+    def green_red_bar_label_goal_d(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Goal D: Simple direction classifier.
+        Label = 1 if bar is green (Close > Open), else 0.
+
+        Parameters:
+            df (pd.DataFrame): DataFrame with "Open" and "Close" columns.
+
+        Returns:
+            pd.DataFrame: DataFrame with new "long_good_bar_label" column.
+        """
+        df = df.copy()
+
+        required_columns = ["Open", "Close"]
+        for col in required_columns:
+            if col not in df.columns:
+                raise ValueError(f"Missing required column: {col}")
+
+        df["Next_Close"] = df["Close"].shift(-1)
+        df["Next_Open"] = df["Open"].shift(-1)
+
+        df["long_good_bar_label"] = (df["Next_Close"] > df["Next_Open"]).astype(int)
+
+        print("✅ Goal D Label applied (1 = green bar) TEST.")
+        return df
+
+    def option_d_multiclass_next_bar_movement(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Option D: Multi-Class labeling based on next bar's movement (Close - Open).
+
+        Creates a 5-class label based on how strong the next bar's move is.
+        Used for multi-class classification tasks.
+
+        Label classes:
+            0 = Big Drop     (<= -2.5 pts)
+            1 = Medium Down  (-2.5 to -1.0 pts)
+            2 = Flat / Noise (-1.0 to +1.0 pts)
+            3 = Medium Up    (+1.0 to +2.5 pts)
+            4 = Big Jump     (>= +2.5 pts)
+        """
+        df = df.copy()
+
+        required_columns = ["Open", "Close"]
+        for col in required_columns:
+            if col not in df.columns:
+                raise ValueError(f"Missing required column: {col}")
+
+        # Compute next bar's movement
+        df["Next_Open"] = df["Open"].shift(-1)
+        df["Next_Close"] = df["Close"].shift(-1)
+        df["next_bar_movement"] = df["Next_Close"] - df["Next_Open"]
+
+        # Define bin edges and labels
+        bins = [-float("inf"), -2.5, -1.0, 1.0, 2.5, float("inf")]
+        labels = [0, 1, 2, 3, 4]
+
+        df["multi_class_label"] = pd.cut(df["next_bar_movement"], bins=bins, labels=labels).astype("Int64")
+
+        # 🚫 These must not leak into training
+        df.drop(columns=["Next_Open", "Next_Close", "next_bar_movement"], inplace=True)
+
+        print("✅ Option D Multi-Class Labels applied (based on next bar movement).")
+
         return df
