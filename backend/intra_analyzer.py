@@ -274,14 +274,6 @@ get_ipython().system('pip install backtrader')
 get_ipython().system('pip install plotly')
 
 
-# In[23]:
-
-
-import backtrader as bt
-import pandas as pd
-from datetime import time, datetime
-
-
 # 
 
 # In[ ]:
@@ -294,6 +286,8 @@ from datetime import time, datetime
 
 
 import backtrader as bt
+import pandas as pd
+from datetime import time, datetime
 
 class ElasticNetStrategy(bt.Strategy):
     params = dict(
@@ -991,23 +985,6 @@ grouped.columns = ["Date", "Missing Times (<=23:00)"]
 grouped.head(20)
 
 
-# In[39]:
-
-
-# Ensure datetime index
-df_test_results.index = pd.to_datetime(df_test_results.index)
-
-# Filter for Jan 18 and Jan 20 only
-filtered_df = df_test_results[
-    (df_test_results.index.date == pd.to_datetime("2025-01-18").date()) |
-    (df_test_results.index.date == pd.to_datetime("2025-01-20").date())
-]
-
-# Display relevant rows
-print("📅 5-Min Bars for Jan 18 & Jan 20:")
-print(filtered_df[["Date", "Time", "Open", "High", "Low", "Close"]])
-
-
 # In[ ]:
 
 
@@ -1315,6 +1292,14 @@ merged.to_csv("ts_prediction_data.csv", index=False)
 
 
 merged.head()
+
+
+# # Create Notbook as .py File
+
+# In[47]:
+
+
+get_ipython().system('jupyter nbconvert --to script intra_analyzer.ipynb')
 
 
 # In[ ]:

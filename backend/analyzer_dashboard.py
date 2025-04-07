@@ -643,6 +643,26 @@ class AnalyzerDashboard:
         y_min = min(df_1min["Low"].min(), trade_df["entry_price"].min(), trade_df["exit_price"].min())
         y_max = max(df_1min["High"].max(), trade_df["entry_price"].max(), trade_df["exit_price"].max())
 
+        # Add information about signals
+        hover_text = []
+        for index, row in df_1min.iterrows():
+            signal_info = ""
+            
+            # Add binary classifier info
+            if 'RandomForest' in df_1min.columns:
+                rf = row.get('RandomForest', "N/A")
+                lt = row.get('LightGBM', "N/A")
+                xg = row.get('XGBoost', "N/A")
+                signal_info += f"RF: {rf}, LT: {lt}, XG: {xg}<br>"
+            
+            # Add multi-class info if available
+            if 'multi_class_label' in df_1min.columns and not pd.isna(row.get('multi_class_label')):
+                mc = row.get('multi_class_label')
+                signal_info += f"Multi-Class: {mc}<br>"
+            
+            # ... rest of hover text ...
+            
+        # ... rest of method ...
 
         # Layout
         fig.update_layout(

@@ -6,7 +6,7 @@ class CustomClassifierData(bt.feeds.PandasData):
     """
     Custom data feed for Backtrader that includes classifier columns and predicted high.
     """
-    lines = ('predicted_high', 'RandomForest', 'LightGBM', 'XGBoost')
+    lines = ('predicted_high', 'RandomForest', 'LightGBM', 'XGBoost', 'multi_class_label')
     params = (
         ('datetime', None),
         ('open', 'Open'),
@@ -18,6 +18,7 @@ class CustomClassifierData(bt.feeds.PandasData):
         ('RandomForest', -1),
         ('LightGBM', -1),
         ('XGBoost', -1),
+        ('multi_class_label', -1),
     )
 
 
@@ -74,6 +75,10 @@ class CerebroStrategyEngine:
         self.df_strategy = self.df_strategy.merge(self.df_classifiers, how="left", left_index=True, right_index=True)
         self.df_strategy["predicted_high"] = self.df_strategy["Predicted"]
 
+        # Make sure multi_class_label is available, even if None
+        if "multi_class_label" not in self.df_strategy.columns:
+            self.df_strategy["multi_class_label"] = None
+        
         if ElasticNetStrategy.params.min_classifier_signals > 0:
             start_idx = self.df_classifiers.index.min()
             print(f"⏳ Classifier signals begin at: {start_idx}")
@@ -112,7 +117,7 @@ class CerebroStrategyEngine:
 
 
 
-    def run_backtest_Long5min1minStrategy(self, df_5min: pd.DataFrame, df_1min: pd.DataFrame, strategy_class) -> tuple:
+    def run_backtest_Long5min1minStrategy(self, df_5min: pd.DataFrame, df_1min: pd.DataFrame, strategy_class, use_multi_class=False, multi_class_threshold=3) -> tuple:
         """
         Runs Long5min1minStrategy using fresh Cerebro setup with both 5-min and 1-min data.
 
@@ -120,6 +125,8 @@ class CerebroStrategyEngine:
             df_5min (pd.DataFrame): 5-minute strategy DataFrame with predictions and classifiers.
             df_1min (pd.DataFrame): 1-minute OHLC data.
             strategy_class: The Backtrader strategy class to use (e.g., Long5min1minStrategy).
+            use_multi_class (bool): Whether to use multi-class labels instead of binary.
+            multi_class_threshold (int): Threshold for considering multi-class labels as positive.
 
         Returns:
             tuple: (results, cerebro) from Backtrader engine.
@@ -152,7 +159,9 @@ class CerebroStrategyEngine:
             max_dist=self.max_dist,
             min_classifier_signals=self.min_classifier_signals,
             session_start=self.session_start,
-            session_end=self.session_end
+            session_end=self.session_end,
+            use_multi_class=use_multi_class,
+            multi_class_threshold=multi_class_threshold
         )
 
         data_5min = CustomClassifierData(dataname=df_5min)

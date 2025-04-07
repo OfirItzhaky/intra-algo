@@ -49,6 +49,12 @@ MIN_CLASSIFIER_SIGNALS = 0
 SESSION_START = "10:00"
 SESSION_END = "23:00"
 
+# Multi-class settings
+MULTI_CLASS_THRESHOLD = 3  # Classes >= 3 are considered positive signals
+USE_MULTI_CLASS = False    # Set to True to use multi-class instead of binary
+
+
+
 # === Run Strategy via Cerebro Engine ===
 # strategy_engine = CerebroStrategyEngine(
 #     df_strategy=df_regression_preds,
@@ -123,7 +129,18 @@ df_1min_enriched = model_loader.enrich_1min_with_predictions(
 
 
 df_1min_enriched.drop(columns=["Actual"], inplace=True)
+# After loading the classifier_trainer model:
+if USE_MULTI_CLASS:
+    print(f"🔀 Using multi-class labels with threshold {MULTI_CLASS_THRESHOLD}")
 
+    # Check if multi_class_label exists in trainer data
+    if hasattr(classifier_trainer, 'multi_class_label') and classifier_trainer.multi_class_label is not None:
+        # Add multi-class labels to classifier predictions
+        df_classifier_preds['multi_class_label'] = classifier_trainer.multi_class_label
+    else:
+        print("⚠️ Warning: Multi-class labels not found in classifier trainer.")
+else:
+    print("🔢 Using binary classification.")
 
 # === Run New Strategy on 1-min enriched data ===
 
@@ -146,7 +163,9 @@ strategy_engine = CerebroStrategyEngine(
 results_5min1min, cerebro = strategy_engine.run_backtest_Long5min1minStrategy(
     df_5min=df_regression_preds,
     df_1min=df_1min_enriched,
-    strategy_class=Long5min1minStrategy
+    strategy_class=Long5min1minStrategy,
+    use_multi_class=USE_MULTI_CLASS,
+    multi_class_threshold=MULTI_CLASS_THRESHOLD
 )
 
 dashboard_intrabar = AnalyzerDashboard(
@@ -211,6 +230,8 @@ strategy_params = {
     "Session Start": SESSION_START,
     "Session End": SESSION_END,
     "Initial Cash ($)": STARTING_CASH,
+    "Using Multi-Class": USE_MULTI_CLASS,
+    "Multi-Class Threshold": MULTI_CLASS_THRESHOLD if USE_MULTI_CLASS else "N/A"
 }
 dashboard_intrabar.display_strategy_and_metrics_side_by_side(df_metrics, strategy_params)
 

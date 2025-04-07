@@ -295,42 +295,56 @@ class ModelLoaderAndExplorer:
             self,
             df_1min: pd.DataFrame,
             df_regression_preds: pd.DataFrame,
-            df_classifier_preds: pd.DataFrame
+            df_classifier_preds: pd.DataFrame = None  # Make optional
     ) -> pd.DataFrame:
         """
-        Merge 5-min predicted, actual, and classifier data into 1-min bars.
-        Only 5-min-aligned timestamps will receive non-NaN values.
-
-        Args:
-            df_1min (pd.DataFrame): 1-minute OHLC data, datetime index.
-            df_regression_preds (pd.DataFrame): Must include 'Date', 'Time', 'Predicted', 'Actual', 'Next_High'.
-            df_classifier_preds (pd.DataFrame): Already indexed by datetime, 5-min aligned.
-
-        Returns:
-            pd.DataFrame: 1-min DataFrame enriched with predictions and classifier signals.
+        Enriches 1-minute bars with predictions from 5-minute models.
+        Also adds classifier predictions to each 1-minute bar.
         """
         df_1min = df_1min.copy()
-        df_1min.index = pd.to_datetime(df_1min.index)
-        df_1min = df_1min.sort_index()
-
-        # Prepare regression predictions
-        df_regression_preds = df_regression_preds.copy()
-        df_regression_preds["datetime"] = pd.to_datetime(
-            df_regression_preds["Date"] + " " + df_regression_preds["Time"])
-        df_regression_preds.set_index("datetime", inplace=True)
-
-        reg_cols = ["Predicted", "Actual", "Next_High"]
-        df_reg_filtered = df_regression_preds[reg_cols]
-
-        # Merge predictions (will be NaN except at 5-min aligned bars)
-        df_1min = df_1min.merge(df_reg_filtered, how="left", left_index=True, right_index=True)
-
-        # Ensure classifier preds are datetime-indexed and sorted
-        df_classifier_preds.index = pd.to_datetime(df_classifier_preds.index)
-        df_classifier_preds = df_classifier_preds.sort_index()
-
-
-        # Now merge
-        df_1min = df_1min.merge(df_classifier_preds, how="left", left_index=True, right_index=True)
-
+        
+        # Ensure datetime index for regression predictions
+        df_all_preds = df_regression_preds.copy()
+        if 'Date' in df_all_preds.columns and 'Time' in df_all_preds.columns:
+            df_all_preds['datetime'] = pd.to_datetime(df_all_preds['Date'] + ' ' + df_all_preds['Time'])
+            df_all_preds.set_index('datetime', inplace=True)
+        
+        # Add the classifier predictions if they exist
+        if df_classifier_preds is not None:
+            if not isinstance(df_classifier_preds.index, pd.DatetimeIndex):
+                df_classifier_preds.index = pd.to_datetime(df_classifier_preds.index)
+            df_all_preds = df_all_preds.merge(
+                df_classifier_preds, 
+                how='left', 
+                left_index=True, 
+                right_index=True
+            )
+        
+        # Ensure datetime index for 1-min data
+        if not isinstance(df_1min.index, pd.DatetimeIndex):
+            df_1min.index = pd.to_datetime(df_1min.index)
+        
+        # For each 5-min bar, apply its predictions to all corresponding 1-min bars
+        for idx in df_all_preds.index:
+            # Figure out the next 5-min timestamp
+            next_5min = idx + pd.Timedelta(minutes=5)
+            
+            # Apply predictions to all 1-min bars in this range
+            mask = (df_1min.index >= idx) & (df_1min.index < next_5min)
+            
+            # Add regression predictions
+            df_1min.loc[mask, 'Predicted'] = df_all_preds.loc[idx, 'Predicted_High']
+            if 'Next_High' in df_all_preds.columns:
+                df_1min.loc[mask, 'Actual'] = df_all_preds.loc[idx, 'Next_High']
+            
+            # Add binary classifier predictions if they exist
+            for col in ['RandomForest', 'LightGBM', 'XGBoost']:
+                if col in df_all_preds.columns:
+                    df_1min.loc[mask, col] = df_all_preds.loc[idx, col]
+            
+            # Add multi-class label if it exists
+            if 'multi_class_label' in df_all_preds.columns:
+                df_1min.loc[mask, 'multi_class_label'] = df_all_preds.loc[idx, 'multi_class_label']
+        
+        print("✅ 1-minute bars enriched with predictions.")
         return df_1min
