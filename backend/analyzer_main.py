@@ -292,7 +292,7 @@ if __name__ == "__main__":
 
     print(f"📦 Final Portfolio Value (Intrabar): {final_value_intrabar:.2f}")
 
-    # dashboard_intrabar.plot_equity_curve_with_drawdown(df_trades_intrabar)
+    dashboard_intrabar.plot_equity_curve_with_drawdown(df_trades_intrabar)
 
     def get_next_5_high(i, highs):
         future_window = highs[i+1:i+6]  # i+1 to i+5 inclusive (5 bars ahead)

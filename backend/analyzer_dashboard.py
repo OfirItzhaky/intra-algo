@@ -182,12 +182,6 @@ class AnalyzerDashboard:
     def plot_equity_curve_with_drawdown(self, df_trades: pd.DataFrame) -> None:
         """
         Plots the equity curve with max drawdown annotation using Plotly.
-
-        Args:
-            df_trades (pd.DataFrame): DataFrame with numeric 'pnl' column per trade.
-
-        Returns:
-            None – shows the chart in notebook.
         """
         df = df_trades.copy()
         if df["pnl"].dtype == "object":
@@ -197,9 +191,7 @@ class AnalyzerDashboard:
         df["cum_max"] = df["equity"].cummax()
         df["drawdown"] = df["equity"] - df["cum_max"]
         max_dd = df["drawdown"].min()
-        end_idx = df["drawdown"].idxmin()
-        start_idx = df["equity"][:end_idx].idxmax()
-
+        
         fig = go.Figure()
 
         # Equity curve
@@ -213,16 +205,20 @@ class AnalyzerDashboard:
             line=dict(color="royalblue")
         ))
 
-        # Max drawdown annotation
-        fig.add_trace(go.Scatter(
-            x=[start_idx, end_idx],
-            y=[df.loc[start_idx, "equity"], df.loc[end_idx, "equity"] - 25],
-            mode="lines+text",
-            line=dict(color="red", dash="dash", width=2),
-            name="Max Drawdown",
-            text=[None, f"⬇️ Max DD: ${abs(max_dd):.2f}"],
-            textposition="top center"
-        ))
+        # Only add drawdown annotation if there is an actual drawdown
+        if max_dd < 0:  # If there's a drawdown
+            end_idx = df["drawdown"].idxmin()
+            start_idx = df["equity"][:end_idx].idxmax()
+            
+            fig.add_trace(go.Scatter(
+                x=[start_idx, end_idx],
+                y=[df.loc[start_idx, "equity"], df.loc[end_idx, "equity"] - 25],
+                mode="lines+text",
+                line=dict(color="red", dash="dash", width=2),
+                name="Max Drawdown",
+                text=[None, f"⬇️ Max DD: ${abs(max_dd):.2f}"],
+                textposition="top center"
+            ))
 
         fig.update_layout(
             title="📉 Equity Curve with Max Drawdown",
