@@ -292,10 +292,7 @@ class AnalyzerDashboard:
         fig.show()
 
     def calculate_strategy_metrics(self, df_trades: pd.DataFrame) -> pd.DataFrame:
-        """
-        Calculates key performance metrics from a trade list and returns them as a DataFrame.
-        """
-
+        """Calculate strategy metrics including daily statistics."""
         df = df_trades.copy()
         df['pnl'] = df['pnl'].astype(float)
         df['date'] = pd.to_datetime(df['entry_time']).dt.date
@@ -315,7 +312,15 @@ class AnalyzerDashboard:
         outlier_thresh = df['pnl'].std() * 3
         outliers = df[np.abs(df['pnl'] - df['pnl'].mean()) > outlier_thresh]
 
-        metrics = {
+        # Add daily statistics
+        daily_pnl = df.groupby('date')['pnl'].sum()
+        
+        # Count days
+        winning_days = (daily_pnl > 0).sum()
+        losing_days = (daily_pnl <= 0).sum()  # includes zero PnL days with trades
+        total_trading_days = len(daily_pnl)  # days with at least one trade
+
+        metrics_dict = {
             "💰 Overall Performance": {
                 "Total Net PnL ($)": net_pnl,
                 "Profit Factor": profit_factor,
@@ -333,6 +338,9 @@ class AnalyzerDashboard:
                 "Avg Daily PnL ($)": df.groupby('date')['pnl'].sum().mean(),
                 "Trades per Day": df.groupby('date').size().mean(),
                 "Avg Trade Duration (min)": df['duration_min'].mean(),
+                "Trading Days": total_trading_days,
+                "Winning Days": winning_days,
+                "Losing Days": losing_days,
             },
             "⚠️ Risk / Drawdown Metrics": {
                 "Max Drawdown ($)": df['pnl'].cumsum().cummax().sub(df['pnl'].cumsum()).max(),
@@ -349,7 +357,7 @@ class AnalyzerDashboard:
 
         # Flatten to single-row DataFrame
         final_rows = {}
-        for section, vals in metrics.items():
+        for section, vals in metrics_dict.items():
             for k, v in vals.items():
                 final_rows[f"{section} | {k}"] = v
 

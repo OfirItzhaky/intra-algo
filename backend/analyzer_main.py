@@ -203,7 +203,7 @@ AVAILABLE_LABEL_METHODS = {
     "multi_class": "option_d_multiclass_next_bar_movement"  # Multi-class next bar movement
 }
 
-LABEL_GENERATION_METHOD = AVAILABLE_LABEL_METHODS["green_red"]  # Choose your method here
+LABEL_GENERATION_METHOD = AVAILABLE_LABEL_METHODS["long_all_b"]  # Choose your method here
 
 # === Analysis Constants ===
 TICK_SIZE = 0.25
@@ -213,10 +213,10 @@ STARTING_CASH = 10000.0
 
 TARGET_TICKS = 10
 STOP_TICKS = 10
-MIN_DIST = 3.0
+MIN_DIST = 4
 MAX_DIST = 20.0
-MIN_CLASSIFIER_SIGNALS = 3
-SESSION_START = "10:00"
+MIN_CLASSIFIER_SIGNALS = 0
+SESSION_START = "17:00"
 SESSION_END = "23:00"
 
 # === Multi-class Settings ===
@@ -228,6 +228,9 @@ REGRESSION_MODEL_PATH = "regression_trainer_model.pkl"
 CLASSIFIER_MODEL_PATH = "classifier_trainer_model.pkl"
 INTRABAR_DATA_PATH = "MES_1_MINUTE_JAN_13_JAN_21.txt"
 
+# === Daily PnL Limits ===
+MAX_DAILY_PROFIT = 36.0  # Equivalent to about 30 ticks
+MAX_DAILY_LOSS = -36.0   # Negative value for losses
 
 if __name__ == "__main__":
     # Choose which function to use
@@ -269,7 +272,9 @@ if __name__ == "__main__":
         max_dist=MAX_DIST,
         min_classifier_signals=MIN_CLASSIFIER_SIGNALS,
         session_start=SESSION_START,
-        session_end=SESSION_END
+        session_end=SESSION_END,
+        max_daily_profit=MAX_DAILY_PROFIT,
+        max_daily_loss=MAX_DAILY_LOSS
     )
 
     results_5min1min, cerebro = strategy_engine.run_backtest_Long5min1minStrategy(
@@ -332,8 +337,10 @@ if __name__ == "__main__":
         "Session Start": SESSION_START,
         "Session End": SESSION_END,
         "Initial Cash ($)": STARTING_CASH,
-                "Using Multi-Class": USE_MULTI_CLASS,
-                "Multi-Class Threshold": MULTI_CLASS_THRESHOLD if USE_MULTI_CLASS else "N/A"
+        "Using Multi-Class": USE_MULTI_CLASS,
+        "Multi-Class Threshold": MULTI_CLASS_THRESHOLD if USE_MULTI_CLASS else "N/A",
+        "Max Daily Profit": MAX_DAILY_PROFIT,
+        "Max Daily Loss": MAX_DAILY_LOSS
     }
     dashboard_intrabar.display_strategy_and_metrics_side_by_side(df_metrics, strategy_params)
 
