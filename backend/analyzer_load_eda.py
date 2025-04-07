@@ -9,11 +9,16 @@ plt.ion()  # Interactive mode ON
 
 
 class ModelLoaderAndExplorer:
-    def __init__(self, regression_path, classifier_path):
+    def __init__(self, regression_path=None, classifier_path=None):
+        """Initialize with optional model paths. Only needed for load_and_explore()."""
         self.regression_path = regression_path
         self.classifier_path = classifier_path
 
     def load_and_explore(self):
+        """Load and explore models - requires paths to be set in initialization."""
+        if not self.regression_path or not self.classifier_path:
+            raise ValueError("Model paths must be provided to use load_and_explore()")
+            
         # === Load Regression Model ===
         with open(self.regression_path, "rb") as f:
             regression_model = pickle.load(f)
