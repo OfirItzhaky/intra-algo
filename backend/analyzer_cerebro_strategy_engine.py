@@ -41,7 +41,9 @@ class CerebroStrategyEngine:
         max_dist: float,
         min_classifier_signals: int,
         session_start: str,
-        session_end: str
+        session_end: str,
+        max_daily_profit: float = 36.0,
+        max_daily_loss: float = -36.0
     ):
         """
         Initialize the engine with strategy data, classifier predictions, and all required strategy parameters.
@@ -59,6 +61,8 @@ class CerebroStrategyEngine:
         self.min_classifier_signals = min_classifier_signals
         self.session_start = session_start
         self.session_end = session_end
+        self.max_daily_profit = max_daily_profit
+        self.max_daily_loss = max_daily_loss
 
         self.results = None
         self.cerebro = bt.Cerebro()
@@ -119,17 +123,7 @@ class CerebroStrategyEngine:
 
     def run_backtest_Long5min1minStrategy(self, df_5min: pd.DataFrame, df_1min: pd.DataFrame, strategy_class, use_multi_class=False, multi_class_threshold=3) -> tuple:
         """
-        Runs Long5min1minStrategy using fresh Cerebro setup with both 5-min and 1-min data.
-
-        Parameters:
-            df_5min (pd.DataFrame): 5-minute strategy DataFrame with predictions and classifiers.
-            df_1min (pd.DataFrame): 1-minute OHLC data.
-            strategy_class: The Backtrader strategy class to use (e.g., Long5min1minStrategy).
-            use_multi_class (bool): Whether to use multi-class labels instead of binary.
-            multi_class_threshold (int): Threshold for considering multi-class labels as positive.
-
-        Returns:
-            tuple: (results, cerebro) from Backtrader engine.
+        Runs Long5min1minStrategy with daily PnL limits
         """
         cerebro = bt.Cerebro()
         cerebro.broker.setcash(self.initial_cash)
@@ -161,16 +155,15 @@ class CerebroStrategyEngine:
             session_start=self.session_start,
             session_end=self.session_end,
             use_multi_class=use_multi_class,
-            multi_class_threshold=multi_class_threshold
+            multi_class_threshold=multi_class_threshold,
+            max_daily_profit=self.max_daily_profit,
+            max_daily_loss=self.max_daily_loss
         )
 
         data_5min = CustomClassifierData(dataname=df_5min)
         data_1min = CustomClassifierData(dataname=df_1min)
-        print(data_1min.lines.getlinealiases())  # ⬅️ BREAK HERE
 
-        # cerebro.adddata(data_5min)  # Main data feed
         cerebro.adddata(data_1min)  # Intrabar data feed
-
         cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
 
         print("🚀 Running Long5min1minStrategy backtest...")

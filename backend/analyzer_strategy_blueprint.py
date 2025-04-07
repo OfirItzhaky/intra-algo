@@ -3,6 +3,8 @@ import pandas as pd
 from matplotlib.dates import num2date
 from backtrader.utils.date import num2date
 import pytz
+import datetime
+
 class ElasticNetStrategy(bt.Strategy):
     """
     A basic strategy using predicted highs from regression models (e.g., ElasticNet),
@@ -179,13 +181,6 @@ class ElasticNetStrategy(bt.Strategy):
         dt = self.datas[0].datetime.datetime(0)
         print(f"[{dt}] {txt}")
 
-import backtrader as bt
-from typing import Optional, List, Dict
-
-
-import backtrader as bt
-import datetime
-
 class Long5min1minStrategy(bt.Strategy):
     params = dict(
         min_dist=3.0,
@@ -202,6 +197,8 @@ class Long5min1minStrategy(bt.Strategy):
         min_classifier_signals=0,
         use_multi_class=False,
         multi_class_threshold=3,
+        max_daily_profit=36.0,
+        max_daily_loss=-36.0,
     )
 
     def __init__(self):
@@ -211,11 +208,17 @@ class Long5min1minStrategy(bt.Strategy):
         self.trades = []
         self.last_entry_price = None
         self.last_exit_price = None
+        self.daily_pnl = 0
+        self.current_trade_date = None
 
     def next(self):
-
-
         dt = self.datas[0].datetime.datetime(0)
+        
+        if self.current_trade_date != dt.date():
+            self.current_trade_date = dt.date()
+            self.daily_pnl = 0
+            print(f"📅 New trading day: {dt.date()}, Daily PnL reset to 0")
+
         print(f"🕒 Current dt: {dt}, Previous bar time: {self.last_bar_time}")
 
         if self.last_bar_time == dt:
@@ -230,7 +233,7 @@ class Long5min1minStrategy(bt.Strategy):
             if self.position and self.p.force_exit:
                 self.close()
             return
-        # ✅ Capture entry price when position just opened
+
         if self.position and self.position.size > 0 and self.last_entry_price is None:
             self.last_entry_price = self.position.price
             print(f"📥 Position opened at {self.last_entry_price:.2f}")
@@ -238,8 +241,14 @@ class Long5min1minStrategy(bt.Strategy):
         if self.position or self.order:
             return
 
-        # ✅ Only trigger entry logic on 5-min aligned bars
         if dt.minute % 5 != 0:
+            return
+
+        if self.daily_pnl >= self.p.max_daily_profit:
+            print(f"💰 Max daily profit reached (${self.daily_pnl:.2f}). No new trades.")
+            return
+        if self.daily_pnl <= self.p.max_daily_loss:
+            print(f"⚠️ Max daily loss reached (${self.daily_pnl:.2f}). No new trades.")
             return
 
         pred = self.data.predicted_high[0]
@@ -252,17 +261,14 @@ class Long5min1minStrategy(bt.Strategy):
         if not (self.p.min_dist <= delta <= self.p.max_dist):
             return
         else:
-            # ✅ Check classifier signals
             if self.p.min_classifier_signals > 0:
                 if self.p.use_multi_class:
-                    # Multi-class approach
                     if hasattr(self.data, 'multi_class_label'):
                         multi_class_value = self.data.multi_class_label[0]
                         if pd.isna(multi_class_value):
                             print(f"🕳️ Skipping bar — multi_class_label is NaN")
                             return
                         
-                        # Check if the class value meets or exceeds our threshold
                         if multi_class_value < self.p.multi_class_threshold:
                             print(f"🚫 Multi-class signal ({multi_class_value}) below threshold ({self.p.multi_class_threshold})")
                             return
@@ -272,7 +278,6 @@ class Long5min1minStrategy(bt.Strategy):
                         print(f"❌ multi_class_label not available")
                         return
                 else:
-                    # Original binary approach
                     signal_count = sum(
                         int(getattr(self.data, clf, [0])[0] == 1)
                         for clf in ['RandomForest', 'LightGBM', 'XGBoost']
@@ -287,7 +292,7 @@ class Long5min1minStrategy(bt.Strategy):
 
             self.buy_bracket(
                 exectype=bt.Order.Market,
-                price=close,  # not used in Market orders, but required
+                price=close,
                 size=1,
                 limitprice=tp,
                 stopprice=sl
@@ -303,8 +308,12 @@ class Long5min1minStrategy(bt.Strategy):
                 'executed_dt': bt.num2date(o.executed.dt) if o.status == bt.Order.Completed else None
             } for o in orders])
             print("test")
+
     def notify_trade(self, trade):
         if trade.isclosed:
+            self.daily_pnl += trade.pnl
+            print(f"💵 Trade PnL: ${trade.pnl:.2f}, Daily PnL: ${self.daily_pnl:.2f}")
+
             orders = list(self.broker.orders)
             orders_df = pd.DataFrame([{
                 'ref': o.ref,
@@ -316,7 +325,6 @@ class Long5min1minStrategy(bt.Strategy):
                 'executed_dt': bt.num2date(o.executed.dt) if o.status == bt.Order.Completed else None
             } for o in orders])
 
-            # 🟢 Extract last filled SELL
             last_filled_sell = orders_df[(orders_df['type'] == 'SELL') & (orders_df['status'] == 'Completed')].iloc[-1]
             exit_price_from_orders = last_filled_sell['filled_price']
 
@@ -324,9 +332,8 @@ class Long5min1minStrategy(bt.Strategy):
             entry_time = bt.num2date(trade.dtopen, tz=pytz.UTC)
             exit_time = bt.num2date(trade.dtclose, tz=pytz.UTC)
 
-            # ✅ Use the actual prices from trade object
-            entry_price = self.last_entry_price  # Entry price
-            exit_price = trade.price  # Might be same if not split — we improve this below
+            entry_price = self.last_entry_price
+            exit_price = trade.price
             self.exit_orders_sent = False
 
             print(f"🌐 Trade closed. PnL: {pnl:.2f}")
