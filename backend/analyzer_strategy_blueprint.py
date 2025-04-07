@@ -25,7 +25,9 @@ class ElasticNetStrategy(bt.Strategy):
         session_end='23:00',
         tick_value=1.25,
         contract_size=1,
-        min_classifier_signals=0  # Set > 0 to use RF/LGBM/XG signals
+        min_classifier_signals=0,  # Set > 0 to use RF/LGBM/XG signals
+        use_multi_class=False,
+        multi_class_threshold=3,
     )
 
     def __init__(self):
@@ -87,6 +89,35 @@ class ElasticNetStrategy(bt.Strategy):
 
             if green_count < self.p.min_classifier_signals:
                 print(f"[{dt}] 🚫 Not enough green signals ({green_count}) for entry.")
+                return
+
+        if self.p.use_multi_class:
+            print(f"[{dt}] 🔄 Using multi-class signals with threshold {self.p.multi_class_threshold}")
+            # Multi-class approach
+            if hasattr(self.data, 'multi_class_label'):
+                multi_class_value = self.data.multi_class_label[0]
+                if pd.isna(multi_class_value):
+                    print(f"🕳️ Skipping bar — multi_class_label is NaN")
+                    return
+                
+                # Check if the class value meets or exceeds our threshold
+                if multi_class_value < self.p.multi_class_threshold:
+                    print(f"🚫 Multi-class signal ({multi_class_value}) below threshold ({self.p.multi_class_threshold})")
+                    return
+                else:
+                    print(f"✅ Multi-class signal ({multi_class_value}) meets threshold")
+            else:
+                print(f"❌ multi_class_label not available")
+                return
+        else:
+            print(f"[{dt}] 🔄 Using binary classification signals")
+            # Original binary approach
+            signal_count = sum(
+                int(getattr(self.data, clf, [0])[0] == 1)
+                for clf in ['RandomForest', 'LightGBM', 'XGBoost']
+                if hasattr(self.data, clf)
+            )
+            if signal_count < self.p.min_classifier_signals:
                 return
 
         tick_size = 0.25
@@ -169,6 +200,8 @@ class Long5min1minStrategy(bt.Strategy):
         contract_size=1,
         tick_size=0.25,
         min_classifier_signals=0,
+        use_multi_class=False,
+        multi_class_threshold=3,
     )
 
     def __init__(self):
@@ -221,13 +254,32 @@ class Long5min1minStrategy(bt.Strategy):
         else:
             # ✅ Check classifier signals
             if self.p.min_classifier_signals > 0:
-                signal_count = sum(
-                    int(getattr(self.data, clf, [0])[0] == 1)
-                    for clf in ['RandomForest', 'LightGBM', 'XGBoost']
-                    if hasattr(self.data, clf)
-                )
-                if signal_count < self.p.min_classifier_signals:
-                    return
+                if self.p.use_multi_class:
+                    # Multi-class approach
+                    if hasattr(self.data, 'multi_class_label'):
+                        multi_class_value = self.data.multi_class_label[0]
+                        if pd.isna(multi_class_value):
+                            print(f"🕳️ Skipping bar — multi_class_label is NaN")
+                            return
+                        
+                        # Check if the class value meets or exceeds our threshold
+                        if multi_class_value < self.p.multi_class_threshold:
+                            print(f"🚫 Multi-class signal ({multi_class_value}) below threshold ({self.p.multi_class_threshold})")
+                            return
+                        else:
+                            print(f"✅ Multi-class signal ({multi_class_value}) meets threshold")
+                    else:
+                        print(f"❌ multi_class_label not available")
+                        return
+                else:
+                    # Original binary approach
+                    signal_count = sum(
+                        int(getattr(self.data, clf, [0])[0] == 1)
+                        for clf in ['RandomForest', 'LightGBM', 'XGBoost']
+                        if hasattr(self.data, clf)
+                    )
+                    if signal_count < self.p.min_classifier_signals:
+                        return
 
             print(f"🟡 SIGNAL MATCH at {dt} → delta: {delta:.2f}, close: {close:.2f}, predicted: {pred:.2f}")
             tp = close + self.p.target_ticks * self.p.tick_size
