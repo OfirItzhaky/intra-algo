@@ -1,0 +1,9 @@
+# Ignore Python cache
+__pycache__/
+*.py[cod]
+
+# Ignore Jupyter Notebook autosaves
+.ipynb_checkpoints/
+
+# (Optional) Ignore local outputs
+research_outputs/
