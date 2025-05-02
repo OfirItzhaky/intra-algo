@@ -1,0 +1,79 @@
+{
+  "metadata": {
+    "generation_time": "2025-04-29 20:38:06",
+    "requested_markets": [
+      "US Market"
+    ],
+    "requested_symbols": []
+  },
+  "general": {
+    "general_bias": "Neutral",
+    "smart_money_flow": {
+      "trend": "Neutral",
+      "top_sectors": [
+        "S&P 500",
+        "Nasdaq 100",
+        "Technology"
+      ]
+    },
+    "economic_calendar": [
+      {
+        "event": "Tesla shares gain as Musk says he will cut back DOGE work",
+        "published": "2025-04-23 08:58:10",
+        "country": "Unknown 🌎"
+      },
+      {
+        "event": "Trump comments on Powell, China tariffs; Musk on DOGE role - what's moving markets",
+        "published": "2025-04-23 07:43:12",
+        "country": "China 🇨🇳"
+      },
+      {
+        "event": "European stocks rise strongly as trade war tensions ease; Volvo struggles",
+        "published": "2025-04-23 07:09:13",
+        "country": "Unknown 🌎"
+      },
+      {
+        "event": "Bitcoin price today: surges 6% to 7-wk high of $93.8k as Trump eases tariff stance",
+        "published": "2025-04-23 06:43:49",
+        "country": "Unknown 🌎"
+      },
+      {
+        "event": "Asia stocks surge as Trump talks lower trade tariffs; China lags",
+        "published": "2025-04-23 02:56:26",
+        "country": "China 🇨🇳"
+      },
+      {
+        "event": "Trump said 'doing fine' with China, has no plans to fire Powell",
+        "published": "2025-04-22 21:38:15",
+        "country": "China 🇨🇳"
+      },
+      {
+        "event": "Stock market today: S&P 500 rallies on U.S-China trade war de-escalation hopes",
+        "published": "2025-04-22 20:05:27",
+        "country": "China 🇨🇳"
+      },
+      {
+        "event": "Buy the dip, sell the rip, or do nothing? Here's what investors are saying",
+        "published": "2025-04-22 10:30:59",
+        "country": "Unknown 🌎"
+      },
+      {
+        "event": "Nvidia stock: Bank of America breaks down 4 key investor concerns",
+        "published": "2025-04-22 12:02:34",
+        "country": "Unknown 🌎"
+      },
+      {
+        "event": "Trump firing Powell alone won’t be enough to cut rates, analyst warns",
+        "published": "2025-04-22 09:15:38",
+        "country": "Unknown 🌎"
+      }
+    ],
+    "headline_sample": [
+      "Today's market tone is characterized by cautious sentiment and underlying economic concerns. Key highlights include declines in major indices, with the S&P 500 and Nasdaq pulled down by the fall in Big Tech stocks ahead of earnings reports. Investors are also wary of upcoming trade deals, economic data releases, and tariff impacts, which have particularly hit consumer costs, as seen with Temu customers facing steep import charges.\n\nThe broader economic outlook is challenged by macro pressures, although Domino's forecasts growth in same-store sales for 2025. Meanwhile, a divide in consumer spending patterns is evident, with wealthy consumers increasing their expenditures while the rest of the population reduces theirs.\n\nAdditionally, political and regulatory factors are adding to market uncertainties. Public sentiment towards Elon Musk and federal government cuts is increasingly negative, and potential changes in consumer protections could further affect the economic environment. Despite these prevalent challenges, some smaller segments, like a biotech firm rivaling J&J, show strong positive movement, indicating areas of speculative interest amid overall caution."
+    ],
+    "summarized_event_text": [
+      "Today's market tone appears optimistic, primarily driven by easing trade tensions between the U.S. and China. President Trump’s comments on potentially lowering tariffs have sparked a rally in global markets, with significant gains in European stocks and a surge in Asian markets, though Chinese stocks trail behind. The U.S. stock market is also reacting positively, with the S&P 500 rising on hopes for de-escalation in the trade war. Tesla shares are gaining after Elon Musk announced he would reduce his involvement with Dogecoin, while Bitcoin has surged to a seven-week high following Trump's softer stance on tariffs. However, some individual companies like Volvo are struggling despite the broader positive sentiment. Investor sentiment is mixed, with ongoing discussions about market strategies such as \"buying the dip\" or \"selling the rip.\" Meanwhile, comments about potential changes in U.S. Federal Reserve leadership, such as whether Trump might fire Powell, are stirring market discussions, though analysts warn that such actions alone would not suffice to lower interest rates."
+    ]
+  },
+  "symbols": {}
+}

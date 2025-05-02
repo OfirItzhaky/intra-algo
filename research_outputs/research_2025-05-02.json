@@ -1,0 +1,79 @@
+{
+  "metadata": {
+    "generation_time": "2025-05-02 22:20:54",
+    "requested_markets": [
+      "US Market"
+    ],
+    "requested_symbols": []
+  },
+  "general": {
+    "general_bias": "Neutral",
+    "smart_money_flow": {
+      "trend": "Neutral",
+      "top_sectors": [
+        "S&P 500",
+        "Nasdaq 100",
+        "Technology"
+      ]
+    },
+    "economic_calendar": [
+      {
+        "event": "Tesla shares gain as Musk says he will cut back DOGE work",
+        "published": "2025-04-23 08:58:10",
+        "country": "Unknown 🌎"
+      },
+      {
+        "event": "Trump comments on Powell, China tariffs; Musk on DOGE role - what's moving markets",
+        "published": "2025-04-23 07:43:12",
+        "country": "China 🇨🇳"
+      },
+      {
+        "event": "European stocks rise strongly as trade war tensions ease; Volvo struggles",
+        "published": "2025-04-23 07:09:13",
+        "country": "Unknown 🌎"
+      },
+      {
+        "event": "Bitcoin price today: surges 6% to 7-wk high of $93.8k as Trump eases tariff stance",
+        "published": "2025-04-23 06:43:49",
+        "country": "Unknown 🌎"
+      },
+      {
+        "event": "Asia stocks surge as Trump talks lower trade tariffs; China lags",
+        "published": "2025-04-23 02:56:26",
+        "country": "China 🇨🇳"
+      },
+      {
+        "event": "Trump said 'doing fine' with China, has no plans to fire Powell",
+        "published": "2025-04-22 21:38:15",
+        "country": "China 🇨🇳"
+      },
+      {
+        "event": "Stock market today: S&P 500 rallies on U.S-China trade war de-escalation hopes",
+        "published": "2025-04-22 20:05:27",
+        "country": "China 🇨🇳"
+      },
+      {
+        "event": "Buy the dip, sell the rip, or do nothing? Here's what investors are saying",
+        "published": "2025-04-22 10:30:59",
+        "country": "Unknown 🌎"
+      },
+      {
+        "event": "Nvidia stock: Bank of America breaks down 4 key investor concerns",
+        "published": "2025-04-22 12:02:34",
+        "country": "Unknown 🌎"
+      },
+      {
+        "event": "Trump firing Powell alone won’t be enough to cut rates, analyst warns",
+        "published": "2025-04-22 09:15:38",
+        "country": "Unknown 🌎"
+      }
+    ],
+    "headline_sample": [
+      "Today's market tone appears to be mixed with a focus on technology and geopolitical influences. The stock market saw a positive start to May as the Dow advanced 200 points, fueled by renewed interest in AI, driven by strong performances from Microsoft and Meta. This suggests optimism around tech stocks, particularly those involved with artificial intelligence.\n\nOn the cybersecurity front, Harrods joined the growing list of retailers facing cyber threats, highlighting ongoing vulnerabilities in the sector. Meanwhile, Tesla's board is reported to have considered potential successors for Elon Musk, indicating potential shifts in leadership at a major automaker.\n\nAdding to the tech-centric developments, Nvidia is caught in a complex international situation, potentially facing eased chip export restrictions related to the UAE, while simultaneously disputing claims from Anthropic regarding U.S. AI chip export limits to China.\n\nIn the realm of business strategy, Mark Zuckerberg's new moves signal a pronounced shift in the advertising industry landscape, possibly challenging existing norms and sparking changes across this sector.\n\nOverall, the day is characterized by technological advancements and challenges, strategic corporate maneuvers, and geopolitical considerations, reflecting an intricate and dynamic market environment."
+    ],
+    "summarized_event_text": [
+      "Today's market tone reflects a mix of optimism and caution. On one hand, Deutsche Bank has issued an optimistic forecast for the S&P 500, predicting it could reach 7000 by the end of 2025, encouraging bullish sentiment. However, they also describe the macroeconomic outlook as \"murky,\" signaling potential uncertainties ahead.\n\nNegative pressures are evident as former President Trump announced plans to impose additional tariffs on China, leading to a souring in risk appetite. This has contributed to a decline in Bitcoin prices and a drop in Asian stocks, with Japan's Nikkei suffering significant losses.\n\nDespite these concerns, the Dow Jones has hit a record high, buoyed by optimism over Trump's Treasury department pick, suggesting some investor confidence in U.S. fiscal policy. However, Citi warns that the current record-high positioning levels in the S&P 500 bring risks of a pullback.\n\nMeanwhile, speculation around Bitcoin continues, with an analyst labeling it a \"global bubble\" yet suggesting it could still experience unlimited growth. In the sector-specific context, Tesla's stock has seen gains attributed to investor momentum rather than fundamental developments, as noted by UBS.\n\nOverall, the market reflects a contradictory environment: optimism driven by specific bullish forecasts and U.S. policy appointments, tempered by tariff threats and broader economic uncertainty."
+    ]
+  },
+  "symbols": {}
+}

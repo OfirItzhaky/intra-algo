@@ -203,7 +203,7 @@ AVAILABLE_LABEL_METHODS = {
     "multi_class": "option_d_multiclass_next_bar_movement"  # Multi-class next bar movement
 }
 
-LABEL_GENERATION_METHOD = AVAILABLE_LABEL_METHODS["long_all_b"]  # Choose your method here
+LABEL_GENERATION_METHOD = AVAILABLE_LABEL_METHODS["long_bullish_b"]  # Choose your method here
 
 # === Analysis Constants ===
 TICK_SIZE = 0.25
@@ -215,13 +215,13 @@ TARGET_TICKS = 10
 STOP_TICKS = 10
 MIN_DIST = 4
 MAX_DIST = 20.0
-MIN_CLASSIFIER_SIGNALS = 0
+MIN_CLASSIFIER_SIGNALS = 1
 SESSION_START = "17:00"
 SESSION_END = "23:00"
 
 # === Multi-class Settings ===
 MULTI_CLASS_THRESHOLD = 3  # Classes >= 3 are considered positive signals
-USE_MULTI_CLASS = False    # Set to True to use multi-class instead of binary
+USE_MULTI_CLASS = True    # Set to True to use multi-class instead of binary
 
 # === File Paths ===
 REGRESSION_MODEL_PATH = "regression_trainer_model.pkl"
