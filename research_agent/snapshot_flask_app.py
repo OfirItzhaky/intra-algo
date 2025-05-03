@@ -189,14 +189,30 @@ def daily_analysis():
     analyzer.run_daily_analysis()
     cost = fetchers.cost_usd
 
-    market_bias = getattr(analyzer, "market_bias", "Unknown")
-    sectors = ", ".join(CONFIG.get("focus_sectors", []))
-    events = CONFIG.get("summarized_events", [])[:3]
+    market_bias = analyzer.outputs["general"].get("general_bias", "Unknown")
+    sectors = ", ".join(analyzer.outputs["general"].get("smart_money_flow", {}).get("top_sectors", []))
+    events = [e["event"] for e in analyzer.outputs["general"].get("economic_calendar", [])][:3]
     top_events = "\n".join(events)
+
+    # Extract symbol info from self.outputs["symbols"]
+    symbol_insights = []
+    for symbol in DEFAULT_SYMBOLS:
+        data = analyzer.outputs["symbols"].get(symbol, {})
+        profile = data.get("company_profile", {})
+        headlines = data.get("headline_sample", [])
+        sector = profile.get("sector", "Unknown")
+        industry = profile.get("industry", "Unknown")
+        count = len(headlines)
+        symbol_insights.append(f"{symbol} — {count} headlines — Sector: {sector}, Industry: {industry}")
+
+    symbol_summary = "\n".join(symbol_insights)
 
     daily_results = [{
         "filename": "🧭 Daily Market Highlights",
         "text": f"**Bias:** {market_bias}\n**Focus Sectors:** {sectors}\n**Key Events:**\n{top_events}"
+    }, {
+        "filename": "📈 Symbol Insights",
+        "text": symbol_summary
     }, {
         "filename": "📰 Full Daily Summary",
         "text": f"{CONFIG['summarized_news']}\n\n📅 Events:\n{CONFIG['summarized_events']}"
@@ -206,6 +222,8 @@ def daily_analysis():
     }]
 
     return redirect(url_for("index"))
+
+
 
 @app.route("/image_analysis", methods=["POST"])
 def image_analysis():
