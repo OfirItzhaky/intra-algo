@@ -7,3 +7,10 @@ __pycache__/
 
 # (Optional) Ignore local outputs
 research_outputs/
+
+
+*.pyc
+.env
+# Ignore environments and temporary files
+venv/
+
