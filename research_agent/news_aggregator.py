@@ -124,7 +124,7 @@ class NewsAggregator:
         Returns:
             dict: A dictionary with sector, industry, CEO, and description if successful.
         """
-        api_key = self.config.get("fmp_api_key")
+        api_key = self.config.get("fmp_key")
         url = f"https://financialmodelingprep.com/api/v3/profile/{symbol}?apikey={api_key}"
     
         try:

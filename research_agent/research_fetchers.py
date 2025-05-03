@@ -3,6 +3,34 @@ import openai
 from openai import OpenAI
 import feedparser
 import numpy as np
+from config import SUMMARY_CACHE, EVENT_CACHE
+
+def summarize_with_cache(fetchers, merged_headlines, force_refresh=False):
+
+    if not force_refresh and "summarized_news" in SUMMARY_CACHE:
+        print("ℹ️ Using cached summarized news (no additional token cost).")
+        fetchers.token_usage = 0
+        fetchers.cost_usd = 0
+        return SUMMARY_CACHE["summarized_news"]
+    else:
+        print("⚡ Summarizing headlines via LLM...")
+        summarized = fetchers.summarize_headlines_with_llm(merged_headlines)
+        SUMMARY_CACHE["summarized_news"] = summarized
+        return summarized
+
+def summarize_economic_events_with_cache(fetchers, force_refresh=False):
+
+    if not force_refresh and "summarized_events" in EVENT_CACHE:
+        print("ℹ️ Using cached summarized economic events (no additional token cost).")
+        fetchers.token_usage = 0
+        fetchers.cost_usd = 0
+        return EVENT_CACHE["summarized_events"]
+    else:
+        print("⚡ Summarizing economic events via LLM...")
+        events = fetchers.fetch_economic_events()
+        summaries = fetchers.summarize_headlines_with_llm([e["event"] for e in events])
+        EVENT_CACHE["summarized_events"] = summaries
+        return summaries
 
 class ResearchFetchers:
     """
@@ -57,15 +85,19 @@ class ResearchFetchers:
 
         return []
 
+    import google.generativeai as genai  # Make sure this is at the top of your file
+
     def summarize_headlines_with_llm(self, headlines):
         """
         Summarize a list of headlines using the selected LLM provider.
         """
         summary = []
+
+        prompt_text = "Summarize today's market tone based on these headlines:\n\n"
+        prompt_text += "\n".join(f"- {h}" for h in headlines)
+
         if self.model_provider == "openai":
             client = OpenAI(api_key=self.openai_key)
-            prompt_text = "Summarize today's market tone based on these headlines:\n\n"
-            prompt_text += "\n".join(f"- {h}" for h in headlines)
 
             response = client.chat.completions.create(
                 model=self.config["model_name"],
@@ -76,8 +108,6 @@ class ResearchFetchers:
             )
 
             summary_text = response.choices[0].message.content
-
-            # Capture token usage
             usage = response.usage
             self.token_usage = usage.total_tokens
             self.cost_usd = self.calculate_cost_estimate(usage.total_tokens)
@@ -86,10 +116,18 @@ class ResearchFetchers:
             print(f"💵 Estimated LLM Cost: ${self.cost_usd:.4f}")
 
             summary.append(summary_text)
-        
+
         elif self.model_provider == "gemini":
-            # Placeholder: Add Gemini call later if needed
-            pass
+            genai.configure(api_key=self.gemini_key)
+            model = genai.GenerativeModel(self.config["model_name"])
+            response = model.generate_content(prompt_text)
+
+            summary_text = response.text
+            self.token_usage = 0  # Gemini does not return token usage yet
+            self.cost_usd = self.calculate_cost_estimate(0)
+
+            print("📊 Gemini LLM used (token usage unknown)")
+            summary.append(summary_text)
 
         return summary
 

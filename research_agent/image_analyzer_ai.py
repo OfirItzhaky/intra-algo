@@ -6,7 +6,7 @@ from IPython.display import display
 from PIL import ImageGrab
 from datetime import datetime
 from pathlib import Path
-
+import imghdr  # make sure this is at the top of your file
 class ImageAnalyzerAI:
     def __init__(self, model_provider, model_name, api_key):
         self.model_provider = model_provider.lower()
@@ -101,18 +101,23 @@ class ImageAnalyzerAI:
         self.image_analysis = results
         print("✅ Image analysis completed.")
 
-    def analyze_image_with_bytes(self, image_path, rule_id):
+    def analyze_image_with_bytes(self, image_input, rule_id):
         """
-        Analyze an image using the selected rule.
+        Analyze an image from either a file path or raw bytes.
         """
         prompt_block = self.get_prompt_by_id(rule_id)
         if not prompt_block:
             raise ValueError(f"Unknown rule_id: {rule_id}")
-        
-        # Read the image file
-        with open(image_path, "rb") as image_file:
-            image_bytes = image_file.read()
-    
+
+        # 🔍 Check if input is bytes or file path
+        if isinstance(image_input, bytes):
+            image_bytes = image_input
+        elif isinstance(image_input, str):  # assume it's a path
+            with open(image_input, "rb") as image_file:
+                image_bytes = image_file.read()
+        else:
+            raise ValueError("Invalid input: must be file path or raw bytes")
+
         if self.model_provider == "openai":
             return self._analyze_with_openai(image_bytes, prompt_block["prompt"])
         elif self.model_provider == "gemini":
@@ -120,19 +125,26 @@ class ImageAnalyzerAI:
         else:
             raise ValueError(f"Unsupported model provider: {self.model_provider}")
 
+    import imghdr  # make sure this is at the top of your file
+
     def _analyze_with_openai(self, image_bytes, prompt):
         endpoint = "https://api.openai.com/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
+
+        # Proper MIME detection
+        mime_type = imghdr.what(None, h=image_bytes) or "png"
+        image_data = f"data:image/{mime_type};base64,{base64.b64encode(image_bytes).decode()}"
+
         payload = {
             "model": self.model_name,
             "messages": [
                 {"role": "user", "content": [
                     {"type": "text", "text": prompt},
                     {"type": "image_url", "image_url": {
-                        "url": f"data:image/png;base64,{base64.b64encode(image_bytes).decode()}"
+                        "url": image_data
                     }}
                 ]}
             ],
@@ -150,6 +162,8 @@ class ImageAnalyzerAI:
             "Content-Type": "application/json",
             "x-goog-api-key": self.api_key
         }
+
+        mime_type = imghdr.what(None, h=image_bytes) or "image/png"
         encoded_image = base64.b64encode(image_bytes).decode("utf-8")
 
         body = {
@@ -159,7 +173,7 @@ class ImageAnalyzerAI:
                         {"text": prompt},
                         {
                             "inlineData": {
-                                "mimeType": "image/png",
+                                "mimeType": f"image/{mime_type}",
                                 "data": encoded_image
                             }
                         }

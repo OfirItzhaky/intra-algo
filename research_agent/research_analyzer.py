@@ -4,14 +4,16 @@ import json
 import pyperclip
 
 class ResearchAnalyzer:
-    def __init__(self, config, fetchers):
+    def __init__(self, config, fetchers, aggregator):
         self.config = config
         self.fetchers = fetchers
+        self.aggregator = aggregator
         self.outputs = {
             "metadata": {},
             "general": {},
             "symbols": {}
         }
+
 
     def build_metadata(self):
         """
@@ -58,32 +60,28 @@ class ResearchAnalyzer:
 
     def analyze_symbols(self):
         """
-        Analyze requested symbols one by one.
+        Analyze each symbol separately: fetch news, fetch company profile, and prepare outputs.
         """
-        symbols = self.config["symbols"]
-        for symbol in symbols:
-            # Simplified: check if any news contains the symbol
-            found = False
-            symbol_summary = {
-                "sentiment": "Unknown",
-                "unusual_volume": False,
-                "smart_money_flow": "Unknown",
-                "recommended_action": "No strong recommendation"
+        self.outputs["symbols"] = {}
+
+        for symbol in self.config.get("symbols", []):
+            print(f"\n🔎 Analyzing Symbol: {symbol}")
+
+            # Fetch top headlines
+            headlines = self.fetchers.fetch_news_headlines([symbol])
+
+            # ✅ Use aggregator for profile
+            profile_data = self.aggregator.fetch_company_profile(symbol)
+
+            self.outputs["symbols"][symbol] = {
+                "headline_sample": headlines[:5],
+                "company_profile": profile_data,
             }
 
-            # Simulate symbol search in headlines
-            sample_headlines = self.outputs["general"].get("headline_sample", [])
-            for headline in sample_headlines:
-                if symbol in headline:
-                    found = True
-                    symbol_summary["sentiment"] = "Positive"
-                    symbol_summary["recommended_action"] = "Watch for Long Opportunity"
-                    break
-
-            if not found:
-                symbol_summary["status"] = "No fresh news found today."
-
-            self.outputs["symbols"][symbol] = symbol_summary
+            print(f"✅ {symbol}: Found {len(headlines)} headlines.")
+            if profile_data:
+                print(
+                    f"✅ {symbol}: Sector: {profile_data.get('sector', 'N/A')}, Industry: {profile_data.get('industry', 'N/A')}")
 
     def save_report(self):
         """
@@ -149,8 +147,8 @@ class ResearchAnalyzer:
             headlines = self.fetchers.fetch_news_headlines([symbol])
     
             # Fetch company profile using FMP
-            profile_data = self.fetchers.fetch_company_profile(symbol)
-    
+            profile_data = self.aggregator.fetch_company_profile(symbol)
+
             # Optional: If you want to fetch sentiment separately later (not mandatory yet)
             # sentiment_data = self.fetchers.fetch_sentiment(symbol)
     
