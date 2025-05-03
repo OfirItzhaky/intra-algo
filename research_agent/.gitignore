@@ -18,3 +18,5 @@ venv/
 # Ignore Python bytecode
 __pycache__/
 *.pyc
+
+research_agent/intra_algo_research_agent.py
