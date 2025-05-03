@@ -14,3 +14,7 @@ research_outputs/
 # Ignore environments and temporary files
 venv/
 
+
+# Ignore Python bytecode
+__pycache__/
+*.pyc
