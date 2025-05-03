@@ -79,6 +79,18 @@ HTML_TEMPLATE = '''
         font-style: italic;
         background: #fcfcfc;
     }
+    #preview-area {
+      display: flex;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      gap: 8px;
+    }
+    #preview-area img {
+      width: 80px;
+      height: auto;
+      border: 1px solid #ccc;
+      box-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+    }
     button {
         margin-top: 10px;
         padding: 6px 14px;
@@ -125,8 +137,11 @@ HTML_TEMPLATE = '''
 
 <form method="POST" enctype="multipart/form-data" action="/image_analysis" class="form-section">
   <label><b>Paste your image here:</b></label><br>
-  <div contenteditable="true" id="paste-area">Click here and paste image (Ctrl+V)</div>
-  <input type="hidden" name="pasted_image" id="pasted_image_data">
+  <div contenteditable="true" id="paste-area">
+      Click here and paste image (Ctrl+V)
+      <div id="preview-area"></div>
+    </div>
+  <input type="hidden" id="image_count" name="image_count" value="0">
   <br>
   <button type="submit">📸 Run Snapshot Analysis</button>
 </form>
@@ -157,16 +172,30 @@ HTML_TEMPLATE = '''
 </div>
 
 <script>
-document.getElementById('paste-area').addEventListener('paste', function(event) {
+const pasteArea = document.getElementById('paste-area');
+const hiddenInput = document.getElementById("pasted_image_data");
+const previewArea = document.createElement("div");
+previewArea.id = "preview-area";
+pasteArea.parentNode.insertBefore(previewArea, pasteArea.nextSibling);
+
+pasteArea.addEventListener('paste', function(event) {
+  event.preventDefault();  // Stop default image insertion inside contentEditable
   const items = (event.clipboardData || event.originalEvent.clipboardData).items;
+
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
     if (item.type.indexOf('image') === 0) {
       const file = item.getAsFile();
       const reader = new FileReader();
       reader.onload = function(evt) {
-        document.getElementById("pasted_image_data").value = evt.target.result;
-        document.getElementById("paste-area").innerHTML = "<b>✅ Image captured and ready to submit</b>";
+        const img = document.createElement("img");
+        img.src = evt.target.result;
+        img.style.width = "80px";
+        img.style.margin = "4px";
+        previewArea.appendChild(img);
+
+        // If you want to support multiple images in backend, append with comma
+        hiddenInput.value += evt.target.result + "||";
       };
       reader.readAsDataURL(file);
     }
@@ -174,9 +203,11 @@ document.getElementById('paste-area').addEventListener('paste', function(event) 
 });
 </script>
 
+
 </body>
 </html>
 '''
+
 
 @app.route("/", methods=["GET"])
 def index():
@@ -228,31 +259,46 @@ def daily_analysis():
 @app.route("/image_analysis", methods=["POST"])
 def image_analysis():
     global image_results
-    base64_data = request.form.get("pasted_image")
-    if not base64_data or not base64_data.startswith("data:image"):
+    image_results = []
+
+    image_count = int(request.form.get("image_count", 0))
+
+    if image_count == 0:
         image_results = [{
-            "filename": "❌ No image found",
-            "text": "Please paste a valid image using Ctrl+V in the box above."
+            "filename": "❌ No images pasted",
+            "text": "Please paste one or more images using Ctrl+V in the box above."
         }]
         return redirect(url_for("index"))
 
-    try:
-        base64_str = base64_data.split(";base64,")[1]
-        image_bytes = base64.b64decode(base64_str)
-        result = image_ai.analyze_image_with_bytes(image_bytes, rule_id="trend_strength")
-        text = result.get("raw_output", "⚠️ No response received.")
-    except Exception as e:
-        text = f"❌ Error during image decoding or analysis: {e}"
+    for i in range(1, image_count + 1):
+        base64_data = request.form.get(f"image_{i}")
+        if not base64_data or not base64_data.startswith("data:image"):
+            image_results.append({
+                "filename": f"❌ Image {i} invalid",
+                "text": "This pasted image is invalid or missing."
+            })
+            continue
 
-    image_results = [{
-        "filename": "🖼 Pasted Snapshot",
-        "text": text
-    }, {
+        try:
+            base64_str = base64_data.split(";base64,")[1]
+            image_bytes = base64.b64decode(base64_str)
+            result = image_ai.analyze_image_with_bytes(image_bytes, rule_id="trend_strength")
+            text = result.get("raw_output", "⚠️ No response received.")
+        except Exception as e:
+            text = f"❌ Error analyzing image {i}: {e}"
+
+        image_results.append({
+            "filename": f"🖼 Snapshot {i}",
+            "text": text
+        })
+
+    image_results.append({
         "filename": "💰 Cost Summary",
         "text": f"Estimated LLM Cost: ${fetchers.cost_usd:.6f}"
-    }]
+    })
 
     return redirect(url_for("index"))
+
 
 @app.route("/reset", methods=["POST"])
 def reset():
