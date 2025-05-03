@@ -15,8 +15,12 @@ research_outputs/
 venv/
 
 
-# Ignore Python bytecode
-__pycache__/
-*.pyc
 
+
+# Ignore notebook checkpoints
+
+
+# Ignore unwanted notebooks or scripts
+research_agent/intra_algo_research_agent.ipynb
 research_agent/intra_algo_research_agent.py
+
