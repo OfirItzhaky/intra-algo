@@ -149,6 +149,11 @@ HTML_TEMPLATE = '''
 <form method="POST" action="/reset" class="form-section">
   <button type="submit">🔁 Reset</button>
 </form>
+<form method="POST" action="/momentum_analysis" class="form-section" target="_blank">
+  <button type="submit">📈 Generate Momentum Report</button>
+</form>
+
+
 
 <div class="results-container">
   <div class="result-box">
@@ -173,13 +178,12 @@ HTML_TEMPLATE = '''
 
 <script>
 const pasteArea = document.getElementById('paste-area');
-const hiddenInput = document.getElementById("pasted_image_data");
-const previewArea = document.createElement("div");
-previewArea.id = "preview-area";
-pasteArea.parentNode.insertBefore(previewArea, pasteArea.nextSibling);
+const previewArea = document.getElementById("preview-area");
+const imageCountInput = document.getElementById("image_count");
+let imageIndex = 1;
 
 pasteArea.addEventListener('paste', function(event) {
-  event.preventDefault();  // Stop default image insertion inside contentEditable
+  event.preventDefault();  // prevent default paste
   const items = (event.clipboardData || event.originalEvent.clipboardData).items;
 
   for (let i = 0; i < items.length; i++) {
@@ -194,14 +198,22 @@ pasteArea.addEventListener('paste', function(event) {
         img.style.margin = "4px";
         previewArea.appendChild(img);
 
-        // If you want to support multiple images in backend, append with comma
-        hiddenInput.value += evt.target.result + "||";
+        // ⬇️ Create hidden input for each image
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = `image_${imageIndex}`;
+        input.value = evt.target.result;
+        pasteArea.parentNode.appendChild(input);
+
+        imageIndex += 1;
+        imageCountInput.value = imageIndex - 1;
       };
       reader.readAsDataURL(file);
     }
   }
 });
 </script>
+
 
 
 </body>
@@ -253,6 +265,60 @@ def daily_analysis():
     }]
 
     return redirect(url_for("index"))
+
+@app.route("/momentum_analysis", methods=["POST"])
+def momentum_analysis():
+    from market_momentum_scorer import MarketMomentumScorer
+
+    scorer = MarketMomentumScorer()
+    scorer.fetch_data()
+    scorer.compute_indicators()
+
+    results_df = scorer.build_summary_table()
+
+    # Create the HTML table using Plotly
+    import plotly.graph_objects as go
+
+    fig = go.Figure(data=[go.Table(
+        header=dict(
+            values=[
+                "Symbol",
+                "Weekly Momentum", "Touched MA (Weekly)",
+                "Daily Momentum", "Touched MA (Daily)"
+            ],
+            fill_color="lightgray",
+            align="center",
+            font=dict(size=14)
+        ),
+        cells=dict(
+            values=[
+                results_df["symbol"],
+                results_df["momentum_color_weekly"],
+                results_df["touch_recent_ma_weekly"].map({True: "Yes", False: "No"}),
+                results_df["momentum_color_daily"],
+                results_df["touch_recent_ma_daily"].map({True: "Yes", False: "No"})
+            ],
+            fill_color="white",
+            align="center",
+            font=dict(size=12),
+            height=28
+        )
+    )])
+    fig.update_layout(title_text="Momentum Table (Weekly + Daily)", margin=dict(t=50, b=20))
+
+    html_page = f"""
+    <html>
+    <head><title>Momentum Tables</title></head>
+    <body style="font-family: Arial; margin: 40px;">
+      <h1>📊 Momentum Summary</h1>
+      {fig.to_html(full_html=False)}
+    </body>
+    </html>
+    """
+    return html_page
+
+
+
 
 
 
@@ -312,6 +378,6 @@ def reset():
     return redirect(url_for("index"))
 
 if __name__ == "__main__":
-    print("🔐 Loaded OpenAI key (full):", repr(CONFIG["openai_api_key"]))
     print("Length of loaded key:", len(CONFIG["openai_api_key"]))
-    app.run(debug=True)
+    app.run(debug=True, use_reloader=False)
+
