@@ -76,7 +76,18 @@ def upload_csv():
             
             # Read the file directly with pandas
             try:
-                df = pd.read_csv(file)
+                # Check file extension to determine how to read it
+                if filename.lower().endswith(('.txt', '.csv')):
+                    df = pd.read_csv(file)
+                elif filename.lower().endswith('.xlsx') or filename.lower().endswith('.xls'):
+                    df = pd.read_excel(file)
+                else:
+                    # Try to read as CSV by default
+                    try:
+                        df = pd.read_csv(file)
+                    except Exception:
+                        raise Exception("Unsupported file format. Please upload CSV, TXT, or Excel files.")
+                
                 print(f"Successfully read file. Shape: {df.shape}")
                 
                 # Validate data - check minimum requirements
@@ -85,7 +96,7 @@ def upload_csv():
                 
             except Exception as e:
                 print(f"Error reading file: {str(e)}")
-                raise Exception(f"Failed to parse CSV: {str(e)}")
+                raise Exception(f"Failed to parse file: {str(e)}")
             
             if len(df.columns) > 0:
                 df.columns = [col.strip().capitalize() for col in df.columns]
@@ -388,12 +399,91 @@ def daily_analysis():
 
 @app.route("/momentum_analysis", methods=["POST"])
 def momentum_analysis():
-    from market_momentum_scorer import MarketMomentumScorer
+    from market_momentum_scorer import MarketMomentumScorer, SYMBOL_LIST
 
-    scorer = MarketMomentumScorer()
+    print("===== MOMENTUM_ANALYSIS ROUTE CALLED =====")
+    
+    # First check if we have any uploaded files
+    have_uploaded_files = len(symbol_data) > 0
+    
+    if have_uploaded_files:
+        print("Found uploaded files, checking for symbol data")
+        # Extract symbols from uploaded files
+        symbols_from_files = []
+        
+        for filename in symbol_data.keys():
+            base_name = os.path.splitext(filename)[0].lower()
+            # Check for patterns like spy_daily.txt, qqq_weekly.txt
+            if "_daily" in base_name:
+                symbol = base_name.replace("_daily", "").upper()
+                if symbol not in symbols_from_files:
+                    symbols_from_files.append(symbol)
+            elif "_weekly" in base_name:
+                symbol = base_name.replace("_weekly", "").upper()
+                if symbol not in symbols_from_files:
+                    symbols_from_files.append(symbol)
+        
+        if symbols_from_files:
+            print(f"Using symbols from uploaded files: {symbols_from_files}")
+            # Create a subclass that will use our uploaded data instead of fetching
+            class UploadedDataMomentumScorer(MarketMomentumScorer):
+                def fetch_data(self):
+                    print("Using uploaded data instead of fetching from external sources")
+                    # Process uploaded data
+                    for symbol in self.symbols:
+                        # Look for weekly data
+                        weekly_df = None
+                        daily_df = None
+                        
+                        # Check each uploaded file
+                        for filename, data_dict in symbol_data.items():
+                            file_lower = filename.lower()
+                            if symbol.lower() in file_lower:
+                                for interval, df in data_dict.items():
+                                    if interval == "Weekly" or "_weekly" in file_lower:
+                                        weekly_df = df.copy()
+                                        print(f"Using {filename} as weekly data for {symbol}")
+                                    elif interval == "Daily" or "_daily" in file_lower:
+                                        daily_df = df.copy()
+                                        print(f"Using {filename} as daily data for {symbol}")
+                        
+                        # Store the data
+                        if weekly_df is not None:
+                            # Ensure column names are standardized
+                            for col in ['Open', 'High', 'Low', 'Close']:
+                                if col not in weekly_df.columns:
+                                    # Look for similar column names
+                                    matches = [c for c in weekly_df.columns if c.lower() == col.lower()]
+                                    if matches:
+                                        weekly_df[col] = weekly_df[matches[0]]
+                            
+                            self.weekly_data[symbol] = weekly_df
+                        
+                        if daily_df is not None:
+                            # Ensure column names are standardized
+                            for col in ['Open', 'High', 'Low', 'Close']:
+                                if col not in daily_df.columns:
+                                    # Look for similar column names
+                                    matches = [c for c in daily_df.columns if c.lower() == col.lower()]
+                                    if matches:
+                                        daily_df[col] = daily_df[matches[0]]
+                            
+                            self.daily_data[symbol] = daily_df
+                            
+                    print(f"Processed {len(self.weekly_data)} weekly and {len(self.daily_data)} daily datasets")
+            
+            # Use our custom subclass
+            scorer = UploadedDataMomentumScorer(symbols=symbols_from_files)
+        else:
+            print("No symbol data found in uploaded files, using default symbols")
+            scorer = MarketMomentumScorer()
+    else:
+        print("No uploaded files found, using default symbols")
+        scorer = MarketMomentumScorer()
+    
+    # Continue with the standard flow
     scorer.fetch_data()
     scorer.compute_indicators()
-
     results_df = scorer.build_summary_table()
 
     # Create the HTML table using Plotly
@@ -404,11 +494,13 @@ def momentum_analysis():
         return {
             "green": "#c6efce",
             "yellow": "#ffeb9c",
-            "red": "#ffc7ce"
+            "red": "#ffc7ce",
+            "gray": "#eeeeee"  # Add gray for missing data
         }.get(val, "#eeeeee")
 
     momentum_weekly_colors = results_df["momentum_color_weekly"].map(get_color)
     momentum_daily_colors = results_df["momentum_color_daily"].map(get_color)
+    
     fig = go.Figure(data=[go.Table(
         header=dict(
             values=["Symbol", "Weekly Momentum", "Touched MA (Weekly)", "Daily Momentum", "Touched MA (Daily)"],
@@ -436,14 +528,37 @@ def momentum_analysis():
             height=28
         )
     )])
-    fig.update_layout(title_text="Momentum Table (Weekly + Daily)", margin=dict(t=50, b=20))
-
+    
+    # Add source information to the title
+    data_source = "Using Your Uploaded Data" if have_uploaded_files and symbols_from_files else "Using External Data"
+    fig.update_layout(
+        title_text=f"Momentum Table (Weekly + Daily) - {data_source}", 
+        margin=dict(t=50, b=20)
+    )
+    
+    # Enhanced HTML with data source information
     html_page = f"""
     <html>
-    <head><title>Momentum Tables</title></head>
+    <head>
+        <title>Momentum Tables</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    </head>
     <body style="font-family: Arial; margin: 40px;">
-      <h1>📊 Momentum Summary</h1>
-      {fig.to_html(full_html=False)}
+        <div class="container">
+            <h1>📊 Momentum Summary</h1>
+            
+            <div class="alert {'alert-success' if have_uploaded_files and symbols_from_files else 'alert-info'}">
+                <strong>Data Source:</strong> {data_source}
+                {f'<br>Symbols analyzed: {", ".join(symbols_from_files)}' if have_uploaded_files and symbols_from_files else ''}
+                {f'<br>Files used: {", ".join(symbol_data.keys())}' if have_uploaded_files else ''}
+            </div>
+            
+            {fig.to_html(full_html=False)}
+            
+            <div class="mt-3">
+                <a href="/" class="btn btn-primary">Return to Dashboard</a>
+            </div>
+        </div>
     </body>
     </html>
     """

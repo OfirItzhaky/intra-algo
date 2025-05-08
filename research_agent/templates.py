@@ -73,8 +73,8 @@ HTML_TEMPLATE = '''
         <form id="upload-form" action="/upload_csv" method="POST" enctype="multipart/form-data">
           <div class="custom-file-upload mb-3" id="file-drop-area">
             <i class="text-primary fs-1">📁</i>
-            <p class="mb-1">Drag and drop CSV files here</p>
-            <p class="text-muted">or</p>
+            <p class="mb-1">Drag and drop data files here</p>
+            <p class="text-muted">(CSV, TXT, Excel formats supported)</p>
             <input type="file" id="file-input" name="csv_files" multiple accept="*" class="d-none">
             <button type="button" class="btn btn-outline-primary" id="file-select-button">Select Files</button>
           </div>
