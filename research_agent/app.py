@@ -1,0 +1,588 @@
+from flask import Flask, request, render_template_string, redirect, url_for,jsonify
+from datetime import datetime
+import base64
+import plotly.graph_objects as go
+import pandas_ta as ta
+
+from research_fetchers import ResearchFetchers, summarize_with_cache, summarize_economic_events_with_cache
+from research_analyzer import ResearchAnalyzer
+from image_analyzer_ai import ImageAnalyzerAI
+from news_aggregator import NewsAggregator
+import os
+import pandas as pd
+from templates import HTML_TEMPLATE
+
+# === Runtime Constants ===
+today = datetime.today().strftime("%Y-%m-%d")
+DEFAULT_MARKETS = ["US"]
+DEFAULT_SYMBOLS = ["SPY", "QQQ", "AAPL", "NVDA"]
+FOCUS_SECTORS = ["Technology", "Healthcare", "Energy"]
+ONLY_MAJOR_EVENTS = False
+PRINT_LIVE_SUMMARY = True
+COPY_TO_CLIPBOARD = False
+SAVE_DIRECTORY = "research_outputs"
+
+from config import CONFIG, SUMMARY_CACHE, EVENT_CACHE
+
+app = Flask(__name__)
+app.secret_key = 'snapshot-session-key'
+
+# === Instantiate components ===
+fetchers = ResearchFetchers(config=CONFIG)
+aggregator = NewsAggregator(config=CONFIG)
+analyzer = ResearchAnalyzer(config=CONFIG, fetchers=fetchers, aggregator=aggregator)
+
+UPLOAD_FOLDER = os.path.abspath("uploaded_csvs")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+symbol_data = {}  # global store
+image_ai = ImageAnalyzerAI(
+    model_provider=CONFIG["model_provider"],
+    model_name=CONFIG["model_name"],
+    api_key=CONFIG["openai_api_key"] if CONFIG["model_provider"] == "openai" else CONFIG["gemini_api_key"]
+)
+
+# === Prepare context ===
+def prepare_daily_context():
+    news_aggregator = NewsAggregator(config=CONFIG)
+    merged_headlines = news_aggregator.aggregate_news()
+    summarized_news = summarize_with_cache(fetchers, merged_headlines, force_refresh=False)
+    summarized_events = summarize_economic_events_with_cache(fetchers, force_refresh=False)
+
+    CONFIG["summarized_news"] = summarized_news
+    CONFIG["summarized_events"] = summarized_events
+
+# === Shared state ===
+daily_results = []
+image_results = []
+
+@app.route("/upload_csv", methods=["POST"])
+def upload_csv():
+    print("===== UPLOAD_CSV ROUTE CALLED =====")
+    print(f"Request method: {request.method}")
+    print(f"Request files: {len(request.files)}")
+    
+    files = request.files.getlist("csv_files")
+    
+    # Instead of creating a new file_info list, retrieve the existing one or create empty
+    file_info = app.config.get('FILE_INFO', []) 
+    print(f"Existing file info entries: {len(file_info)}")
+    
+    for file in files:
+        filename = file.filename
+        try:
+            print(f"Processing file: {filename}")
+            # Extract symbol from filename 
+            symbol = filename
+            
+            # Read the file directly with pandas
+            try:
+                df = pd.read_csv(file)
+                print(f"Successfully read file. Shape: {df.shape}")
+                
+                # Validate data - check minimum requirements
+                if df.shape[0] < 20:
+                    raise Exception(f"Insufficient data points (minimum 20 required, found {df.shape[0]})")
+                
+            except Exception as e:
+                print(f"Error reading file: {str(e)}")
+                raise Exception(f"Failed to parse CSV: {str(e)}")
+            
+            if len(df.columns) > 0:
+                df.columns = [col.strip().capitalize() for col in df.columns]
+                print(f"Columns: {list(df.columns)}")
+                
+                # Try to identify date column
+                date_columns = [col for col in df.columns if any(date_term in col.lower() 
+                                                            for date_term in ['date', 'time', 'datetime'])]
+                
+                if date_columns:
+                    date_col = date_columns[0]
+                    print(f"Found date column: {date_col}")
+                    # Convert to datetime if it's not already
+                    df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+                    # Sort by date to ensure we get the correct last date
+                    df = df.sort_values(by=date_col)
+                elif isinstance(df.index, pd.DatetimeIndex):
+                    print("Using DatetimeIndex")
+                    # If the index is a datetime index
+                    date_col = 'index'
+                else:
+                    # Try to convert the first column to datetime as a fallback
+                    try:
+                        first_col = df.columns[0]
+                        print(f"Trying to convert first column '{first_col}' to datetime")
+                        df[first_col] = pd.to_datetime(df[first_col], errors='coerce')
+                        if not df[first_col].isna().all():  # At least some values converted successfully
+                            date_col = first_col
+                            print(f"Successfully used first column as date")
+                        else:
+                            date_col = None
+                            print("First column cannot be parsed as dates")
+                    except Exception as date_err:
+                        print(f"Error with first column: {str(date_err)}")
+                        date_col = None
+                
+                # Determine time interval
+                interval_status = "valid"
+                interval_message = ""
+                
+                if date_col:
+                    if date_col == 'index':
+                        dates = df.index
+                    else:
+                        dates = df[date_col].dropna()  # Remove NaT values
+                    
+                    print(f"Found {len(dates)} valid dates")
+                    num_days = (max(dates) - min(dates)).days if len(dates) > 1 else 0
+                    
+                    if len(dates) > 1:
+                        # Calculate the most common difference between consecutive dates
+                        try:
+                            # Sort dates to ensure proper differences
+                            if isinstance(dates, pd.Series):
+                                sorted_dates = dates.sort_values()
+                            else:
+                                sorted_dates = sorted(dates)
+                                
+                            # Calculate differences
+                            date_diffs = []
+                            for i in range(len(sorted_dates)-1):
+                                try:
+                                    diff = (sorted_dates.iloc[i+1] if hasattr(sorted_dates, 'iloc') else sorted_dates[i+1]) - \
+                                           (sorted_dates.iloc[i] if hasattr(sorted_dates, 'iloc') else sorted_dates[i])
+                                    date_diffs.append(diff.total_seconds())
+                                except Exception as diff_err:
+                                    print(f"Error calculating difference: {str(diff_err)}")
+                            
+                            if date_diffs:
+                                # Most common difference in seconds
+                                most_common_diff = pd.Series(date_diffs).mode()[0]
+                                print(f"Most common diff: {most_common_diff} seconds")
+                                
+                                # Determine interval based on seconds
+                                seconds_in_day = 86400
+                                if abs(most_common_diff - seconds_in_day) < 60:  # Allow 1 minute tolerance
+                                    interval = "Daily"
+                                    years = num_days / 365
+                                    if years >= 1:
+                                        interval_message = f"{len(dates)} bars spanning {years:.1f} years"
+                                    else:
+                                        interval_message = f"{len(dates)} bars spanning {num_days} days"
+                                elif abs(most_common_diff - seconds_in_day * 7) < 3600:  # Allow 1 hour tolerance
+                                    interval = "Weekly"
+                                    years = num_days / 365
+                                    if years >= 1:
+                                        interval_message = f"{len(dates)} bars spanning {years:.1f} years"
+                                    else:
+                                        weeks = num_days / 7
+                                        interval_message = f"{len(dates)} bars spanning {int(weeks)} weeks"
+                                elif (abs(most_common_diff - seconds_in_day * 30) < 3600 * 24 or 
+                                    abs(most_common_diff - seconds_in_day * 31) < 3600 * 24):
+                                    interval = "Monthly"
+                                    years = num_days / 365
+                                    if years >= 1:
+                                        interval_message = f"{len(dates)} bars spanning {years:.1f} years"
+                                    else:
+                                        months = num_days / 30
+                                        interval_message = f"{len(dates)} bars spanning {int(months)} months"
+                                elif most_common_diff < seconds_in_day and most_common_diff >= 3600:
+                                    hours = int(most_common_diff/3600)
+                                    interval = f"{hours}h"
+                                    # Flag intraday data that's not in standard intervals
+                                    if hours not in [1, 2, 4, 6, 8, 12]:
+                                        interval_status = "warning"
+                                        interval_message = f"Non-standard intraday interval ({hours}h)"
+                                    else:
+                                        interval_message = f"{len(dates)} bars spanning {num_days} days"
+                                elif most_common_diff < 3600 and most_common_diff >= 60:
+                                    minutes = int(most_common_diff/60)
+                                    interval = f"{minutes}m"
+                                    # Flag intraday data that's not in standard intervals
+                                    if minutes not in [1, 5, 15, 30]:
+                                        interval_status = "warning"
+                                        interval_message = f"Non-standard minute interval ({minutes}m)"
+                                    else:
+                                        interval_message = f"{len(dates)} bars spanning {num_days} days"
+                                elif most_common_diff < 60:
+                                    seconds = int(most_common_diff)
+                                    interval = f"{seconds}s"
+                                    interval_status = "warning"
+                                    interval_message = "Second-based data may be too granular for analysis"
+                                else:
+                                    interval = f"Custom ({most_common_diff/seconds_in_day:.1f} days)"
+                                    interval_status = "warning"
+                                    interval_message = f"Non-standard interval ({most_common_diff/seconds_in_day:.1f} days)"
+                                    
+                                # Check for 0s interval which indicates potential data issues
+                                if most_common_diff == 0:
+                                    interval_status = "error"
+                                    interval_message = "Invalid interval (0s) - data may have duplicate timestamps"
+                            else:
+                                print("No date diffs could be calculated")
+                                interval = "Unknown"
+                                interval_status = "error"
+                                interval_message = "Could not determine data interval"
+                        except Exception as diff_err:
+                            print(f"Error determining interval: {str(diff_err)}")
+                            interval = "Error determining interval"
+                            interval_status = "error"
+                            interval_message = f"Error: {str(diff_err)}"
+                    else:
+                        interval = "Unknown (not enough data points)"
+                        interval_status = "error"
+                        interval_message = "Not enough data points to determine interval"
+                    
+                    # Get last date
+                    try:
+                        if len(dates) > 0:
+                            last_date = dates.iloc[-1] if hasattr(dates, 'iloc') else dates[-1]
+                            last_date_str = last_date.strftime('%Y-%m-%d %H:%M')
+                            print(f"Last date: {last_date_str}")
+                            
+                            # Check if data is recent enough (within last 30 days)
+                            days_old = (datetime.now() - last_date).days
+                            if days_old > 30:
+                                interval_status = "warning" if interval_status == "valid" else interval_status
+                                interval_message += f" Data is {days_old} days old."
+                                
+                        else:
+                            last_date_str = "No valid dates found"
+                            interval_status = "error"
+                            interval_message = "No valid dates found in file"
+                    except Exception as date_format_err:
+                        print(f"Error getting last date: {str(date_format_err)}")
+                        last_date_str = "Error getting last date"
+                        interval_status = "error"
+                        interval_message = f"Error getting last date: {str(date_format_err)}"
+                else:
+                    print("No date column identified")
+                    interval = "Unknown (no date column found)"
+                    last_date_str = "Unknown (no date column found)"
+                    interval_status = "error"
+                    interval_message = "No date column identified in data"
+                
+                # Store the DataFrame in symbol_data
+                if symbol not in symbol_data:
+                    symbol_data[symbol] = {}
+                symbol_data[symbol][interval] = df
+            else:
+                interval = "Unknown (empty file)"
+                last_date_str = "Unknown (empty file)"
+                interval_status = "error"
+                interval_message = "File contains no data columns"
+            
+            # Check if this file already exists in our list (by filename)
+            existing_entry = next((item for item in file_info if item["symbol"] == filename), None)
+            
+            if existing_entry:
+                # Update the existing entry
+                existing_entry.update({
+                    'interval': interval,
+                    'last_bar_date': last_date_str,
+                    'status': interval_status,
+                    'message': interval_message
+                })
+                print(f"Updated existing entry for: {filename}")
+            else:
+                # Add new entry
+                file_info.append({
+                    'symbol': filename,
+                    'interval': interval,
+                    'last_bar_date': last_date_str,
+                    'status': interval_status,
+                    'message': interval_message
+                })
+                print(f"Added new entry for: {filename}")
+            
+            print(f"Successfully processed file: {filename}")
+            
+        except Exception as e:
+            print(f"Error processing file {filename}: {str(e)}")
+            
+            # Check if this file already exists in our list
+            existing_error_entry = next((item for item in file_info if item["symbol"] == filename), None)
+            
+            if existing_error_entry:
+                # Update the existing entry with the error
+                existing_error_entry.update({
+                    'interval': "Error",
+                    'last_bar_date': f"Error: {str(e)}",
+                    'status': "error",
+                    'message': str(e)
+                })
+            else:
+                # Add new error entry
+                file_info.append({
+                    'symbol': filename,
+                    'interval': "Error",
+                    'last_bar_date': f"Error: {str(e)}",
+                    'status': "error",
+                    'message': str(e)
+                })
+    
+    # Save the updated file_info back to app config
+    app.config['FILE_INFO'] = file_info
+    print(f"Total files in memory after processing: {len(file_info)}")
+    
+    return redirect(url_for("index"))
+
+@app.route("/", methods=["GET"])
+def index():
+    print("===== INDEX ROUTE CALLED =====")
+    # Use get() instead of pop() to preserve the file_info between requests
+    file_info = app.config.get('FILE_INFO', [])
+    upload_error = app.config.pop('UPLOAD_ERROR', None)
+    
+    print(f"File info: {file_info}")
+    print(f"Upload error: {upload_error}")
+    
+    return render_template_string(
+        HTML_TEMPLATE, 
+        daily_outputs=daily_results, 
+        image_outputs=image_results,
+        file_info=file_info,
+        upload_error=upload_error
+    )
+
+@app.route("/daily_analysis", methods=["POST"])
+def daily_analysis():
+    print("===== DAILY_ANALYSIS ROUTE CALLED =====")
+    global daily_results
+    prepare_daily_context()
+    analyzer.run_daily_analysis()
+    cost = fetchers.cost_usd
+
+    market_bias = analyzer.outputs["general"].get("general_bias", "Unknown")
+    sectors = ", ".join(analyzer.outputs["general"].get("smart_money_flow", {}).get("top_sectors", []))
+    events = [e["event"] for e in analyzer.outputs["general"].get("economic_calendar", [])][:3]
+    top_events = "\n".join(events)
+
+    # Extract symbol info from self.outputs["symbols"]
+    symbol_insights = []
+    for symbol in DEFAULT_SYMBOLS:
+        data = analyzer.outputs["symbols"].get(symbol, {})
+        profile = data.get("company_profile", {})
+        headlines = data.get("headline_sample", [])
+        sector = profile.get("sector", "Unknown")
+        industry = profile.get("industry", "Unknown")
+        count = len(headlines)
+        symbol_insights.append(f"{symbol} — {count} headlines — Sector: {sector}, Industry: {industry}")
+
+    symbol_summary = "\n".join(symbol_insights)
+
+    daily_results = [{
+        "filename": "🧭 Daily Market Highlights",
+        "text": f"**Bias:** {market_bias}\n**Focus Sectors:** {sectors}\n**Key Events:**\n{top_events}"
+    }, {
+        "filename": "📈 Symbol Insights",
+        "text": symbol_summary
+    }, {
+        "filename": "📰 Full Daily Summary",
+        "text": f"{CONFIG['summarized_news']}\n\n📅 Events:\n{CONFIG['summarized_events']}"
+    }, {
+        "filename": "💰 Cost Summary",
+        "text": f"Total Estimated LLM Cost: ${cost:.6f}"
+    }]
+
+    return redirect(url_for("index"))
+
+@app.route("/momentum_analysis", methods=["POST"])
+def momentum_analysis():
+    from market_momentum_scorer import MarketMomentumScorer
+
+    scorer = MarketMomentumScorer()
+    scorer.fetch_data()
+    scorer.compute_indicators()
+
+    results_df = scorer.build_summary_table()
+
+    # Create the HTML table using Plotly
+    def format_ma_touch(val):
+        return "✔️" if val else "✖️"
+
+    def get_color(val):
+        return {
+            "green": "#c6efce",
+            "yellow": "#ffeb9c",
+            "red": "#ffc7ce"
+        }.get(val, "#eeeeee")
+
+    momentum_weekly_colors = results_df["momentum_color_weekly"].map(get_color)
+    momentum_daily_colors = results_df["momentum_color_daily"].map(get_color)
+    fig = go.Figure(data=[go.Table(
+        header=dict(
+            values=["Symbol", "Weekly Momentum", "Touched MA (Weekly)", "Daily Momentum", "Touched MA (Daily)"],
+            fill_color="lightgray",
+            align="center",
+            font=dict(size=14)
+        ),
+        cells=dict(
+            values=[
+                results_df["symbol"],
+                results_df["momentum_color_weekly"],
+                results_df["touch_recent_ma_weekly"].map(format_ma_touch),
+                results_df["momentum_color_daily"],
+                results_df["touch_recent_ma_daily"].map(format_ma_touch)
+            ],
+            fill_color=[
+                ["white"] * len(results_df),  # Symbol
+                momentum_weekly_colors,
+                ["#f9f9f9"] * len(results_df),
+                momentum_daily_colors,
+                ["#f9f9f9"] * len(results_df)
+            ],
+            align="center",
+            font=dict(size=12),
+            height=28
+        )
+    )])
+    fig.update_layout(title_text="Momentum Table (Weekly + Daily)", margin=dict(t=50, b=20))
+
+    html_page = f"""
+    <html>
+    <head><title>Momentum Tables</title></head>
+    <body style="font-family: Arial; margin: 40px;">
+      <h1>📊 Momentum Summary</h1>
+      {fig.to_html(full_html=False)}
+    </body>
+    </html>
+    """
+    return html_page
+
+@app.route("/image_analysis", methods=["POST"])
+def image_analysis():
+    global image_results
+    image_results = []
+
+    image_count = int(request.form.get("image_count", 0))
+
+    if image_count == 0:
+        image_results = [{
+            "filename": "❌ No images pasted",
+            "text": "Please paste one or more images using Ctrl+V in the box above."
+        }]
+        return redirect(url_for("index"))
+
+    for i in range(1, image_count + 1):
+        base64_data = request.form.get(f"image_{i}")
+        if not base64_data or not base64_data.startswith("data:image"):
+            image_results.append({
+                "filename": f"❌ Image {i} invalid",
+                "text": "This pasted image is invalid or missing."
+            })
+            continue
+
+        try:
+            base64_str = base64_data.split(";base64,")[1]
+            image_bytes = base64.b64decode(base64_str)
+            result = image_ai.analyze_image_with_bytes(image_bytes, rule_id="trend_strength")
+            text = result.get("raw_output", "⚠️ No response received.")
+        except Exception as e:
+            text = f"❌ Error analyzing image {i}: {e}"
+
+        image_results.append({
+            "filename": f"🖼 Snapshot {i}",
+            "text": text
+        })
+
+    image_results.append({
+        "filename": "💰 Cost Summary",
+        "text": f"Estimated LLM Cost: ${fetchers.cost_usd:.6f}"
+    })
+
+    return redirect(url_for("index"))
+
+@app.route("/reset", methods=["POST"])
+def reset():
+    global daily_results, image_results
+    # Clear both previous data and new data
+    SUMMARY_CACHE.clear()
+    EVENT_CACHE.clear()
+    fetchers.token_usage = 0
+    fetchers.cost_usd = 0
+    daily_results = []
+    image_results = []
+    # Clear file upload data
+    symbol_data.clear()
+    app.config['FILE_INFO'] = []
+    print("Reset: Cleared all data")
+    return redirect(url_for("index"))
+
+@app.route("/symbol_chart")
+def symbol_chart():
+    symbol = request.args.get("symbol")
+    import yfinance as yf
+    import plotly.graph_objects as go
+    import pandas as pd
+
+    df = yf.download(symbol, period="3mo", interval="1d", auto_adjust=True)
+
+    # 🔧 FIX MultiIndex issue
+    df.columns = df.columns.get_level_values(0) if isinstance(df.columns, pd.MultiIndex) else [col.split()[0] for col in
+                                                                                               df.columns]
+
+    df["SMA_10"] = ta.sma(df["Close"], length=10)
+    df["SMA_20"] = ta.sma(df["Close"], length=20)
+
+    def momentum_color(row):
+        sma10 = row.get("SMA_10")
+        sma20 = row.get("SMA_20")
+        close = row.get("Close")
+
+        if pd.isna(sma10) or pd.isna(sma20) or pd.isna(close):
+            return "gray"
+
+        if sma10 > sma20 and close > sma20:
+            return "green"
+        elif sma10 > sma20 and close <= sma20:
+            return "yellow"
+        elif sma10 < sma20 and close > sma20:
+            return "yellow"
+        else:
+            return "red"
+
+    df["color"] = df.apply(momentum_color, axis=1)
+
+    fig = go.Figure()
+
+    # Add candles per color
+    for color in ["green", "yellow", "red"]:
+        subset = df[df["color"] == color]
+        fig.add_trace(go.Candlestick(
+            x=subset.index,
+            open=subset["Open"],
+            high=subset["High"],
+            low=subset["Low"],
+            close=subset["Close"],
+            name=color,
+            increasing_line_color="green" if color == "green" else
+                                  "gold" if color == "yellow" else "red",
+            decreasing_line_color="green" if color == "green" else
+                                  "gold" if color == "yellow" else "red",
+            showlegend=True
+        ))
+
+    # Add MAs
+    fig.add_trace(go.Scatter(x=df.index, y=df["SMA_10"], name="SMA 10", line=dict(color="blue", width=1)))
+    fig.add_trace(go.Scatter(x=df.index, y=df["SMA_20"], name="SMA 20", line=dict(color="black", width=1)))
+
+    fig.update_layout(title=f"{symbol} Momentum Chart", xaxis_title="Date", yaxis_title="Price")
+
+    return f"""
+    <html>
+    <head><title>{symbol} Chart</title></head>
+    <body style="font-family:Arial; margin:40px">
+        <h1>📈 {symbol} Momentum Chart</h1>
+        {fig.to_html(full_html=False)}
+    </body>
+    </html>
+    """
+
+@app.route("/test")
+def test_route():
+    return "Test route is working!"
+
+if __name__ == "__main__":
+    print("Length of loaded key:", len(CONFIG["openai_api_key"]))
+    app.run(debug=True, use_reloader=False)
+
