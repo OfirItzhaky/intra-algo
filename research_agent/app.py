@@ -699,5 +699,8 @@ def test_route():
 
 if __name__ == "__main__":
     print("Length of loaded key:", len(CONFIG["openai_api_key"]))
-    app.run(debug=True, use_reloader=False)
+
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
+
 
