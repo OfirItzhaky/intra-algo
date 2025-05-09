@@ -753,19 +753,71 @@ def reset():
 
 @app.route("/symbol_chart")
 def symbol_chart():
-    symbol = request.args.get("symbol")
-    import yfinance as yf
-    import plotly.graph_objects as go
-    import pandas as pd
-
-    df = yf.download(symbol, period="3mo", interval="1d", auto_adjust=True)
-
-    # 🔧 FIX MultiIndex issue
-    df.columns = df.columns.get_level_values(0) if isinstance(df.columns, pd.MultiIndex) else [col.split()[0] for col in
-                                                                                               df.columns]
-
-    df["SMA_10"] = ta.sma(df["Close"], length=10)
-    df["SMA_20"] = ta.sma(df["Close"], length=20)
+    symbol_request = request.args.get("symbol")
+    
+    # Find matching file data in uploaded files
+    chart_data = None
+    file_used = None
+    
+    for filename, data_dict in symbol_data.items():
+        if symbol_request.lower() in filename.lower():
+            # Prefer daily data if available
+            if "Daily" in data_dict:
+                chart_data = data_dict["Daily"]
+                file_used = f"{filename} (Daily)"
+                break
+            # Otherwise use the first available timeframe
+            else:
+                for timeframe, df in data_dict.items():
+                    chart_data = df
+                    file_used = f"{filename} ({timeframe})"
+                    break
+    
+    # If no data found, return error message
+    if chart_data is None:
+        return f"""
+        <html>
+        <head><title>No Data Available</title></head>
+        <body style="font-family:Arial; margin:40px">
+            <h1>⚠️ No Data Available for {symbol_request}</h1>
+            <p>Please upload data files for this symbol.</p>
+            <a href="/" class="btn btn-primary">Return to Dashboard</a>
+        </body>
+        </html>
+        """
+    
+    # Ensure required columns exist
+    required_columns = ['Open', 'High', 'Low', 'Close']
+    for col in required_columns:
+        if col not in chart_data.columns:
+            # Try to find case-insensitive matches
+            matches = [c for c in chart_data.columns if c.lower() == col.lower()]
+            if matches:
+                chart_data[col] = chart_data[matches[0]]
+            else:
+                return f"""
+                <html>
+                <head><title>Missing Data Columns</title></head>
+                <body style="font-family:Arial; margin:40px">
+                    <h1>⚠️ Missing Required Column: {col}</h1>
+                    <p>The data for {symbol_request} must include: Open, High, Low, Close</p>
+                    <a href="/" class="btn btn-primary">Return to Dashboard</a>
+                </body>
+                </html>
+                """
+    
+    # Ensure we have a date column or index
+    if not isinstance(chart_data.index, pd.DatetimeIndex):
+        date_columns = [col for col in chart_data.columns if any(date_term in col.lower() 
+                                                        for date_term in ['date', 'time', 'datetime'])]
+        if date_columns:
+            date_col = date_columns[0]
+            chart_data[date_col] = pd.to_datetime(chart_data[date_col])
+            chart_data.set_index(date_col, inplace=True)
+    
+    # Calculate indicators
+    chart_data["SMA_10"] = ta.sma(chart_data["Close"], length=10)
+    chart_data["SMA_20"] = ta.sma(chart_data["Close"], length=20)
 
     def momentum_color(row):
         sma10 = row.get("SMA_10")
@@ -784,39 +836,51 @@ def symbol_chart():
         else:
             return "red"
 
-    df["color"] = df.apply(momentum_color, axis=1)
+    chart_data["color"] = chart_data.apply(momentum_color, axis=1)
 
     fig = go.Figure()
 
     # Add candles per color
     for color in ["green", "yellow", "red"]:
-        subset = df[df["color"] == color]
-        fig.add_trace(go.Candlestick(
-            x=subset.index,
-            open=subset["Open"],
-            high=subset["High"],
-            low=subset["Low"],
-            close=subset["Close"],
-            name=color,
-            increasing_line_color="green" if color == "green" else
-                                  "gold" if color == "yellow" else "red",
-            decreasing_line_color="green" if color == "green" else
-                                  "gold" if color == "yellow" else "red",
-            showlegend=True
-        ))
+        subset = chart_data[chart_data["color"] == color]
+        if not subset.empty:
+            fig.add_trace(go.Candlestick(
+                x=subset.index,
+                open=subset["Open"],
+                high=subset["High"],
+                low=subset["Low"],
+                close=subset["Close"],
+                name=color,
+                increasing_line_color="green" if color == "green" else
+                                      "gold" if color == "yellow" else "red",
+                decreasing_line_color="green" if color == "green" else
+                                      "gold" if color == "yellow" else "red",
+                showlegend=True
+            ))
 
     # Add MAs
-    fig.add_trace(go.Scatter(x=df.index, y=df["SMA_10"], name="SMA 10", line=dict(color="blue", width=1)))
-    fig.add_trace(go.Scatter(x=df.index, y=df["SMA_20"], name="SMA 20", line=dict(color="black", width=1)))
+    fig.add_trace(go.Scatter(x=chart_data.index, y=chart_data["SMA_10"], name="SMA 10", line=dict(color="blue", width=1)))
+    fig.add_trace(go.Scatter(x=chart_data.index, y=chart_data["SMA_20"], name="SMA 20", line=dict(color="black", width=1)))
 
-    fig.update_layout(title=f"{symbol} Momentum Chart", xaxis_title="Date", yaxis_title="Price")
+    fig.update_layout(title=f"{symbol_request} Momentum Chart (Using Uploaded Data)", xaxis_title="Date", yaxis_title="Price")
 
     return f"""
     <html>
-    <head><title>{symbol} Chart</title></head>
+    <head>
+        <title>{symbol_request} Chart</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    </head>
     <body style="font-family:Arial; margin:40px">
-        <h1>📈 {symbol} Momentum Chart</h1>
-        {fig.to_html(full_html=False)}
+        <div class="container">
+            <h1>📈 {symbol_request} Momentum Chart</h1>
+            <div class="alert alert-info">
+                <strong>Data Source:</strong> {file_used}
+            </div>
+            {fig.to_html(full_html=False)}
+            <div class="mt-3">
+                <a href="/" class="btn btn-primary">Return to Dashboard</a>
+            </div>
+        </div>
     </body>
     </html>
     """

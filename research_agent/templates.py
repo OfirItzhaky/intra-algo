@@ -220,41 +220,24 @@ HTML_TEMPLATE = '''
     </div>
     
     <!-- Symbol Chart Card -->
-    <div class="card">
+    <div class="card mb-4">
       <div class="card-header">
-        <i class="text-primary">📊</i> Symbol Charts
+        <h5 class="mb-0">📊 Symbol Charts</h5>
       </div>
       <div class="card-body">
-        <form method="GET" action="/symbol_chart" target="_blank" class="row g-2">
-          <div class="col-md-8">
-            <select name="symbol" class="form-select" required>
-              <option disabled selected value="">🔍 Choose Symbol</option>
-              <option value="SPY">SPY</option>
-              <option value="QQQ">QQQ</option>
-              <option value="AAPL">AAPL</option>
-              <option value="NVDA">NVDA</option>
-              <option value="RSP">RSP</option>
-              <option value="SDS">SDS</option>
-              <option value="SQQQ">SQQQ</option>
-              <option value="TLT">TLT</option>
-              <option value="GLD">GLD</option>
-              <option value="IBIT">IBIT</option>
-              <option value="SOXL">SOXL</option>
-              <option value="UUP">UUP</option>
-              <option value="DBC">DBC</option>
-              <option value="UVXY">UVXY</option>
-              <option value="XBI">XBI</option>
-              <option value="TSLA">TSLA</option>
-              <option value="EEM">EEM</option>
-              <option value="EFA">EFA</option>
-            </select>
-          </div>
-          <div class="col-md-4">
-            <button type="submit" class="btn btn-primary w-100">
-              <i class="me-2">📉</i> View Chart
-            </button>
-          </div>
-        </form>
+        <select id="symbolSelect" class="form-select">
+          {% if file_info and file_info|length > 0 %}
+            {% for file in file_info %}
+              {% set symbol = file.symbol.split('.')[0] %}
+              <option value="{{ symbol }}">{{ symbol }}</option>
+            {% endfor %}
+          {% else %}
+            <option value="">No data files uploaded</option>
+          {% endif %}
+        </select>
+        <button class="btn btn-primary mt-2" onclick="window.open('/symbol_chart?symbol=' + document.getElementById('symbolSelect').value)">
+          🔍 View Chart
+        </button>
       </div>
     </div>
     
