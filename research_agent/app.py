@@ -14,6 +14,7 @@ from news_aggregator import NewsAggregator
 import os
 import pandas as pd
 from templates import HTML_TEMPLATE
+import traceback
 
 # === Runtime Constants ===
 today = datetime.today().strftime("%Y-%m-%d")
@@ -29,6 +30,9 @@ from config import CONFIG, SUMMARY_CACHE, EVENT_CACHE
 
 app = Flask(__name__)
 app.secret_key = 'snapshot-session-key'
+# Enable debugging and detailed error display
+app.config['DEBUG'] = True
+app.config['PROPAGATE_EXCEPTIONS'] = True
 
 # === Instantiate components ===
 fetchers = ResearchFetchers(config=CONFIG)
@@ -362,253 +366,374 @@ def index():
 def daily_analysis():
     print("===== DAILY_ANALYSIS ROUTE CALLED =====")
     global daily_results
-    prepare_daily_context()
-    analyzer.run_daily_analysis()
-    cost = fetchers.cost_usd
+    
+    try:
+        prepare_daily_context()
+        analyzer.run_daily_analysis()
+        cost = fetchers.cost_usd
 
-    market_bias = analyzer.outputs["general"].get("general_bias", "Unknown")
-    sectors = ", ".join(analyzer.outputs["general"].get("smart_money_flow", {}).get("top_sectors", []))
-    events = [e["event"] for e in analyzer.outputs["general"].get("economic_calendar", [])][:3]
-    top_events = "\n".join(events)
+        market_bias = analyzer.outputs["general"].get("general_bias", "Unknown")
+        sectors = ", ".join(analyzer.outputs["general"].get("smart_money_flow", {}).get("top_sectors", []))
+        events = [e["event"] for e in analyzer.outputs["general"].get("economic_calendar", [])][:3]
+        top_events = "\n".join(events)
 
-    # Extract symbol info from self.outputs["symbols"]
-    symbol_insights = []
-    for symbol in DEFAULT_SYMBOLS:
-        data = analyzer.outputs["symbols"].get(symbol, {})
-        profile = data.get("company_profile", {})
-        headlines = data.get("headline_sample", [])
-        sector = profile.get("sector", "Unknown")
-        industry = profile.get("industry", "Unknown")
-        count = len(headlines)
-        symbol_insights.append(f"{symbol} — {count} headlines — Sector: {sector}, Industry: {industry}")
+        # Extract symbol info from self.outputs["symbols"]
+        symbol_insights = []
+        for symbol in DEFAULT_SYMBOLS:
+            data = analyzer.outputs["symbols"].get(symbol, {})
+            profile = data.get("company_profile", {})
+            headlines = data.get("headline_sample", [])
+            sector = profile.get("sector", "Unknown")
+            industry = profile.get("industry", "Unknown")
+            count = len(headlines)
+            symbol_insights.append(f"{symbol} — {count} headlines — Sector: {sector}, Industry: {industry}")
 
-    symbol_summary = "\n".join(symbol_insights)
+        symbol_summary = "\n".join(symbol_insights)
 
-    daily_results = [{
-        "filename": "🧭 Daily Market Highlights",
-        "text": f"**Bias:** {market_bias}\n**Focus Sectors:** {sectors}\n**Key Events:**\n{top_events}"
-    }, {
-        "filename": "📈 Symbol Insights",
-        "text": symbol_summary
-    }, {
-        "filename": "📰 Full Daily Summary",
-        "text": f"{CONFIG['summarized_news']}\n\n📅 Events:\n{CONFIG['summarized_events']}"
-    }, {
-        "filename": "💰 Cost Summary",
-        "text": f"Total Estimated LLM Cost: ${cost:.6f}"
-    }]
+        daily_results = [{
+            "filename": "🧭 Daily Market Highlights",
+            "text": f"**Bias:** {market_bias}\n**Focus Sectors:** {sectors}\n**Key Events:**\n{top_events}"
+        }, {
+            "filename": "📈 Symbol Insights",
+            "text": symbol_summary
+        }, {
+            "filename": "📰 Full Daily Summary",
+            "text": f"{CONFIG['summarized_news']}\n\n📅 Events:\n{CONFIG['summarized_events']}"
+        }, {
+            "filename": "💰 Cost Summary",
+            "text": f"Total Estimated LLM Cost: ${cost:.6f}"
+        }]
 
-    return redirect(url_for("index"))
+        return redirect(url_for("index"))
+        
+    except Exception as e:
+        error_details = traceback.format_exc()
+        error_message = f"Error in daily analysis: {str(e)}\n\nStacktrace:\n{error_details}"
+        print(error_message)  # Log to console/logs
+        
+        # Add error to daily_results
+        daily_results = [{
+            "filename": "❌ Error in Daily Analysis",
+            "text": error_message
+        }]
+        
+        # Return both HTML display and JSON error
+        return render_template_string("""
+        <html>
+        <head>
+            <title>Error in Daily Analysis</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        </head>
+        <body style="font-family: Arial; margin: 40px;">
+            <div class="container">
+                <div class="alert alert-danger">
+                    <h3>Error in Daily Analysis</h3>
+                    <p>{{ error }}</p>
+                    <pre>{{ traceback }}</pre>
+                </div>
+                <a href="/" class="btn btn-primary">Return to Dashboard</a>
+            </div>
+        </body>
+        </html>
+        """, error=str(e), traceback=error_details)
 
 @app.route("/momentum_analysis", methods=["POST"])
 def momentum_analysis():
     from market_momentum_scorer import MarketMomentumScorer, SYMBOL_LIST
-
+    
     print("===== MOMENTUM_ANALYSIS ROUTE CALLED =====")
+    global daily_results
     
-    # First check if we have any uploaded files
-    have_uploaded_files = len(symbol_data) > 0
-    
-    if have_uploaded_files:
-        print("Found uploaded files, checking for symbol data")
-        # Extract symbols from uploaded files
-        symbols_from_files = []
+    try:
+        # First check if we have any uploaded files
+        have_uploaded_files = len(symbol_data) > 0
         
-        for filename in symbol_data.keys():
-            base_name = os.path.splitext(filename)[0].lower()
-            # Check for patterns like spy_daily.txt, qqq_weekly.txt
-            if "_daily" in base_name:
-                symbol = base_name.replace("_daily", "").upper()
-                if symbol not in symbols_from_files:
-                    symbols_from_files.append(symbol)
-            elif "_weekly" in base_name:
-                symbol = base_name.replace("_weekly", "").upper()
-                if symbol not in symbols_from_files:
-                    symbols_from_files.append(symbol)
-        
-        if symbols_from_files:
-            print(f"Using symbols from uploaded files: {symbols_from_files}")
-            # Create a subclass that will use our uploaded data instead of fetching
-            class UploadedDataMomentumScorer(MarketMomentumScorer):
-                def fetch_data(self):
-                    print("Using uploaded data instead of fetching from external sources")
-                    # Process uploaded data
-                    for symbol in self.symbols:
-                        # Look for weekly data
-                        weekly_df = None
-                        daily_df = None
-                        
-                        # Check each uploaded file
-                        for filename, data_dict in symbol_data.items():
-                            file_lower = filename.lower()
-                            if symbol.lower() in file_lower:
-                                for interval, df in data_dict.items():
-                                    if interval == "Weekly" or "_weekly" in file_lower:
-                                        weekly_df = df.copy()
-                                        print(f"Using {filename} as weekly data for {symbol}")
-                                    elif interval == "Daily" or "_daily" in file_lower:
-                                        daily_df = df.copy()
-                                        print(f"Using {filename} as daily data for {symbol}")
-                        
-                        # Store the data
-                        if weekly_df is not None:
-                            # Ensure column names are standardized
-                            for col in ['Open', 'High', 'Low', 'Close']:
-                                if col not in weekly_df.columns:
-                                    # Look for similar column names
-                                    matches = [c for c in weekly_df.columns if c.lower() == col.lower()]
-                                    if matches:
-                                        weekly_df[col] = weekly_df[matches[0]]
-                            
-                            self.weekly_data[symbol] = weekly_df
-                        
-                        if daily_df is not None:
-                            # Ensure column names are standardized
-                            for col in ['Open', 'High', 'Low', 'Close']:
-                                if col not in daily_df.columns:
-                                    # Look for similar column names
-                                    matches = [c for c in daily_df.columns if c.lower() == col.lower()]
-                                    if matches:
-                                        daily_df[col] = daily_df[matches[0]]
-                            
-                            self.daily_data[symbol] = daily_df
-                            
-                    print(f"Processed {len(self.weekly_data)} weekly and {len(self.daily_data)} daily datasets")
+        if have_uploaded_files:
+            print("Found uploaded files, checking for symbol data")
+            # Extract symbols from uploaded files
+            symbols_from_files = []
             
-            # Use our custom subclass
-            scorer = UploadedDataMomentumScorer(symbols=symbols_from_files)
+            for filename in symbol_data.keys():
+                base_name = os.path.splitext(filename)[0].lower()
+                # Check for patterns like spy_daily.txt, qqq_weekly.txt
+                if "_daily" in base_name:
+                    symbol = base_name.replace("_daily", "").upper()
+                    if symbol not in symbols_from_files:
+                        symbols_from_files.append(symbol)
+                elif "_weekly" in base_name:
+                    symbol = base_name.replace("_weekly", "").upper()
+                    if symbol not in symbols_from_files:
+                        symbols_from_files.append(symbol)
+            
+            if symbols_from_files:
+                print(f"Using symbols from uploaded files: {symbols_from_files}")
+                # Create a subclass that will use our uploaded data instead of fetching
+                class UploadedDataMomentumScorer(MarketMomentumScorer):
+                    def fetch_data(self):
+                        print("Using uploaded data instead of fetching from external sources")
+                        # Process uploaded data
+                        for symbol in self.symbols:
+                            # Look for weekly data
+                            weekly_df = None
+                            daily_df = None
+                            
+                            # Check each uploaded file
+                            for filename, data_dict in symbol_data.items():
+                                file_lower = filename.lower()
+                                if symbol.lower() in file_lower:
+                                    for interval, df in data_dict.items():
+                                        if interval == "Weekly" or "_weekly" in file_lower:
+                                            weekly_df = df.copy()
+                                            print(f"Using {filename} as weekly data for {symbol}")
+                                        elif interval == "Daily" or "_daily" in file_lower:
+                                            daily_df = df.copy()
+                                            print(f"Using {filename} as daily data for {symbol}")
+                            
+                            # Store the data
+                            if weekly_df is not None:
+                                # Ensure column names are standardized
+                                for col in ['Open', 'High', 'Low', 'Close']:
+                                    if col not in weekly_df.columns:
+                                        # Look for similar column names
+                                        matches = [c for c in weekly_df.columns if c.lower() == col.lower()]
+                                        if matches:
+                                            weekly_df[col] = weekly_df[matches[0]]
+                                
+                                self.weekly_data[symbol] = weekly_df
+                            
+                            if daily_df is not None:
+                                # Ensure column names are standardized
+                                for col in ['Open', 'High', 'Low', 'Close']:
+                                    if col not in daily_df.columns:
+                                        # Look for similar column names
+                                        matches = [c for c in daily_df.columns if c.lower() == col.lower()]
+                                        if matches:
+                                            daily_df[col] = daily_df[matches[0]]
+                                
+                                self.daily_data[symbol] = daily_df
+                                
+                        print(f"Processed {len(self.weekly_data)} weekly and {len(self.daily_data)} daily datasets")
+                
+                # Use our custom subclass
+                scorer = UploadedDataMomentumScorer(symbols=symbols_from_files)
+            else:
+                print("No symbol data found in uploaded files, using default symbols")
+                scorer = MarketMomentumScorer()
         else:
-            print("No symbol data found in uploaded files, using default symbols")
+            print("No uploaded files found, using default symbols")
             scorer = MarketMomentumScorer()
-    else:
-        print("No uploaded files found, using default symbols")
-        scorer = MarketMomentumScorer()
+        
+        # Continue with the standard flow
+        scorer.fetch_data()
+        scorer.compute_indicators()
+        results_df = scorer.build_summary_table()
     
-    # Continue with the standard flow
-    scorer.fetch_data()
-    scorer.compute_indicators()
-    results_df = scorer.build_summary_table()
-
-    # Create the HTML table using Plotly
-    def format_ma_touch(val):
-        return "✔️" if val else "✖️"
-
-    def get_color(val):
-        return {
-            "green": "#c6efce",
-            "yellow": "#ffeb9c",
-            "red": "#ffc7ce",
-            "gray": "#eeeeee"  # Add gray for missing data
-        }.get(val, "#eeeeee")
-
-    momentum_weekly_colors = results_df["momentum_color_weekly"].map(get_color)
-    momentum_daily_colors = results_df["momentum_color_daily"].map(get_color)
+        # Create the HTML table using Plotly
+        def format_ma_touch(val):
+            return "✔️" if val else "✖️"
     
-    fig = go.Figure(data=[go.Table(
-        header=dict(
-            values=["Symbol", "Weekly Momentum", "Touched MA (Weekly)", "Daily Momentum", "Touched MA (Daily)"],
-            fill_color="lightgray",
-            align="center",
-            font=dict(size=14)
-        ),
-        cells=dict(
-            values=[
-                results_df["symbol"],
-                results_df["momentum_color_weekly"],
-                results_df["touch_recent_ma_weekly"].map(format_ma_touch),
-                results_df["momentum_color_daily"],
-                results_df["touch_recent_ma_daily"].map(format_ma_touch)
-            ],
-            fill_color=[
-                ["white"] * len(results_df),  # Symbol
-                momentum_weekly_colors,
-                ["#f9f9f9"] * len(results_df),
-                momentum_daily_colors,
-                ["#f9f9f9"] * len(results_df)
-            ],
-            align="center",
-            font=dict(size=12),
-            height=28
+        def get_color(val):
+            return {
+                "green": "#c6efce",
+                "yellow": "#ffeb9c",
+                "red": "#ffc7ce",
+                "gray": "#eeeeee"  # Add gray for missing data
+            }.get(val, "#eeeeee")
+    
+        momentum_weekly_colors = results_df["momentum_color_weekly"].map(get_color)
+        momentum_daily_colors = results_df["momentum_color_daily"].map(get_color)
+        
+        fig = go.Figure(data=[go.Table(
+            header=dict(
+                values=["Symbol", "Weekly Momentum", "Touched MA (Weekly)", "Daily Momentum", "Touched MA (Daily)"],
+                fill_color="lightgray",
+                align="center",
+                font=dict(size=14)
+            ),
+            cells=dict(
+                values=[
+                    results_df["symbol"],
+                    results_df["momentum_color_weekly"],
+                    results_df["touch_recent_ma_weekly"].map(format_ma_touch),
+                    results_df["momentum_color_daily"],
+                    results_df["touch_recent_ma_daily"].map(format_ma_touch)
+                ],
+                fill_color=[
+                    ["white"] * len(results_df),  # Symbol
+                    momentum_weekly_colors,
+                    ["#f9f9f9"] * len(results_df),
+                    momentum_daily_colors,
+                    ["#f9f9f9"] * len(results_df)
+                ],
+                align="center",
+                font=dict(size=12),
+                height=28
+            )
+        )])
+        
+        # Add source information to the title
+        data_source = "Using Your Uploaded Data" if have_uploaded_files and symbols_from_files else "Using External Data"
+        fig.update_layout(
+            title_text=f"Momentum Table (Weekly + Daily) - {data_source}", 
+            margin=dict(t=50, b=20)
         )
-    )])
-    
-    # Add source information to the title
-    data_source = "Using Your Uploaded Data" if have_uploaded_files and symbols_from_files else "Using External Data"
-    fig.update_layout(
-        title_text=f"Momentum Table (Weekly + Daily) - {data_source}", 
-        margin=dict(t=50, b=20)
-    )
-    
-    # Enhanced HTML with data source information
-    html_page = f"""
-    <html>
-    <head>
+        
+        # Enhanced HTML with data source information
+        html_page = f"""
+        <html>
+        <head>
         <title>Momentum Tables</title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    </head>
-    <body style="font-family: Arial; margin: 40px;">
-        <div class="container">
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        </head>
+        <body style="font-family: Arial; margin: 40px;">
+            <div class="container">
             <h1>📊 Momentum Summary</h1>
             
             <div class="alert {'alert-success' if have_uploaded_files and symbols_from_files else 'alert-info'}">
                 <strong>Data Source:</strong> {data_source}
                 {f'<br>Symbols analyzed: {", ".join(symbols_from_files)}' if have_uploaded_files and symbols_from_files else ''}
                 {f'<br>Files used: {", ".join(symbol_data.keys())}' if have_uploaded_files else ''}
-            </div>
+                </div>
             
             {fig.to_html(full_html=False)}
             
             <div class="mt-3">
                 <a href="/" class="btn btn-primary">Return to Dashboard</a>
             </div>
-        </div>
-    </body>
-    </html>
-    """
-    return html_page
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Save results for dashboard display
+        daily_results = [{
+            "filename": "📊 Momentum Analysis",
+            "text": f"Analysis completed for {len(results_df)} symbols.\nWeekly and daily trends calculated with SMA crossover detection.\n\nClick for full report."
+        }]
+        
+        # Return the full HTML page with plots
+        return html_page
+        
+    except Exception as e:
+        error_details = traceback.format_exc()
+        error_message = f"Error in momentum analysis: {str(e)}\n\nStacktrace:\n{error_details}"
+        print(error_message)  # Log to console/logs
+        
+        # Add error to daily_results
+        daily_results = [{
+            "filename": "❌ Error in Momentum Analysis",
+            "text": error_message
+        }]
+        
+        # Return both HTML display and JSON error
+        return render_template_string("""
+        <html>
+        <head>
+            <title>Error in Momentum Analysis</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        </head>
+        <body style="font-family: Arial; margin: 40px;">
+            <div class="container">
+                <div class="alert alert-danger">
+                    <h3>Error in Momentum Analysis</h3>
+                    <p>{{ error }}</p>
+                    <pre>{{ traceback }}</pre>
+                </div>
+                <a href="/" class="btn btn-primary">Return to Dashboard</a>
+            </div>
+        </body>
+        </html>
+        """, error=str(e), traceback=error_details)
 
 @app.route("/image_analysis", methods=["POST"])
 def image_analysis():
+    print("===== IMAGE_ANALYSIS ROUTE CALLED =====")
     global image_results
-    image_results = []
-
-    image_count = int(request.form.get("image_count", 0))
-
-    if image_count == 0:
-        image_results = [{
-            "filename": "❌ No images pasted",
-            "text": "Please paste one or more images using Ctrl+V in the box above."
-        }]
+    
+    try:
+        # Check for file upload from form
+        if 'image_file' in request.files:
+            file = request.files['image_file']
+            if file.filename != '':
+                # Process uploaded file
+                file_bytes = file.read()
+                
+                # Analyze the image
+                analysis = image_ai.analyze_image_with_bytes(file_bytes)
+                if analysis and analysis.get('analysis'):
+                    image_results = [{
+                        "filename": f"📊 Chart Analysis: {file.filename}",
+                        "text": analysis.get('analysis')
+                    }]
+                else:
+                    image_results = [{
+                        "filename": "❓ Chart Analysis",
+                        "text": "No analysis was generated for the image. The image may not contain analyzable chart data."
+                    }]
+        else:
+            # No file upload, try to use one of the other methods
+            method = request.form.get('method', 'upload')
+            
+            if method == 'clipboard':
+                # Process clipboard image
+                if not image_ai.analyze_clipboard_snapshot():
+                    image_results = [{
+                        "filename": "❌ Clipboard Analysis Failed",
+                        "text": "Could not capture clipboard data or analyze the image. Please ensure you have copied an image to your clipboard."
+                    }]
+            elif method == 'pick':
+                # User wants to pick images
+                results = image_ai.pick_snapshots_and_analyze()
+                if results:
+                    image_results = []
+                    for filename, analysis in results.items():
+                        image_results.append({
+                            "filename": f"📊 Chart Analysis: {os.path.basename(filename)}",
+                            "text": analysis.get('analysis', 'No analysis available')
+                        })
+                else:
+                    image_results = [{
+                        "filename": "❌ No Images Analyzed",
+                        "text": "No images were selected or the analysis failed."
+                    }]
+            else:
+                image_results = [{
+                    "filename": "❓ Unknown Method",
+                    "text": f"Unknown analysis method: {method}. Please try again."
+                }]
+        
         return redirect(url_for("index"))
-
-    for i in range(1, image_count + 1):
-        base64_data = request.form.get(f"image_{i}")
-        if not base64_data or not base64_data.startswith("data:image"):
-            image_results.append({
-                "filename": f"❌ Image {i} invalid",
-                "text": "This pasted image is invalid or missing."
-            })
-            continue
-
-        try:
-            base64_str = base64_data.split(";base64,")[1]
-            image_bytes = base64.b64decode(base64_str)
-            result = image_ai.analyze_image_with_bytes(image_bytes, rule_id="trend_strength")
-            text = result.get("raw_output", "⚠️ No response received.")
-        except Exception as e:
-            text = f"❌ Error analyzing image {i}: {e}"
-
-        image_results.append({
-            "filename": f"🖼 Snapshot {i}",
-            "text": text
-        })
-
-    image_results.append({
-        "filename": "💰 Cost Summary",
-        "text": f"Estimated LLM Cost: ${fetchers.cost_usd:.6f}"
-    })
-
-    return redirect(url_for("index"))
+        
+    except Exception as e:
+        error_details = traceback.format_exc()
+        error_message = f"Error in image analysis: {str(e)}\n\nStacktrace:\n{error_details}"
+        print(error_message)  # Log to console/logs
+        
+        # Add error to image_results
+        image_results = [{
+            "filename": "❌ Error in Image Analysis",
+            "text": error_message
+        }]
+        
+        # Return both HTML display and JSON error
+        return render_template_string("""
+        <html>
+        <head>
+            <title>Error in Image Analysis</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        </head>
+        <body style="font-family: Arial; margin: 40px;">
+            <div class="container">
+                <div class="alert alert-danger">
+                    <h3>Error in Image Analysis</h3>
+                    <p>{{ error }}</p>
+                    <pre>{{ traceback }}</pre>
+                </div>
+                <a href="/" class="btn btn-primary">Return to Dashboard</a>
+            </div>
+        </body>
+        </html>
+        """, error=str(e), traceback=error_details)
 
 @app.route("/reset", methods=["POST"])
 def reset():
