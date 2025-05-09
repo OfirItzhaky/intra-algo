@@ -1,3 +1,6 @@
+# Import the patch first to fix numpy.NaN issue
+import patch_numpy
+
 from flask import Flask, request, render_template_string, redirect, url_for,jsonify
 from datetime import datetime
 import base64
