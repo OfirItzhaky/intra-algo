@@ -827,7 +827,16 @@ def test_route():
 
 if __name__ == "__main__":
     import os
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    import sys
+    
+    # For PyCharm debugging compatibility
+    if os.environ.get("PYCHARM_DEBUG") == "1":
+        # Use a completely direct approach that bypasses Flask's run method
+        from werkzeug.serving import run_simple
+        run_simple("127.0.0.1", 8080, app, use_reloader=False, use_debugger=False)
+    else:
+        # For production or normal local run
+        port = int(os.environ.get("PORT", 8080))
+        app.run(host="0.0.0.0", port=port)
 
 
