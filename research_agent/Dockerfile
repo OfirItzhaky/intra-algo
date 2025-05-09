@@ -10,8 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-# Install basic packages except pandas_ta and numpy
-RUN pip install --no-cache-dir $(grep -v "pandas_ta\|numpy" requirements.txt)
+# Install all packages except pandas_ta and numpy
+RUN grep -v "^#\|pandas_ta\|numpy" requirements.txt | grep -v "^$" > cleaned_requirements.txt && \
+    pip install --no-cache-dir -r cleaned_requirements.txt
 
 # Install numpy with specific version
 RUN pip install numpy==1.24.4
