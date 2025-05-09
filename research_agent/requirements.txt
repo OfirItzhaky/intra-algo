@@ -30,5 +30,6 @@ Pillow
 # Utilities
 pyperclip
 
-# For Jupyter integration (may not be needed in deployed env)
+# For Jupyter integration (commented out for deployment)
 # ipywidgets
+# IPython

@@ -2,11 +2,17 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install system dependencies for Pillow
+# Install system dependencies for Pillow and Tkinter
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libc6-dev \
+    python3-tk \
+    tk-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Set environment variable to indicate production environment
+ENV FLASK_ENV=production
+ENV PYTHONUNBUFFERED=1
 
 COPY requirements.txt .
 

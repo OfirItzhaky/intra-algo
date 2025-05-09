@@ -1,12 +1,25 @@
 import base64
 import json
 import requests
-import ipywidgets as widgets
-from IPython.display import display
-from PIL import ImageGrab
 from datetime import datetime
 from pathlib import Path
 import imghdr  # make sure this is at the top of your file
+import os
+
+# Try to import optional dependencies, but don't fail if they're not available
+try:
+    import ipywidgets as widgets
+    from IPython.display import display
+    JUPYTER_AVAILABLE = True
+except ImportError:
+    JUPYTER_AVAILABLE = False
+
+try:
+    from PIL import ImageGrab
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+
 class ImageAnalyzerAI:
     def __init__(self, model_provider, model_name, api_key):
         self.model_provider = model_provider.lower()
@@ -50,6 +63,10 @@ class ImageAnalyzerAI:
         return None
 
     def upload_and_analyze_images(self, rule_id):
+        if not JUPYTER_AVAILABLE:
+            print("Jupyter widgets not available in this environment")
+            return
+            
         self._uploader = widgets.FileUpload(
             accept='.png,.jpg,.jpeg',
             multiple=True,
@@ -125,8 +142,6 @@ class ImageAnalyzerAI:
         else:
             raise ValueError(f"Unsupported model provider: {self.model_provider}")
 
-    import imghdr  # make sure this is at the top of your file
-
     def _analyze_with_openai(self, image_bytes, prompt):
         endpoint = "https://api.openai.com/v1/chat/completions"
         headers = {
@@ -201,6 +216,10 @@ class ImageAnalyzerAI:
                 title="Select snapshot images",
                 filetypes=[("Image Files", "*.png *.jpg *.jpeg")]
             )
+            
+            if not file_paths:
+                print("No files selected.")
+                return {}
 
             results = {}
             for path in file_paths:
@@ -225,6 +244,9 @@ class ImageAnalyzerAI:
             print("✅ All snapshots processed.")
             return results
         
+        except ImportError:
+            print("Tkinter not available in this environment")
+            return {}
         except Exception as e:
             print(f"❌ Error in file dialog: {e}")
             return {}
@@ -233,6 +255,10 @@ class ImageAnalyzerAI:
         """
         Analyzes an image from the clipboard.
         """
+        if not PIL_AVAILABLE:
+            print("PIL ImageGrab not available in this environment")
+            return
+            
         print("📋 Waiting for snapshot from clipboard...")
 
         image = ImageGrab.grabclipboard()
