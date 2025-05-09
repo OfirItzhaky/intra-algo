@@ -103,8 +103,20 @@ Clears all current analysis results and uploaded files to start fresh.
    gcloud run deploy research-agent-service --image gcr.io/research-agent-459210/research-agent --platform managed --region us-west1
    ```
 
-3. **Update Existing Deployment**:
-   After making changes, follow the same process:
+3. **Setting Environment Variables** (API Keys):
+   
+   After deploying for the first time, you must set your API keys as environment variables in Cloud Run:
+   
+   ```
+   gcloud run services update research-agent-service \
+     --set-env-vars "OPENAI_API_KEY=your_openai_key,GEMINI_API_KEY=your_gemini_key,NEWSAPI_KEY=your_newsapi_key,FINNHUB_KEY=your_finnhub_key,FMP_KEY=your_fmp_key" \
+     --region us-west1
+   ```
+   
+   Replace each placeholder (`your_openai_key`, etc.) with your actual API keys. You only need to do this once; the environment variables will persist across future deployments.
+
+4. **Update Existing Deployment**:
+   After making code changes, follow this process:
    ```
    git add .
    git commit -m "Description of changes"
@@ -113,22 +125,29 @@ Clears all current analysis results and uploaded files to start fresh.
    gcloud builds submit --tag gcr.io/research-agent-459210/research-agent ./research_agent/
    gcloud run deploy research-agent-service --image gcr.io/research-agent-459210/research-agent --platform managed --region us-west1
    ```
+   
+   Note: You don't need to set the environment variables again when updating your application.
 
 ### Troubleshooting
 
 - **Build Failures**: Check the build logs for specific error messages
 - **Runtime Errors**: The application now displays detailed error messages instead of generic 500 errors
 - **Dependencies**: Ensure all required libraries are listed in requirements.txt
-- **Environment Variables**: Check that all required API keys are properly set
+- **Environment Variables**: If you get API key errors, verify your environment variables were set correctly:
+  ```
+  gcloud run services describe research-agent-service --region us-west1 --format="yaml(spec.template.spec.containers.env)"
+  ```
 
 ## Environment Configuration
 
 The application requires several API keys for full functionality:
 - OpenAI API key (for AI analysis)
-- Alpha Vantage API key (for market data)
-- Finnhub API key (for news and sentiment)
+- Gemini API key (alternative AI provider)
+- NewsAPI key (for news data)
+- Finnhub key (for market sentiment)
+- FMP key (Financial Modeling Prep, for additional data)
 
-These should be configured in the config.py file or as environment variables in your Cloud Run deployment.
+These should be configured as environment variables in your Cloud Run deployment as described in the deployment section above.
 
 ## Notes for Production
 
