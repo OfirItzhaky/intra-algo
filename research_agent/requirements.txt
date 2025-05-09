@@ -1,5 +1,34 @@
+# Web framework
 Flask
+
+# Data processing
 pandas
-pandas_ta
-plotly
 numpy==1.24.4
+pandas_ta==0.3.14b0
+
+# Visualization
+plotly
+
+# HTTP requests
+requests
+
+# Data sources
+yfinance
+feedparser
+alpha_vantage
+
+# API clients
+openai
+google-generativeai
+
+# Environment variables
+python-dotenv
+
+# Image processing
+Pillow
+
+# Utilities
+pyperclip
+
+# For Jupyter integration (may not be needed in deployed env)
+# ipywidgets
