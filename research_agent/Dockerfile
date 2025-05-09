@@ -1,20 +1,18 @@
-# Use Python 3.12 instead of 3.10
-FROM python:3.12-slim
+FROM python:3.10-slim
 
-# Set working directory
 WORKDIR /app
 
-# Install pip and system dependencies
-RUN apt-get update && apt-get install -y gcc && apt-get clean
-
-# Install Python dependencies
 COPY requirements.txt .
+
+# First install all packages (some may pull newer numpy)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app files
+# Then downgrade numpy explicitly AFTER everything
+RUN pip install numpy==1.24.4 --force-reinstall
+
+# Optional: print to confirm version
+RUN python -c "import numpy; print('✅ Final Numpy version:', numpy.__version__)"
+
 COPY . .
 
-# Start the app
 CMD ["python", "app.py"]
-# Add this line for debug
-RUN python -c "import numpy; print('✅ Numpy version:', numpy.__version__)"
