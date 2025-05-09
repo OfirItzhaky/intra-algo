@@ -16,3 +16,5 @@ COPY . .
 
 # Start the app
 CMD ["python", "app.py"]
+# Add this line for debug
+RUN python -c "import numpy; print('✅ Numpy version:', numpy.__version__)"
