@@ -2,4 +2,4 @@ Flask
 pandas
 pandas_ta
 plotly
-numpy>=1.25
+numpy==1.24.4
