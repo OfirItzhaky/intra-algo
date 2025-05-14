@@ -190,3 +190,28 @@ for model_name, results in [
         print(f"📌 Precision (label=1): {precision:.3f}")
         print(f"📈 Recall (label=1): {report['1']['recall']:.3f}")
         print(f"📊 F1 Score: {report['1']['f1-score']:.3f}")
+
+# === 14. LightGBM Feature Importance Analysis ===
+import matplotlib.pyplot as plt
+import lightgbm as lgb
+
+print("\n📊 === Step 14: LightGBM Feature Importance ===")
+
+lgb_model = classifier_trainer.lgbm_results["model"]
+
+# ✅ Plot gain-based feature importance
+print("🔎 Showing Top 20 Features by 'gain'...")
+lgb.plot_importance(lgb_model, max_num_features=20, importance_type='gain', figsize=(10, 6))
+plt.title("Top 20 LightGBM Features by Gain")
+plt.tight_layout()
+plt.show()
+
+# ✅ Export full importance as DataFrame
+importance_df = pd.DataFrame({
+    "feature": lgb_model.feature_name_,
+    "gain": lgb_model.feature_importances_  # This is "gain"-like importance
+}).sort_values("gain", ascending=False)
+
+
+print("\n📈 Top 10 Important Features (Gain):")
+print(importance_df.head(10).to_string(index=False))
