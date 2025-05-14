@@ -59,23 +59,19 @@ class ClassifierModelTrainer:
     def train_lightgbm(self, X_train, y_train, X_test, y_test):
         print("\n🚀 Training LightGBM...")
 
-        lightgbm_params = {
-            "objective": "binary",
-            "metric": "binary_error",
-            "boosting_type": "gbdt",
-            "learning_rate": 0.05,
-            "num_leaves": 31,
-            "max_depth": 10,
-            "min_data_in_leaf": 10,
-            "verbose": -1
-        }
+        lgbm_model = lgb.LGBMClassifier(
+            objective="binary",
+            boosting_type="gbdt",
+            learning_rate=0.05,
+            num_leaves=31,
+            max_depth=10,
+            min_child_samples=10,
+            verbose=-1,
+            random_state=42
+        )
 
-        lgb_train = lgb.Dataset(X_train, label=y_train)
-        lgb_test = lgb.Dataset(X_test, label=y_test, reference=lgb_train)
-
-        lgb_model = lgb.train(lightgbm_params, lgb_train, valid_sets=[lgb_test])
-
-        probabilities = lgb_model.predict(X_test)
+        lgbm_model.fit(X_train, y_train)
+        probabilities = lgbm_model.predict_proba(X_test)[:, 1]
         predictions = (probabilities >= 0.5).astype(int)
         accuracy = accuracy_score(y_test, predictions)
 
@@ -84,7 +80,7 @@ class ClassifierModelTrainer:
         print(f"\n🎯 LightGBM Accuracy: {accuracy:.4f}")
 
         return {
-            "model": lgb_model,
+            "model": lgbm_model,
             "accuracy": accuracy,
             "evaluation_metrics": classification_report(y_test, predictions, output_dict=True),
             "predictions": predictions
@@ -184,31 +180,26 @@ class ClassifierModelTrainer:
         Returns:
             dict: A dictionary containing predictions from all classifiers.
         """
-
         if self.rf_results is None or self.lgbm_results is None or self.xgb_results is None:
             raise ValueError("❌ Classifier models are not trained! Call `train_all_classifiers` first.")
 
         print("\n🚀 Running classifier predictions...")
 
-        # ✅ Ensure input is aligned with training features
-        required_features = self.rf_results["model"].feature_names_in_  # Assuming all classifiers use the same features
+        # Use RF feature list as reference (all models now use wrappers)
+        required_features = self.rf_results["model"].feature_names_in_
+        X_input = X_input[required_features]
 
-        X_input = X_input[required_features]  # ✅ Keep only relevant columns
-
-        # ✅ Run predictions for each classifier
-        rf_pred = self.rf_results["model"].predict(X_input)
-        lgbm_pred = (self.lgbm_results["model"].predict(X_input) >= 0.5).astype(int)
+        rf_pred = (self.rf_results["model"].predict_proba(X_input)[:, 1] >= 0.5).astype(int)
+        lgbm_pred = (self.lgbm_results["model"].predict_proba(X_input)[:, 1] >= 0.5).astype(int)
         xgb_pred = (self.xgb_results["model"].predict_proba(X_input)[:, 1] >= 0.5).astype(int)
 
         print("✅ Predictions generated for all classifiers!")
 
         return {
-            "RandomForest": rf_pred[0],  # Extract single prediction
+            "RandomForest": rf_pred[0],
             "LightGBM": lgbm_pred[0],
             "XGBoost": xgb_pred[0]
         }
-
-
 
     def evaluate_with_cross_val_smote(self, X_all, y_all, label="N/A"):
         """
