@@ -317,13 +317,12 @@ class FeatureGenerator:
     def add_ichimoku_cloud(self, df, price_high="High", price_low="Low", price_close="Close", tenkan_period=9,
                            kijun_period=26, senkou_b_period=52):
         """
-        Computes Ichimoku Cloud indicators and adds them to the DataFrame.
-
-        Returns:
-        pd.DataFrame: Updated DataFrame with Ichimoku Cloud indicators.
+        Computes Ichimoku Cloud indicators and adds engineered features.
+        Only keeps the top 5 engineered ones based on prior gain evaluation.
         """
         df = df.copy()
 
+        # === Step 1: Raw Ichimoku calculation
         df["Tenkan"] = (df[price_high].rolling(window=tenkan_period).max() + df[price_low].rolling(
             window=tenkan_period).min()) / 2
         df["Kijun"] = (df[price_high].rolling(window=kijun_period).max() + df[price_low].rolling(
@@ -333,7 +332,20 @@ class FeatureGenerator:
         df["SenkouSpan_B"] = ((df[price_high].rolling(window=senkou_b_period).max() +
                                df[price_low].rolling(window=senkou_b_period).min()) / 2).shift(kijun_period)
 
-        print("✅ Ichimoku Cloud indicators added successfully!")
+        # === Step 2: Add only top engineered features
+        if all(col in df.columns for col in ["Chikou", "Close", "SenkouSpan_A", "SenkouSpan_B"]):
+            df["Chikou_minus_Close"] = df["Chikou"] - df["Close"]
+            df["Chikou_vs_Close_sign"] = (df["Chikou"] > df["Close"]).astype(int)
+            df["Chikou_vs_SpanA"] = df["Chikou"] - df["SenkouSpan_A"]
+            df["Chikou_gt_SpanA"] = (df["Chikou"] > df["SenkouSpan_A"]).astype(int)
+            df["SpanA_gt_SpanB"] = (df["SenkouSpan_A"] > df["SenkouSpan_B"]).astype(int)
+
+        # === Step 3: Drop raw Ichimoku components
+        df.drop(columns=[
+            "Tenkan", "Kijun", "Chikou", "SenkouSpan_A", "SenkouSpan_B"
+        ], errors="ignore", inplace=True)
+
+        print("✅ Ichimoku Cloud indicators added successfully (Top 5 features only)!")
         return df
 
     import pandas_ta as ta
