@@ -137,14 +137,14 @@ def run_analyzer_with_training():
     
     # Train classifiers
     classifier_trainer = ClassifierModelTrainer()
+    # ✅ Extract timestamps separately
+    meta_timestamps = df_with_labels[["Date", "Time"]].copy()
+
     classifier_trainer.train_all_classifiers(
-        classifier_X_train_bal, 
-        classifier_y_train_bal, 
-        classifier_X_test, 
-        classifier_y_test, 
-        regression_trainer
+        classifier_X_train_bal, classifier_y_train_bal, classifier_X_test, classifier_y_test,
+        meta_timestamps_df=meta_timestamps
     )
-    
+
     # Save models if enabled
     if SAVE_TRAINED_MODELS:
         n_bars = len(df)

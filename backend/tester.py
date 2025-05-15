@@ -75,9 +75,14 @@ leakage_cols = ["Next_High", "Next_Close", "Next_Open"]
 X_train_bal = X_train_bal.drop(columns=leakage_cols, errors="ignore")
 X_test = X_test.drop(columns=leakage_cols, errors="ignore")
 
+# ✅ Extract timestamps separately
+meta_timestamps = df_labels[["Date", "Time"]].copy()
+
 classifier_trainer.train_all_classifiers(
-    X_train_bal, y_train_bal, X_test, y_test, trainer=regression_trainer
+    X_train_bal, y_train_bal, X_test, y_test,
+    meta_timestamps_df=meta_timestamps
 )
+
 
 
 # === 10. Evaluate and Print Metrics ===
@@ -215,3 +220,21 @@ importance_df = pd.DataFrame({
 
 print("\n📈 Top 10 Important Features (Gain):")
 print(importance_df.head(10).to_string(index=False))
+
+# === 15. Visualize Full LightGBM Feature Importance Trend ===
+# 📌 Purpose: Help visually locate the "elbow point" where additional features contribute very little to model performance.
+# Why? Instead of picking an arbitrary gain threshold (like 50), this step lets us understand where the gain values start to flatten out.
+# This will guide future decisions on feature pruning or reengineering.
+
+# ✅ Prepare the sorted gain values for visualization
+importance_df_sorted = importance_df.sort_values("gain", ascending=False).reset_index(drop=True)
+
+# ✅ Plot gain distribution as a line chart
+plt.figure(figsize=(12, 5))
+plt.plot(importance_df_sorted["gain"].values, marker='o')
+plt.title("🔎 LightGBM Feature Importance (Gain Curve)")
+plt.xlabel("Feature Rank")
+plt.ylabel("Gain Importance")
+plt.grid(True)
+plt.tight_layout()
+plt.show()

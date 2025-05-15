@@ -457,7 +457,13 @@ def train_classifiers():
     print(f"✅ SMOTE applied: Balanced training size = {len(classifier_X_train_bal)}")
     # ✅ Initialize classifier trainer and train all classifiers
     classifier_trainer = ClassifierModelTrainer()
-    classifier_trainer.train_all_classifiers(classifier_X_train_bal, classifier_y_train_bal, classifier_X_test, classifier_y_test, trainer)
+    # ✅ Extract timestamps separately
+    meta_timestamps = df_with_labels[["Date", "Time"]].copy()
+
+    classifier_trainer.train_all_classifiers(
+        classifier_X_train_bal, classifier_y_train_bal, classifier_X_test, classifier_y_test,
+        meta_timestamps_df=meta_timestamps
+    )
 
     def extract_metrics(results):
         return {

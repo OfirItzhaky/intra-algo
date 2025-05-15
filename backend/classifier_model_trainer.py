@@ -139,29 +139,26 @@ class ClassifierModelTrainer:
             "predictions": predictions
         }
 
-    def train_all_classifiers(self, X_train, y_train, X_test, y_test, trainer):
+    def train_all_classifiers(self, X_train, y_train, X_test, y_test, meta_timestamps_df):
         """
         Trains all classifiers and stores results in a single DataFrame.
 
         Parameters:
             X_train, y_train: Training dataset
             X_test, y_test: Test dataset
+            meta_timestamps_df: DataFrame with ['Date', 'Time'], aligned with X_test
         """
         print("\n🚀 Training all classifiers...")
 
-        # ✅ Train all classifiers
         self.rf_results = self.train_random_forest(X_train, y_train, X_test, y_test)
         self.lgbm_results = self.train_lightgbm(X_train, y_train, X_test, y_test)
         self.xgb_results = self.train_xgboost(X_train, y_train, X_test, y_test)
 
-        # ✅ Extract timestamps from trainer.x_test_with_meta using X_test.index
-        timestamps = trainer.x_test_with_meta.loc[X_test.index, ["Date", "Time"]].copy()  # ✅ Extract correct timestamps
-
-        # ✅ Convert Date + Time to a single datetime index
+        # ✅ Use provided timestamp DataFrame
+        timestamps = meta_timestamps_df.loc[X_test.index, ["Date", "Time"]].copy()
         timestamps["Timestamp"] = pd.to_datetime(timestamps["Date"] + " " + timestamps["Time"])
-        timestamps = timestamps["Timestamp"].values  # ✅ Convert to array for indexing
+        timestamps = timestamps["Timestamp"].values
 
-        # ✅ Store classifier predictions with aligned timestamps
         self.classifier_predictions_df = pd.DataFrame({
             "RandomForest": self.rf_results["predictions"],
             "LightGBM": self.lgbm_results["predictions"],
