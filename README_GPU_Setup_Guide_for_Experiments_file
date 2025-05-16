@@ -1,0 +1,40 @@
+# ⚡ GPU Setup Guide for Intra Algo (Windows)
+
+This guide explains how to enable **TensorFlow GPU acceleration** on **Windows** for use with the Intra Algo platform.
+
+---
+
+## ✅ Why Use GPU?
+
+GPU acceleration significantly improves the speed of training deep learning models like CNNs.
+TensorFlow will automatically use the GPU if properly installed and configured.
+
+---
+
+## ⚠️ Compatibility Checklist
+
+| Requirement            | Status |
+|------------------------|--------|
+| ✅ NVIDIA GPU (RTX etc) | Yes    |
+| ✅ Python 3.10           | Required |
+| ✅ TensorFlow 2.10.0     | Required |
+| ✅ DirectML Plugin       | Optional (used here) |
+| ✅ NVIDIA GPU Driver     | Up to date (check `nvidia-smi`) |
+
+---
+
+## 🛠️ Setup Steps
+
+### 1. ✅ Install Python 3.10
+
+Download and install from:
+https://www.python.org/downloads/release/python-3100/
+
+Make sure to **add Python to PATH** during setup.
+
+---
+
+### 2. ✅ Create New Virtual Environment
+
+```bash
+python3.10 -m venv dml_venv

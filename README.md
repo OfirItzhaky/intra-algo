@@ -17,6 +17,8 @@ This platform consists of:
 - **Python Version:** 3.11  
   To ensure compatibility, the platform requires **Python 3.11** (matching the Colab environment used for development).
 
+> **Note:** See GPU instructions below if you want to use TensorFlow with GPU acceleration.
+
 - **Package Manager:** pip (recommended)
 
 ---
@@ -26,6 +28,6 @@ This platform consists of:
 ```text
 intra_algo/
 ├── frontend/            # React UI (User Interaction)
-├── backend/              # FastAPI Backend (Business Logic & Processing)
-├── requirements.txt      # Required Python Libraries
-├── README.md              # This file
+├── backend/             # FastAPI Backend (Business Logic & Processing)
+├── requirements.txt     # Required Python Libraries
+├── README.md            # This file

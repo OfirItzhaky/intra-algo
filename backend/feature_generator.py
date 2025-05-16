@@ -486,7 +486,7 @@ class FeatureGenerator:
         df_features = self.add_cci_average(df_features)
 
         # Step 6: Add Ichimoku Cloud Features
-        df_features = self.add_ichimoku_cloud(df_features)
+        # df_features = self.add_ichimoku_cloud(df_features)
 
         # Step 7: Add ATR-Based Price Features
         df_features = self.add_atr_price_features(df_features)
