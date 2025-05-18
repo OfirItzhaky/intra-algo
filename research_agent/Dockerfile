@@ -34,6 +34,10 @@ RUN python -c "import requests; print('Requests installed successfully')"
 # Copy all code
 COPY . .
 
+# Create data directories and ensure they have correct permissions
+RUN mkdir -p uploaded_csvs temp_uploads data && \
+    chmod 777 uploaded_csvs temp_uploads data
+
 # Test our fix works
 RUN python -c "import fix_numpy; from pandas_ta.momentum.squeeze_pro import squeeze_pro; print('Successfully imported squeeze_pro with our fix')"
 

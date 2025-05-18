@@ -37,4 +37,28 @@ Make sure to **add Python to PATH** during setup.
 ### 2. ✅ Create New Virtual Environment
 
 ```bash
-python3.10 -m venv dml_venv
+python3.10 -m venv dml_33venv
+
+
+## ⚠️ GPU Crash Fix (zlibwapi.dll Missing)
+
+If you encounter a crash like:
+Could not locate zlibwapi.dll. Please make sure it is in your library path!
+Process finished with exit code -1073740791 (0xC0000409)
+
+
+This means TensorFlow requires `zlibwapi.dll` for GPU computation but couldn't find it.
+
+### 🛠️ Solution:
+
+1. Download `zlibwapi.dll` from a trusted source such as:
+   https://www.dll-files.com/zlibwapi.dll.html
+
+2. Place the DLL in:
+   - `C:\Windows\System32\` (or another folder listed in your system's `PATH`)
+
+3. Restart PyCharm and your machine if needed.
+
+After this fix, TensorFlow will be able to use the GPU without crashing.
+
+

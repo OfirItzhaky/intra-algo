@@ -342,11 +342,27 @@ def upload_csv():
     app.config['FILE_INFO'] = file_info
     print(f"Total files in memory after processing: {len(file_info)}")
     
-    return redirect(url_for("index"))
+    return redirect(url_for("index", no_reset="true"))
 
 @app.route("/", methods=["GET"])
 def index():
     print("===== INDEX ROUTE CALLED =====")
+    
+    # Perform a soft reset when the page is loaded
+    # This ensures that refreshing the page gives a fresh start
+    if request.args.get('no_reset') != 'true':
+        print("Performing soft reset on page load")
+        global daily_results, image_results, symbol_data
+        
+        # Clear in-memory data
+        daily_results = []
+        image_results = []
+        symbol_data.clear()
+        app.config['FILE_INFO'] = []
+        
+        # Don't clear API caches or delete files on page refresh
+        # This is a "soft reset" - for full reset, user can click the Reset button
+    
     # Use get() instead of pop() to preserve the file_info between requests
     file_info = app.config.get('FILE_INFO', [])
     upload_error = app.config.pop('UPLOAD_ERROR', None)
@@ -404,7 +420,7 @@ def daily_analysis():
             "text": f"Total Estimated LLM Cost: ${cost:.6f}"
         }]
 
-        return redirect(url_for("index"))
+        return redirect(url_for("index", no_reset="true"))
         
     except Exception as e:
         error_details = traceback.format_exc()
@@ -702,7 +718,7 @@ def image_analysis():
                     "text": f"Unknown analysis method: {method}. Please try again."
                 }]
         
-        return redirect(url_for("index"))
+        return redirect(url_for("index", no_reset="true"))
         
     except Exception as e:
         error_details = traceback.format_exc()
@@ -737,18 +753,39 @@ def image_analysis():
 
 @app.route("/reset", methods=["POST"])
 def reset():
-    global daily_results, image_results
-    # Clear both previous data and new data
+    global daily_results, image_results, symbol_data
+    
+    # Clear in-memory data
     SUMMARY_CACHE.clear()
     EVENT_CACHE.clear()
     fetchers.token_usage = 0
     fetchers.cost_usd = 0
     daily_results = []
     image_results = []
-    # Clear file upload data
     symbol_data.clear()
     app.config['FILE_INFO'] = []
-    print("Reset: Cleared all data")
+    
+    # Clear files from upload directories
+    try:
+        # Clear uploaded_csvs directory
+        for filename in os.listdir(UPLOAD_FOLDER):
+            file_path = os.path.join(UPLOAD_FOLDER, filename)
+            if os.path.isfile(file_path):
+                os.unlink(file_path)
+                print(f"Deleted: {file_path}")
+                
+        # Clear temp_uploads directory if it exists
+        temp_dir = os.path.abspath("temp_uploads")
+        if os.path.exists(temp_dir):
+            for filename in os.listdir(temp_dir):
+                file_path = os.path.join(temp_dir, filename)
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+                    print(f"Deleted: {file_path}")
+    except Exception as e:
+        print(f"Error clearing files: {str(e)}")
+    
+    print("Reset: Cleared all data and files")
     return redirect(url_for("index"))
 
 @app.route("/symbol_chart")

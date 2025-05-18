@@ -81,14 +81,18 @@ class ImageAnalyzerAI:
             print(f"❌ Invalid rule_id: {rule_id}")
             return
 
+        # Create temp directory if it doesn't exist
+        temp_dir = os.path.abspath("temp_uploads")
+        os.makedirs(temp_dir, exist_ok=True)
+
         results = {}
         for filename, fileinfo in self._uploader.value.items():
             symbol = filename.split(".")[0].upper()
             image_bytes = fileinfo['content']
             print(f"🧠 Analyzing {symbol}...")
 
+            temp_path = os.path.join(temp_dir, filename)
             try:
-                temp_path = f"/tmp/{filename}"
                 with open(temp_path, "wb") as temp:
                     temp.write(image_bytes)
 
@@ -114,6 +118,13 @@ class ImageAnalyzerAI:
                     "timeframe": prompt_block["timeframe"],
                     "explanation": f"⚠️ Failed to process image for {symbol}: {e}"
                 }
+            finally:
+                # Clean up the temporary file
+                try:
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+                except Exception as e:
+                    print(f"Warning: Could not remove temporary file {filename}: {e}")
 
         self.image_analysis = results
         print("✅ Image analysis completed.")
@@ -221,12 +232,14 @@ class ImageAnalyzerAI:
                 print("No files selected.")
                 return {}
 
+            # No need to create temporary files since we're using the original files directly
             results = {}
             for path in file_paths:
                 symbol = Path(path).stem.upper()
                 print(f"🧠 Analyzing {symbol}...")
 
                 try:
+                    # Using the file directly rather than creating a temporary copy
                     result = self.analyze_image_with_bytes(path, rule_id)
                     results[symbol] = {
                         "raw_output": result["raw_output"],
@@ -266,12 +279,26 @@ class ImageAnalyzerAI:
             print("❌ No image found in clipboard. Use Snipping Tool or press PrtScr, then try again.")
             return
 
+        # Create a temp folder if it doesn't exist
+        temp_dir = os.path.abspath("temp_uploads")
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # Save the file to the temp directory
         file_name = f"snapshot_{datetime.now().strftime('%H%M%S')}.png"
-        image_path = Path(file_name)
+        image_path = os.path.join(temp_dir, file_name)
         image.save(image_path)
 
-        print(f"✅ Snapshot saved as: {image_path.name}")
-        result = self.analyze_image_with_bytes(str(image_path), rule_id)
-        print("🔍 Analysis Result:")
-        print(result["raw_output"])
-        return result 
+        try:
+            print(f"✅ Snapshot saved as: {os.path.basename(image_path)}")
+            result = self.analyze_image_with_bytes(image_path, rule_id)
+            print("🔍 Analysis Result:")
+            print(result["raw_output"])
+            return result
+        finally:
+            # Clean up the temporary file
+            try:
+                if os.path.exists(image_path):
+                    os.unlink(image_path)
+                    print(f"✓ Removed temporary file: {os.path.basename(image_path)}")
+            except Exception as e:
+                print(f"Warning: Could not remove temporary file: {e}") 

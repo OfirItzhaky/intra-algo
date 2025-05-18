@@ -228,11 +228,35 @@ class LabelGenerator:
                 raise ValueError(f"Missing required column: {col}")
 
         df["Next_Close"] = df["Close"].shift(-1)
-        df["Next_Open"] = df["Open"].shift(-1)
+        df["long_good_bar_label"] = (df["Next_Close"] > df["Close"]).astype(int)
 
-        df["long_good_bar_label"] = (df["Next_Close"] > df["Next_Open"]).astype(int)
+        df = df.drop(columns=["Next_Close"], errors="ignore")  # ⛔ Prevent leakage
 
         print("✅ Goal D Label applied (1 = green bar) TEST.")
+        return df
+
+    def green_bar_with_tick_threshold_label(self, df: pd.DataFrame, tick_size: float = 0.5) -> pd.DataFrame:
+        """
+        Label = 1 if (Next Close - Current Close) > tick_size threshold, else 0.
+        Helps reduce noise from small price fluctuations.
+
+        Parameters:
+            df (pd.DataFrame): DataFrame with "Close" column.
+            tick_size (float): Minimum price movement (in points/ticks) to consider as a valid upward bar.
+
+        Returns:
+            pd.DataFrame: Updated DataFrame with "tick_threshold_label" column.
+        """
+        df = df.copy()
+
+        if "Close" not in df.columns:
+            raise ValueError("Missing required column: 'Close'")
+
+        df["Next_Close"] = df["Close"].shift(-1)
+        df["tick_threshold_label"] = ((df["Next_Close"] - df["Close"]) > tick_size).astype(int)
+        df = df.drop(columns=["Next_Close"], errors="ignore")  # ⛔ Prevent leakage
+
+        print(f"✅ Tick-threshold label applied (tick size = {tick_size})")
         return df
 
     def option_d_multiclass_next_bar_movement(self, df: pd.DataFrame) -> pd.DataFrame:
