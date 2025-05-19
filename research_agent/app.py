@@ -455,12 +455,32 @@ def daily_analysis():
 
 @app.route("/momentum_analysis", methods=["POST"])
 def momentum_analysis():
-    from market_momentum_scorer import MarketMomentumScorer, SYMBOL_LIST
-    
     print("===== MOMENTUM_ANALYSIS ROUTE CALLED =====")
     global daily_results
-    
+
     try:
+        have_uploaded_files = len(symbol_data) > 0
+
+        if not have_uploaded_files:
+            # Show a message if no files are uploaded
+            return render_template_string("""
+            <html>
+            <head>
+                <title>No Uploaded Files</title>
+                <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+            </head>
+            <body style="font-family: Arial; margin: 40px;">
+                <div class="container">
+                    <div class="alert alert-warning">
+                        <h3>No Uploaded Files</h3>
+                        <p>Please upload data files to generate a momentum report.</p>
+                    </div>
+                    <a href="/" class="btn btn-primary">Return to Dashboard</a>
+                </div>
+            </body>
+            </html>
+            """)
+
         # First check if we have any uploaded files
         have_uploaded_files = len(symbol_data) > 0
         
