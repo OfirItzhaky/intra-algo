@@ -7,6 +7,7 @@ import base64
 import plotly.graph_objects as go
 import pandas_ta as ta
 
+from market_momentum_scorer import MarketMomentumScorer
 from research_fetchers import ResearchFetchers, summarize_with_cache, summarize_economic_events_with_cache
 from research_analyzer import ResearchAnalyzer
 from image_analyzer_ai import ImageAnalyzerAI
