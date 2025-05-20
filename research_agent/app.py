@@ -482,85 +482,87 @@ def momentum_analysis():
             </html>
             """)
 
-        # First check if we have any uploaded files
-        have_uploaded_files = len(symbol_data) > 0
-        
-        if have_uploaded_files:
-            print("Found uploaded files, checking for symbol data")
-            # Extract symbols from uploaded files
-            symbols_from_files = []
-            
-            for filename in symbol_data.keys():
-                base_name = os.path.splitext(filename)[0].lower()
-                # Check for patterns like spy_daily.txt, qqq_weekly.txt
-                if "_daily" in base_name:
-                    symbol = base_name.replace("_daily", "").upper()
-                    if symbol not in symbols_from_files:
-                        symbols_from_files.append(symbol)
-                elif "_weekly" in base_name:
-                    symbol = base_name.replace("_weekly", "").upper()
-                    if symbol not in symbols_from_files:
-                        symbols_from_files.append(symbol)
-            
-            if symbols_from_files:
-                print(f"Using symbols from uploaded files: {symbols_from_files}")
-                # Create a subclass that will use our uploaded data instead of fetching
-                class UploadedDataMomentumScorer(MarketMomentumScorer):
-                    def fetch_data(self):
-                        print("Using uploaded data instead of fetching from external sources")
-                        # Process uploaded data
-                        for symbol in self.symbols:
-                            # Look for weekly data
-                            weekly_df = None
-                            daily_df = None
-                            
-                            # Check each uploaded file
-                            for filename, data_dict in symbol_data.items():
-                                file_lower = filename.lower()
-                                if symbol.lower() in file_lower:
-                                    for interval, df in data_dict.items():
-                                        if interval == "Weekly" or "_weekly" in file_lower:
-                                            weekly_df = df.copy()
-                                            print(f"Using {filename} as weekly data for {symbol}")
-                                        elif interval == "Daily" or "_daily" in file_lower:
-                                            daily_df = df.copy()
-                                            print(f"Using {filename} as daily data for {symbol}")
-                            
-                            # Store the data
-                            if weekly_df is not None:
-                                # Ensure column names are standardized
-                                for col in ['Open', 'High', 'Low', 'Close']:
-                                    if col not in weekly_df.columns:
-                                        # Look for similar column names
-                                        matches = [c for c in weekly_df.columns if c.lower() == col.lower()]
-                                        if matches:
-                                            weekly_df[col] = weekly_df[matches[0]]
-                                
-                                self.weekly_data[symbol] = weekly_df
-                            
-                            if daily_df is not None:
-                                # Ensure column names are standardized
-                                for col in ['Open', 'High', 'Low', 'Close']:
-                                    if col not in daily_df.columns:
-                                        # Look for similar column names
-                                        matches = [c for c in daily_df.columns if c.lower() == col.lower()]
-                                        if matches:
-                                            daily_df[col] = daily_df[matches[0]]
-                                
-                                self.daily_data[symbol] = daily_df
-                                
-                        print(f"Processed {len(self.weekly_data)} weekly and {len(self.daily_data)} daily datasets")
+        # Only use UploadedDataMomentumScorer
+        from market_momentum_scorer import MarketMomentumScorer
+
+        symbols_from_files = []
+        for filename in symbol_data.keys():
+            base_name = os.path.splitext(filename)[0].lower()
+            if "_daily" in base_name:
+                symbol = base_name.replace("_daily", "").upper()
+                if symbol not in symbols_from_files:
+                    symbols_from_files.append(symbol)
+            elif "_weekly" in base_name:
+                symbol = base_name.replace("_weekly", "").upper()
+                if symbol not in symbols_from_files:
+                    symbols_from_files.append(symbol)
+
+        if not symbols_from_files:
+            return render_template_string("""
+            <html>
+            <head>
+                <title>No Valid Symbols</title>
+                <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+            </head>
+            <body style="font-family: Arial; margin: 40px;">
+                <div class="container">
+                    <div class="alert alert-warning">
+                        <h3>No Valid Symbols Found</h3>
+                        <p>Your uploaded files did not contain recognizable symbols. Please check your files and try again.</p>
+                    </div>
+                    <a href="/" class="btn btn-primary">Return to Dashboard</a>
+                </div>
+            </body>
+            </html>
+            """)
+
+        class UploadedDataMomentumScorer(MarketMomentumScorer):
+            def fetch_data(self):
+                print("Using uploaded data instead of fetching from external sources")
+                # Process uploaded data
+                for symbol in self.symbols:
+                    # Look for weekly data
+                    weekly_df = None
+                    daily_df = None
+                    
+                    # Check each uploaded file
+                    for filename, data_dict in symbol_data.items():
+                        file_lower = filename.lower()
+                        if symbol.lower() in file_lower:
+                            for interval, df in data_dict.items():
+                                if interval == "Weekly" or "_weekly" in file_lower:
+                                    weekly_df = df.copy()
+                                    print(f"Using {filename} as weekly data for {symbol}")
+                                elif interval == "Daily" or "_daily" in file_lower:
+                                    daily_df = df.copy()
+                                    print(f"Using {filename} as daily data for {symbol}")
+                    
+                    # Store the data
+                    if weekly_df is not None:
+                        # Ensure column names are standardized
+                        for col in ['Open', 'High', 'Low', 'Close']:
+                            if col not in weekly_df.columns:
+                                # Look for similar column names
+                                matches = [c for c in weekly_df.columns if c.lower() == col.lower()]
+                                if matches:
+                                    weekly_df[col] = weekly_df[matches[0]]
+                        
+                        self.weekly_data[symbol] = weekly_df
+                    
+                    if daily_df is not None:
+                        # Ensure column names are standardized
+                        for col in ['Open', 'High', 'Low', 'Close']:
+                            if col not in daily_df.columns:
+                                # Look for similar column names
+                                matches = [c for c in daily_df.columns if c.lower() == col.lower()]
+                                if matches:
+                                    daily_df[col] = daily_df[matches[0]]
+                        
+                        self.daily_data[symbol] = daily_df
+                        
+                print(f"Processed {len(self.weekly_data)} weekly and {len(self.daily_data)} daily datasets")
                 
-                # Use our custom subclass
-                scorer = UploadedDataMomentumScorer(symbols=symbols_from_files)
-            else:
-                print("No symbol data found in uploaded files, using default symbols")
-                scorer = MarketMomentumScorer()
-        else:
-            print("No uploaded files found, using default symbols")
-            scorer = MarketMomentumScorer()
-        
-        # Continue with the standard flow
+        scorer = UploadedDataMomentumScorer(symbols=symbols_from_files)
         scorer.fetch_data()
         scorer.compute_indicators()
         results_df = scorer.build_summary_table()
@@ -609,7 +611,7 @@ def momentum_analysis():
         )])
         
         # Add source information to the title
-        data_source = "Using Your Uploaded Data" if have_uploaded_files and symbols_from_files else "Using External Data"
+        data_source = "Using Your Uploaded Data"
         fig.update_layout(
             title_text=f"Momentum Table (Weekly + Daily) - {data_source}", 
             margin=dict(t=50, b=20)
@@ -626,10 +628,10 @@ def momentum_analysis():
             <div class="container">
             <h1>📊 Momentum Summary</h1>
             
-            <div class="alert {'alert-success' if have_uploaded_files and symbols_from_files else 'alert-info'}">
+            <div class="alert alert-success">
                 <strong>Data Source:</strong> {data_source}
-                {f'<br>Symbols analyzed: {", ".join(symbols_from_files)}' if have_uploaded_files and symbols_from_files else ''}
-                {f'<br>Files used: {", ".join(symbol_data.keys())}' if have_uploaded_files else ''}
+                {f'<br>Symbols analyzed: {", ".join(symbols_from_files)}' if symbols_from_files else ''}
+                {f'<br>Files used: {", ".join(symbol_data.keys())}' if symbols_from_files else ''}
                 </div>
             
             {fig.to_html(full_html=False)}
