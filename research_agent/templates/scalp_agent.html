@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Scalping Agent</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+    #paste-dropzone:focus, #paste-dropzone:hover {
+        border-color: #0d6efd;
+        background: #e7f1ff;
+        outline: none;
+    }
+    </style>
+</head>
+<body style="font-family: Arial; margin: 40px;">
+<div class="container">
+    <h1>📈 Scalping Agent</h1>
+    <form method="POST" enctype="multipart/form-data" class="mb-4">
+        <div class="mb-3">
+            <label for="max_risk" class="form-label">Max Risk</label>
+            <input type="number" step="any" class="form-control" id="max_risk" name="max_risk" placeholder="Enter max risk" required>
+        </div>
+        <div class="mb-3">
+            <label for="max_risk_per_trade" class="form-label">Max Risk Per Trade</label>
+            <input type="number" step="any" class="form-control" id="max_risk_per_trade" name="max_risk_per_trade" placeholder="Enter max risk per trade (optional)">
+        </div>
+        {% if show_csv_upload %}
+        <div class="mb-3">
+            <label for="csv_file" class="form-label">Upload CSV (OHLCV + indicators)</label>
+            <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv,.txt,.xlsx,.xls">
+        </div>
+        {% endif %}
+        <div id="paste-dropzone" class="border border-primary rounded p-4 mb-3 text-center" tabindex="0" style="background: #f8f9fa; cursor: pointer;">
+            <span class="text-secondary">
+                <strong>📋 Paste chart image here (Ctrl+V)</strong><br>
+                <small>Or use the file upload below</small>
+            </span>
+            <div id="paste-preview" class="mt-2"></div>
+        </div>
+        <div class="mb-3">
+            <label for="session_notes" class="form-label">Session Notes (optional)</label>
+            <textarea class="form-control" id="session_notes" name="session_notes" rows="3" placeholder="Enter any notes..."></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Run Agent</button>
+        <a href="/" class="btn btn-secondary ms-2">Back to Dashboard</a>
+    </form>
+    {% if result %}
+    <div class="alert alert-info">
+        <h5>Agent Input Summary</h5>
+        <ul>
+            <li><strong>Max Risk:</strong> {{ result.max_risk }}</li>
+            <li><strong>CSV File:</strong> {{ result.csv_filename }}</li>
+            <li><strong>Chart Image:</strong> {{ result.chart_filename }}</li>
+            <li><strong>Session Notes:</strong> {{ result.notes }}</li>
+        </ul>
+        <div class="mt-3">
+            <em>Agent results will appear here in the future.</em>
+        </div>
+    </div>
+    {% endif %}
+    {% if csv_request_info and csv_request_info.error %}
+    <div class="alert alert-danger mt-3">
+        <strong>Gemini Vision Error:</strong> {{ csv_request_info.error }}
+    </div>
+    {% endif %}
+    {% if show_csv_upload %}
+    <div class="card mt-4">
+        <div class="card-header">
+            <i class="text-primary">📄</i> Upload Requested CSV
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <form method="POST" enctype="multipart/form-data">
+                    <label for="csv_file" class="form-label">Upload requested CSV</label>
+                    <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv,.txt,.xlsx,.xls">
+                    <div class="form-text text-muted">This step is optional unless the agent requests a CSV upload.</div>
+                    <button type="submit" class="btn btn-primary mt-3">Validate CSV</button>
+                </form>
+            </div>
+            {% if validation_result %}
+                {% if validation_result.is_valid %}
+                    <div class="alert alert-success mt-3">
+                        <strong>CSV is valid!</strong> The file meets all requirements and the agent can proceed.
+                    </div>
+                {% else %}
+                    <div class="alert alert-danger mt-3">
+                        <strong>CSV validation failed:</strong>
+                        <ul class="mb-0">
+                        {% for error in validation_result.errors %}
+                            <li>{{ error }}</li>
+                        {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if trade_idea_result %}
+    <div class="card mt-4 border-success">
+        <div class="card-header bg-success text-white">
+            <i class="bi bi-lightbulb"></i> Generated Trade Idea
+        </div>
+        <div class="card-body">
+            {% set idea = trade_idea_result.trade_idea %}
+            <div class="row mb-2">
+                <div class="col-md-6">
+                    <div class="alert alert-primary mb-2"><strong>Direction:</strong> {{ idea.direction }}</div>
+                </div>
+                <div class="col-md-6">
+                    <div class="alert alert-info mb-2"><strong>Entry Type:</strong> {{ idea.entry_type }}</div>
+                </div>
+            </div>
+            <div class="alert alert-secondary mb-2"><strong>Entry Rule:</strong> {{ idea.entry_rule }}</div>
+            <div class="alert alert-warning mb-2"><strong>Stop Loss:</strong> {{ idea.stop_loss }}</div>
+            <div class="alert alert-success mb-2">
+                <strong>Take Profit Target(s):</strong>
+                <ul class="mb-0">
+                    {% for tp in idea.take_profit %}
+                        <li>{{ tp }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <div class="alert alert-dark mb-2"><strong>Strategy Label:</strong> {{ idea.strategy_label }}</div>
+            <div class="card mt-3">
+                <div class="card-body">
+                    <strong>Explanation:</strong>
+                    <p class="mb-0">{{ idea.explanation }}</p>
+                </div>
+            </div>
+            <div class="mt-3 text-end">
+                <button class="btn btn-outline-success" disabled>Save Trade Idea</button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const dropzone = document.getElementById('paste-dropzone');
+    const previewArea = document.getElementById('paste-preview');
+    let chartFileInput = document.getElementById('chart_file');
+    const chartForm = document.querySelector('form[enctype="multipart/form-data"]');
+
+    // If not present, create a hidden input for chart_file
+    if (!chartFileInput) {
+        chartFileInput = document.createElement('input');
+        chartFileInput.type = 'file';
+        chartFileInput.id = 'chart_file';
+        chartFileInput.name = 'chart_file';
+        chartFileInput.style.display = 'none';
+        chartForm.prepend(chartFileInput);
+    }
+
+    // Focus dropzone on click for better UX
+    dropzone.addEventListener('click', function() {
+        dropzone.focus();
+    });
+
+    dropzone.addEventListener('paste', function(e) {
+        let items = (e.clipboardData || window.clipboardData).items;
+        for (let i = 0; i < items.length; i++) {
+            let item = items[i];
+            if (item.type.indexOf('image') !== -1) {
+                let blob = item.getAsFile();
+                // Show preview
+                let reader = new FileReader();
+                reader.onload = function(event) {
+                    previewArea.innerHTML = '<div class="alert alert-info p-2"><strong>Pasted Chart Image:</strong><br><img src="' + event.target.result + '" style="max-width:200px; max-height:150px; border-radius:5px; margin-top:5px;"></div>';
+                };
+                reader.readAsDataURL(blob);
+                // Convert blob to File and assign to input
+                let file = new File([blob], 'pasted_chart.png', {type: blob.type});
+                let dt = new DataTransfer();
+                dt.items.add(file);
+                chartFileInput.files = dt.files;
+                // Optionally, auto-submit the form:
+                // chartForm.submit();
+                break;
+            }
+        }
+    });
+});
+</script>
+</body>
+</html> 
