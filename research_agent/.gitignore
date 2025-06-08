@@ -24,3 +24,5 @@ venv/
 research_agent/intra_algo_research_agent.ipynb
 research_agent/intra_algo_research_agent.py
 
+# prevent secrets from being committed
+service_accounts/
