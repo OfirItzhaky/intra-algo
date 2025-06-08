@@ -196,6 +196,14 @@ HTML_TEMPLATE = '''
         </div>
       </div>
     </div>
+    <!-- Scalping Agent Button Row -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <a href="{{ scalp_agent_url }}" class="btn btn-success btn-lg w-100">
+          <i class="me-2">📈</i> Open Scalping Agent
+        </a>
+      </div>
+    </div>
     
     <!-- Image Analysis Card -->
     <div class="card">

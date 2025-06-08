@@ -1,13 +1,10 @@
 # Import the numpy patch to fix NaN issue
-import fix_numpy
 
-from flask import Flask, request, render_template_string, redirect, url_for,jsonify
+from flask import Flask, request, render_template_string, redirect, url_for,jsonify, render_template, session
 from datetime import datetime
-import base64
 import plotly.graph_objects as go
 import pandas_ta as ta
 
-from market_momentum_scorer import MarketMomentumScorer
 from research_fetchers import ResearchFetchers, summarize_with_cache, summarize_economic_events_with_cache
 from research_analyzer import ResearchAnalyzer
 from image_analyzer_ai import ImageAnalyzerAI
@@ -16,6 +13,14 @@ import os
 import pandas as pd
 from templates import HTML_TEMPLATE
 import traceback
+from scalp_agent.scalp_agent_session import ScalpAgentSession
+from scalp_agent.scalp_agent_controller import ScalpAgentController
+from scalp_agent.input_container import InputContainer
+from scalp_agent.agent_handler import AgentHandler
+from scalp_agent.instinct_agent import InstinctAgent
+from scalp_agent.playbook_agent import PlaybookAgent
+from scalp_agent.playbook_simulator import PlaybookSimulator
+from scalp_agent.csv_utils import validate_csv_against_indicators
 
 # === Runtime Constants ===
 today = datetime.today().strftime("%Y-%m-%d")
@@ -62,6 +67,40 @@ def prepare_daily_context():
 # === Shared state ===
 daily_results = []
 image_results = []
+
+# Utility functions for agent memory
+
+def get_instinct_memory() -> dict:
+    """
+    Retrieve the last InstinctAgent result from session memory.
+    Returns:
+        dict: Last InstinctAgent result or empty dict.
+    """
+    return session.get("instinct_results", {})
+
+def set_instinct_memory(result: dict) -> None:
+    """
+    Store the InstinctAgent result in session memory.
+    Args:
+        result (dict): InstinctAgent result to store.
+    """
+    session["instinct_results"] = result
+
+def get_playbook_memory() -> dict:
+    """
+    Retrieve the last PlaybookAgent result from session memory.
+    Returns:
+        dict: Last PlaybookAgent result or empty dict.
+    """
+    return session.get("playbook_results", {})
+
+def set_playbook_memory(result: dict) -> None:
+    """
+    Store the PlaybookAgent result in session memory.
+    Args:
+        result (dict): PlaybookAgent result to store.
+    """
+    session["playbook_results"] = result
 
 @app.route("/upload_csv", methods=["POST"])
 def upload_csv():
@@ -376,7 +415,8 @@ def index():
         daily_outputs=daily_results, 
         image_outputs=image_results,
         file_info=file_info,
-        upload_error=upload_error
+        upload_error=upload_error,
+        scalp_agent_url=url_for('scalp_agent')
     )
 
 @app.route("/daily_analysis", methods=["POST"])
@@ -949,10 +989,310 @@ def symbol_chart():
 def test_route():
     return "Test route is working!"
 
+@app.route("/scalp-agent", methods=["GET", "POST"])
+def scalp_agent():
+    import pandas as pd
+    csv_request_info = None
+    validation_result = None
+    result = None
+    show_csv_upload = False
+
+    if request.method == "POST":
+        # Phase 1: Chart image upload and requirements extraction
+        if 'chart_file' in request.files and request.files['chart_file'].filename:
+            chart_file = request.files['chart_file']
+            session_notes = request.form.get("session_notes")
+            image_bytes = chart_file.read()
+            from scalp_agent.scalp_agent_session import ScalpAgentSession
+            session_obj = ScalpAgentSession(image_bytes=image_bytes, session_notes=session_notes)
+            csv_request_info = session_obj.analyze_chart_image()
+            # Store requirements in Flask session for next phase
+            session['scalp_agent_requirements'] = csv_request_info
+            # --- Gemini token usage/cost info ---
+            gemini_cost_info = None
+            usage = getattr(session_obj, 'token_usage_summary', None)
+            if usage:
+                total_tokens = usage.get('totalTokenCount', 'N/A')
+                try:
+                    cost = float(total_tokens) * 0.007 / 1000 if total_tokens != 'N/A' else 'N/A'
+                except Exception:
+                    cost = 'N/A'
+                gemini_cost_info = {
+                    'promptTokenCount': usage.get('promptTokenCount', 'N/A'),
+                    'candidatesTokenCount': usage.get('candidatesTokenCount', 'N/A'),
+                    'totalTokenCount': total_tokens,
+                    'cost_estimate': f"${cost:.4f}" if isinstance(cost, float) else 'N/A'
+                }
+            # --- Human-readable requirements summary ---
+            requirements_summary = session_obj.get_requirements_summary()
+            result = {
+                "max_risk": request.form.get("max_risk"),
+                "max_risk_per_trade": request.form.get("max_risk_per_trade"),
+                "notes": session_notes,
+                "csv_filename": None,  # Not processed yet
+                "chart_filename": chart_file.filename if chart_file else None
+            }
+            show_csv_upload = True
+            return render_template(
+                "scalp_agent.html",
+                result=result,
+                csv_request_info=csv_request_info,
+                show_csv_upload=show_csv_upload,
+                validation_result=None,
+                trade_idea_result=None,
+                max_risk_per_trade=request.form.get("max_risk_per_trade"),
+                gemini_cost_info=gemini_cost_info,
+                requirements_summary=requirements_summary
+            )
+        # Phase 2: CSV upload and validation (optional)
+        elif 'csv_file' in request.files:
+            csv_file = request.files['csv_file']
+            if csv_file and csv_file.filename:
+                try:
+                    df = pd.read_csv(csv_file)
+                except Exception as e:
+                    validation_result = {
+                        'is_valid': False,
+                        'errors': [f"Failed to read CSV: {e}"],
+                        'validated_df': None
+                    }
+                    return render_template(
+                        "scalp_agent.html",
+                        result=None,
+                        csv_request_info=session.get('scalp_agent_requirements'),
+                        show_csv_upload=True,
+                        validation_result=validation_result,
+                        trade_idea_result=None,
+                        max_risk_per_trade=request.form.get("max_risk_per_trade")
+                    )
+                requirements = session.get('scalp_agent_requirements')
+                if not requirements:
+                    validation_result = {
+                        'is_valid': False,
+                        'errors': ["No requirements found. Please upload a chart image first."],
+                        'validated_df': None
+                    }
+                    return render_template(
+                        "scalp_agent.html",
+                        result=None,
+                        csv_request_info=None,
+                        show_csv_upload=False,
+                        validation_result=validation_result,
+                        trade_idea_result=None,
+                        max_risk_per_trade=request.form.get("max_risk_per_trade")
+                    )
+                controller = ScalpAgentController()
+                validation_result = controller.validate_csv_against_requirements(df, requirements)
+                trade_idea_result = None
+                max_risk_per_trade = request.form.get("max_risk_per_trade")
+                if max_risk_per_trade is not None and max_risk_per_trade != "":
+                    try:
+                        max_risk_per_trade = float(max_risk_per_trade)
+                    except Exception:
+                        max_risk_per_trade = None
+                else:
+                    max_risk_per_trade = None
+                if validation_result['is_valid']:
+                    trade_idea_result = controller.generate_trade_idea(validation_result['validated_df'], max_risk_per_trade)
+                return render_template(
+                    "scalp_agent.html",
+                    result=None,
+                    csv_request_info=requirements,
+                    show_csv_upload=True,
+                    validation_result=validation_result,
+                    trade_idea_result=trade_idea_result,
+                    max_risk_per_trade=max_risk_per_trade
+                )
+            else:
+                # No CSV uploaded, just show requirements and allow user to proceed or skip
+                requirements = session.get('scalp_agent_requirements')
+                return render_template(
+                    "scalp_agent.html",
+                    result=None,
+                    csv_request_info=requirements,
+                    show_csv_upload=True,
+                    validation_result=None,
+                    trade_idea_result=None,
+                    max_risk_per_trade=request.form.get("max_risk_per_trade")
+                )
+    # GET or initial load
+    return render_template("scalp_agent.html", result=None, csv_request_info=None, show_csv_upload=False, validation_result=None, trade_idea_result=None, max_risk_per_trade=None)
+
+@app.route("/dual_agent_scalp_analysis", methods=["POST"])
+def dual_agent_scalp_analysis():
+    """
+    Accepts a chart image, analyzes it, builds an InputContainer, runs dual-agent analysis,
+    and returns required indicators and agent outputs as JSON.
+    """
+    if 'chart_file' not in request.files or request.files['chart_file'].filename == '':
+        return jsonify({"error": "No chart image uploaded."}), 400
+
+    chart_file = request.files['chart_file']
+    image_bytes = chart_file.read()
+    session_notes = request.form.get("session_notes")
+    max_risk = request.form.get("max_risk")
+    max_risk_per_trade = request.form.get("max_risk_per_trade")
+
+    # Analyze chart image to extract vision output
+    session_obj = ScalpAgentSession(image_bytes=image_bytes, session_notes=session_notes)
+    vision_output = session_obj.analyze_chart_image()
+
+    # Build InputContainer from vision output and user input
+    input_container = InputContainer(
+        symbol=vision_output.get('symbol', ''),
+        interval=vision_output.get('interval', ''),
+        last_bar_time=vision_output.get('last_bar_time'),
+        patterns=vision_output.get('patterns', []),
+        indicators=vision_output.get('indicators', []),
+        support_resistance_zones=vision_output.get('support_resistance_zones', []),
+        rag_insights=vision_output.get('rag_insights'),
+        user_notes=session_notes
+    )
+    # Prepare user_params
+    user_params = {
+        "max_risk": max_risk,
+        "max_risk_per_trade": max_risk_per_trade,
+        "session_notes": session_notes
+    }
+    # Run dual-agent analysis
+    controller = ScalpAgentController()
+    agent_results = controller.run_dual_agent_analysis(input_container, user_params)
+    # Get all indicators needed
+    agent_handler = AgentHandler()
+    indicators_needed = agent_handler.get_all_indicators(input_container, user_params)
+    # Prepare response
+    return jsonify({
+        "indicators_needed": indicators_needed,
+        "instinct_agent": agent_results.get("InstinctAgent", {}),
+        "playbook_agent": agent_results.get("PlaybookAgent", {})
+    })
+
+@app.route("/start_instinct", methods=["POST"])
+def start_instinct():
+    """
+    Runs only InstinctAgent logic and returns the result for the left panel.
+    """
+    chart_file = request.files.get('chart_file')
+    session_notes = request.form.get('session_notes')
+    max_risk = request.form.get('max_risk')
+    max_risk_per_trade = request.form.get('max_risk_per_trade')
+    image_bytes = chart_file.read() if chart_file else None
+    session_obj = ScalpAgentSession(image_bytes=image_bytes, session_notes=session_notes)
+    vision_output = session_obj.analyze_chart_image() if image_bytes else {}
+    input_container = InputContainer(
+        symbol=vision_output.get('symbol', ''),
+        interval=vision_output.get('interval', ''),
+        last_bar_time=vision_output.get('last_bar_time'),
+        patterns=vision_output.get('patterns', []),
+        indicators=vision_output.get('indicators', []),
+        support_resistance_zones=vision_output.get('support_resistance_zones', []),
+        rag_insights=vision_output.get('rag_insights'),
+        user_notes=session_notes
+    )
+    user_params = {
+        "max_risk": max_risk,
+        "max_risk_per_trade": max_risk_per_trade,
+        "session_notes": session_notes
+    }
+    agent = InstinctAgent()
+    result = agent.analyze(input_container, user_params)
+    set_instinct_memory(result)
+    return jsonify(result)
+
+@app.route("/start_playbook", methods=["POST"])
+def start_playbook():
+    """
+    Runs PlaybookAgent with PlaybookSimulator and returns the result for the right panel.
+    """
+    chart_file = request.files.get('chart_file')
+    csv_file = request.files.get('csv_file')
+    session_notes = request.form.get('session_notes')
+    max_risk = request.form.get('max_risk')
+    max_risk_per_trade = request.form.get('max_risk_per_trade')
+    image_bytes = chart_file.read() if chart_file else None
+    session_obj = ScalpAgentSession(image_bytes=image_bytes, session_notes=session_notes)
+    vision_output = session_obj.analyze_chart_image() if image_bytes else {}
+    input_container = InputContainer(
+        symbol=vision_output.get('symbol', ''),
+        interval=vision_output.get('interval', ''),
+        last_bar_time=vision_output.get('last_bar_time'),
+        patterns=vision_output.get('patterns', []),
+        indicators=vision_output.get('indicators', []),
+        support_resistance_zones=vision_output.get('support_resistance_zones', []),
+        rag_insights=vision_output.get('rag_insights'),
+        user_notes=session_notes
+    )
+    user_params = {
+        "max_risk": max_risk,
+        "max_risk_per_trade": max_risk_per_trade,
+        "session_notes": session_notes
+    }
+    agent = PlaybookAgent()
+    agent_result = agent.analyze(input_container, user_params)
+    # If CSV is uploaded, validate and simulate
+    simulation_result = None
+    if csv_file:
+        df = pd.read_csv(csv_file)
+        required_indicators = agent_result.get('indicators', [])
+        validation = validate_csv_against_indicators(df, required_indicators)
+        if validation['is_valid']:
+            simulator = PlaybookSimulator()
+            # Simulate each strategy in the bank
+            simulation_result = []
+            for strat in agent_result.get('strategies', []):
+                sim = simulator.simulate(df, strat)
+                simulation_result.append({
+                    'strategy_name': strat.get('strategy_name'),
+                    'metrics': sim
+                })
+        else:
+            simulation_result = {'csv_valid': False, 'missing': validation['missing']}
+    playbook_results = {
+        'playbook_strategies': agent_result.get('strategies', []),
+        'csv_simulation': simulation_result
+    }
+    set_playbook_memory(playbook_results)
+    return jsonify(playbook_results)
+
+@app.route("/query_instinct", methods=["POST"])
+def query_instinct():
+    """
+    Receives a follow-up question and returns a reply based on previous InstinctAgent analysis.
+    Uses session memory for context.
+    """
+    data = request.get_json()
+    question = data.get("question", "")
+    instinct_memory = get_instinct_memory()
+    # For now, just echo the question and show the last summary/strategies
+    # (Replace with LLM or more advanced logic as needed)
+    reply = {
+        "question": question,
+        "last_summary": instinct_memory.get("summary", "No previous summary."),
+        "strategies": instinct_memory.get("strategies", [])
+    }
+    return jsonify(reply)
+
+@app.route("/query_playbook", methods=["POST"])
+def query_playbook():
+    """
+    Receives a follow-up question and returns a reply based on previous PlaybookAgent simulation results.
+    Uses session memory for context.
+    """
+    data = request.get_json()
+    question = data.get("question", "")
+    playbook_memory = get_playbook_memory()
+    # For now, just echo the question and show the last simulation results
+    # (Replace with LLM or more advanced logic as needed)
+    reply = {
+        "question": question,
+        "csv_simulation": playbook_memory.get("csv_simulation", None),
+        "strategies": playbook_memory.get("playbook_strategies", [])
+    }
+    return jsonify(reply)
+
 if __name__ == "__main__":
     import os
-    import sys
-    
+
     # For PyCharm debugging compatibility
     if os.environ.get("PYCHARM_DEBUG") == "1":
         # Use a completely direct approach that bypasses Flask's run method

@@ -183,7 +183,7 @@ class ImageAnalyzerAI:
         return {"raw_output": content}
 
     def _analyze_with_gemini(self, image_bytes, prompt):
-        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent"
         headers = {
             "Content-Type": "application/json",
             "x-goog-api-key": self.api_key
@@ -208,7 +208,7 @@ class ImageAnalyzerAI:
             ]
         }
 
-        response = requests.post(endpoint, headers=headers, data=json.dumps(body))
+        response = requests.post(endpoint, headers=headers, json=body)
         response.raise_for_status()
         content = response.json()["candidates"][0]["content"]["parts"][0]["text"]
         return {"raw_output": content}
