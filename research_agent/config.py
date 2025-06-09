@@ -17,6 +17,13 @@ CONFIG = {
     "finnhub_key": os.getenv("FINNHUB_KEY"),
     "fmp_key": os.getenv("FMP_KEY"),
 
+    # 🔹 Reddit API credentials (added for sentiment fetcher)
+    "reddit_client_id": os.getenv("REDDIT_CLIENT_ID"),
+    "reddit_client_secret": os.getenv("REDDIT_CLIENT_SECRET"),
+    "reddit_username": os.getenv("REDDIT_USERNAME"),
+    "reddit_password": os.getenv("REDDIT_PASSWORD"),
+    "reddit_user_agent": os.getenv("REDDIT_USER_AGENT"),
+
     "markets": ["US"],
     "symbols": ["SPY", "QQQ", "AAPL", "NVDA"],
     "focus_sectors": ["Technology", "Healthcare", "Energy"],

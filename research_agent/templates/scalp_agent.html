@@ -27,6 +27,46 @@
         pointer-events: none;
     }
     #llm-cost-overlay strong { font-weight: 600; }
+    .floating-rag-panel {
+        position: fixed;
+        top: 80px;
+        width: 380px;
+        max-height: 70vh;
+        background: #fff;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+        border-radius: 10px;
+        z-index: 2000;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #e0e0e0;
+    }
+    .floating-rag-panel-left { left: 24px; }
+    .floating-rag-panel-right { right: 24px; }
+    .floating-rag-panel-header {
+        padding: 12px 16px;
+        font-weight: bold;
+        background: #f5f5f7;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .floating-rag-panel-content {
+        padding: 16px;
+        overflow-y: auto;
+        font-size: 1rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+    }
+    .floating-rag-panel-close {
+        background: none;
+        border: none;
+        font-size: 1.2em;
+        cursor: pointer;
+    }
+    @media (max-width: 900px) {
+        .floating-rag-panel { width: 95vw; left: 2.5vw; right: 2.5vw; }
+    }
     </style>
 </head>
 <body style="font-family: Arial; margin: 40px;">
@@ -63,9 +103,19 @@
         <div class="row">
             <div class="col-md-6 d-grid">
                 <button type="button" class="btn btn-primary mb-2" id="run-instinct-btn">Run Instinct Agent</button>
+                <button type="button" class="btn btn-outline-info mb-2" id="enhance-instinct-btn" disabled>🧪 Enhance Strategy</button>
+                <div id="enhance-instinct-inputs" style="display:none;">
+                    <input type="file" class="form-control mt-2" id="enhance-instinct-csv" accept=".csv,.txt,.xlsx,.xls">
+                    <textarea class="form-control mt-2" id="enhance-instinct-notes" rows="2" placeholder="Add clarification or extra notes (optional)"></textarea>
+                </div>
             </div>
             <div class="col-md-6 d-grid">
                 <button type="button" class="btn btn-success mb-2" id="run-playbook-btn">Run Playbook Agent</button>
+                <button type="button" class="btn btn-outline-info mb-2" id="enhance-playbook-btn" disabled>🧪 Enhance Strategy</button>
+                <div id="enhance-playbook-inputs" style="display:none;">
+                    <input type="file" class="form-control mt-2" id="enhance-playbook-csv" accept=".csv,.txt,.xlsx,.xls">
+                    <textarea class="form-control mt-2" id="enhance-playbook-notes" rows="2" placeholder="Add clarification or extra notes (optional)"></textarea>
+                </div>
             </div>
         </div>
         <a href="/" class="btn btn-secondary mt-2">Back to Dashboard</a>
@@ -73,7 +123,10 @@
     <div class="row">
         <div class="col-md-6">
             <div class="card mb-4">
-                <div class="card-header bg-info text-white"><strong>Instinct Agent Results</strong></div>
+                <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                    <strong>Instinct Agent Results</strong>
+                    <button class="btn btn-outline-secondary btn-sm ms-2" type="button" onclick="toggleRagPanel('instinct')">🧠 Toggle RAG View</button>
+                </div>
                 <div class="card-body" id="instinct_output">
                     <!-- InstinctAgent output will be rendered here -->
                 </div>
@@ -87,7 +140,10 @@
         </div>
         <div class="col-md-6">
             <div class="card mb-4">
-                <div class="card-header bg-success text-white"><strong>Playbook Strategy Results</strong></div>
+                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                    <strong>Playbook Strategy Results</strong>
+                    <button class="btn btn-outline-secondary btn-sm ms-2" type="button" onclick="toggleRagPanel('playbook')">🧠 Toggle RAG View</button>
+                </div>
                 <div class="card-body" id="playbook_output">
                     <!-- PlaybookAgent output will be rendered here -->
                 </div>
@@ -102,9 +158,32 @@
     </div>
 </div>
 <div id="llm-cost-overlay">
-  <div><span>🔢</span> Tokens used: <span id="llm-tokens">0</span></div>
-  <div><span>💰</span> Estimated cost: <span id="llm-cost">$0.0000</span></div>
+  <div><span>📄</span> RAG Summary: <span id="rag-tokens">N/A</span> tokens used (<span id="rag-cost">$0.0000</span>)</div>
+  <div><span>🔢</span> LLM: <span id="llm-tokens">0</span> tokens used (<span id="llm-cost">$0.0000</span>)</div>
+  <div><span>💰</span> Estimated total cost: <span id="total-cost">$0.0000</span></div>
 </div>
+
+<!-- Floating RAG Panel for Instinct Agent -->
+<div id="rag-instinct-panel" class="floating-rag-panel floating-rag-panel-left" style="display:none;">
+  <div class="floating-rag-panel-header">
+    <span>🧠 RAG for Instinct Agent</span>
+    <button class="floating-rag-panel-close" onclick="document.getElementById('rag-instinct-panel').style.display='none'">✖️</button>
+  </div>
+  <div class="floating-rag-panel-content" id="rag-instinct-content"></div>
+</div>
+
+<!-- Floating RAG Panel for Playbook Agent -->
+<div id="rag-playbook-panel" class="floating-rag-panel floating-rag-panel-right" style="display:none;">
+  <div class="floating-rag-panel-header">
+    <span>🧠 RAG for Playbook Agent</span>
+    <button class="floating-rag-panel-close" onclick="document.getElementById('rag-playbook-panel').style.display='none'">✖️</button>
+  </div>
+  <div class="floating-rag-panel-content" id="rag-playbook-content"></div>
+</div>
+
+<!-- Add marked.js for markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const dropzone = document.getElementById('paste-dropzone');
@@ -253,6 +332,49 @@ document.addEventListener('DOMContentLoaded', function() {
         return 800;
     }
 
+    function updateCostPanel(data) {
+        // RAG
+        let ragTokens = data.rag_token_usage !== undefined ? data.rag_token_usage : "N/A";
+        let ragCost = data.rag_cost_usd !== undefined ? data.rag_cost_usd : "N/A";
+        document.getElementById('rag-tokens').textContent = ragTokens;
+        document.getElementById('rag-cost').textContent = (ragCost === "N/A" ? "$0.0000" : `$${parseFloat(ragCost).toFixed(4)}`);
+
+        // LLM
+        let llmTokens = data.llm_token_usage !== undefined ? data.llm_token_usage : 0;
+        let llmCost = data.llm_cost_usd !== undefined ? data.llm_cost_usd : 0.0;
+        document.getElementById('llm-tokens').textContent = llmTokens;
+        document.getElementById('llm-cost').textContent = `$${parseFloat(llmCost).toFixed(4)}`;
+
+        // Total
+        let totalCost = data.total_cost_usd !== undefined
+            ? data.total_cost_usd
+            : (parseFloat(ragCost) || 0) + (parseFloat(llmCost) || 0);
+        document.getElementById('total-cost').textContent = `$${parseFloat(totalCost).toFixed(4)}`;
+    }
+
+    function toggleRagPanel(agent) {
+        const panel = document.getElementById(`rag-${agent}-panel`);
+        if (panel) {
+            panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
+        }
+    }
+
+    function renderRagMarkdown(content) {
+        if (window.marked) {
+            return marked.parse(content || '');
+        }
+        // Fallback: replace newlines with <br>
+        return (content || '').replace(/\n/g, '<br>');
+    }
+
+    let lastInstinctContext = null;
+    let lastPlaybookContext = null;
+
+    function enableEnhanceButton(agent) {
+        document.getElementById(`enhance-${agent}-btn`).disabled = false;
+        document.getElementById(`enhance-${agent}-inputs`).style.display = 'block';
+    }
+
     runInstinctBtn.addEventListener('click', function() {
         instinctOutput.innerHTML = '<div class="text-center"><div class="spinner-border text-info" role="status"></div><br>Running Instinct Agent...</div>';
         fetch('/start_instinct', {
@@ -263,6 +385,17 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             instinctOutput.innerHTML = renderInstinctAgentResult(data);
             addTokens(extractTokenCount(data));
+            updateCostPanel(data);
+            if (data && data.rag_insights) {
+                document.getElementById('rag-instinct-content').innerHTML = renderRagMarkdown(data.rag_insights);
+                document.getElementById('rag-instinct-panel').style.display = 'block';
+            }
+            // Save last context for enhancement
+            lastInstinctContext = {
+                ...getFormData(),
+                result: data
+            };
+            enableEnhanceButton('instinct');
         })
         .catch(err => {
             instinctOutput.innerHTML = '<div class="alert alert-danger">Error: ' + err + '</div>';
@@ -279,6 +412,17 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             playbookOutput.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
             addTokens(extractTokenCount(data));
+            updateCostPanel(data);
+            if (data && data.rag_insights) {
+                document.getElementById('rag-playbook-content').innerHTML = renderRagMarkdown(data.rag_insights);
+                document.getElementById('rag-playbook-panel').style.display = 'block';
+            }
+            // Save last context for enhancement
+            lastPlaybookContext = {
+                ...getFormData(),
+                result: data
+            };
+            enableEnhanceButton('playbook');
         })
         .catch(err => {
             playbookOutput.innerHTML = '<div class="alert alert-danger">Error: ' + err + '</div>';
@@ -326,6 +470,66 @@ document.addEventListener('DOMContentLoaded', function() {
                 '<div class="alert alert-success"><strong>Playbook Agent:</strong> <pre>' + JSON.stringify(data, null, 2) + '</pre></div>';
             output.appendChild(chat);
             input.value = '';
+        });
+    });
+
+    document.getElementById('enhance-instinct-btn').addEventListener('click', function() {
+        const csvInput = document.getElementById('enhance-instinct-csv');
+        const notesInput = document.getElementById('enhance-instinct-notes');
+        const formData = new FormData();
+        // Add previous context if needed (could add more fields)
+        if (lastInstinctContext) {
+            // You may want to add more fields from lastInstinctContext
+            formData.append('previous_result', JSON.stringify(lastInstinctContext.result));
+        }
+        if (csvInput.files.length > 0) {
+            formData.append('csv_file', csvInput.files[0]);
+        }
+        if (notesInput.value.trim()) {
+            formData.append('enhance_notes', notesInput.value.trim());
+        }
+        fetch('/enhance_instinct', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            instinctOutput.innerHTML = '<div class="border border-info rounded p-2 mb-2 bg-light"><span class="badge bg-info text-dark">Enhanced Strategy Result</span></div>' + renderInstinctAgentResult(data);
+            addTokens(extractTokenCount(data));
+            updateCostPanel(data);
+            if (data && data.rag_insights) {
+                document.getElementById('rag-instinct-content').innerHTML = renderRagMarkdown(data.rag_insights);
+                document.getElementById('rag-instinct-panel').style.display = 'block';
+            }
+        });
+    });
+
+    document.getElementById('enhance-playbook-btn').addEventListener('click', function() {
+        const csvInput = document.getElementById('enhance-playbook-csv');
+        const notesInput = document.getElementById('enhance-playbook-notes');
+        const formData = new FormData();
+        if (lastPlaybookContext) {
+            formData.append('previous_result', JSON.stringify(lastPlaybookContext.result));
+        }
+        if (csvInput.files.length > 0) {
+            formData.append('csv_file', csvInput.files[0]);
+        }
+        if (notesInput.value.trim()) {
+            formData.append('enhance_notes', notesInput.value.trim());
+        }
+        fetch('/enhance_playbook', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            playbookOutput.innerHTML = '<div class="border border-info rounded p-2 mb-2 bg-light"><span class="badge bg-info text-dark">Enhanced Strategy Result</span></div>' + '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            addTokens(extractTokenCount(data));
+            updateCostPanel(data);
+            if (data && data.rag_insights) {
+                document.getElementById('rag-playbook-content').innerHTML = renderRagMarkdown(data.rag_insights);
+                document.getElementById('rag-playbook-panel').style.display = 'block';
+            }
         });
     });
 });

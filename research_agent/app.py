@@ -1173,6 +1173,7 @@ def start_instinct():
     Runs only InstinctAgent logic and returns the result for the left panel.
     """
     chart_file = request.files.get('chart_file')
+    csv_file = request.files.get('csv_file')
     session_notes = request.form.get('session_notes')
     max_risk = request.form.get('max_risk')
     max_risk_per_trade = request.form.get('max_risk_per_trade')
@@ -1194,9 +1195,30 @@ def start_instinct():
         "max_risk_per_trade": max_risk_per_trade,
         "session_notes": session_notes
     }
+    # CSV context for agent feedback
+    if csv_file and csv_file.filename:
+        import pandas as pd
+        df = pd.read_csv(csv_file)
+        user_params["csv_uploaded"] = True
+        user_params["csv_length"] = len(df)
+        user_params["csv_indicators_available"] = list(df.columns)
+    else:
+        user_params["csv_uploaded"] = False
     agent = InstinctAgent()
     result = agent.analyze(input_container, user_params)
     set_instinct_memory(result)
+
+    # --- Ensure cost fields are present ---
+    if "rag_token_usage" not in result:
+        result["rag_token_usage"] = "N/A"
+    if "rag_cost_usd" not in result:
+        result["rag_cost_usd"] = 0.0
+    if "llm_token_usage" not in result:
+        result["llm_token_usage"] = "N/A"
+    if "llm_cost_usd" not in result:
+        result["llm_cost_usd"] = 0.0
+    if "total_cost_usd" not in result:
+        result["total_cost_usd"] = 0.0
     return jsonify(result)
 
 @app.route("/start_playbook", methods=["POST"])
@@ -1227,12 +1249,20 @@ def start_playbook():
         "max_risk_per_trade": max_risk_per_trade,
         "session_notes": session_notes
     }
+    # CSV context for agent feedback
+    if csv_file and csv_file.filename:
+        import pandas as pd
+        df = pd.read_csv(csv_file)
+        user_params["csv_uploaded"] = True
+        user_params["csv_length"] = len(df)
+        user_params["csv_indicators_available"] = list(df.columns)
+    else:
+        user_params["csv_uploaded"] = False
     agent = PlaybookAgent()
     agent_result = agent.analyze(input_container, user_params)
     # If CSV is uploaded, validate and simulate
     simulation_result = None
-    if csv_file:
-        df = pd.read_csv(csv_file)
+    if csv_file and csv_file.filename:
         required_indicators = agent_result.get('indicators', [])
         validation = validate_csv_against_indicators(df, required_indicators)
         if validation['is_valid']:
@@ -1252,6 +1282,18 @@ def start_playbook():
         'csv_simulation': simulation_result
     }
     set_playbook_memory(playbook_results)
+
+    # --- Ensure cost fields are present ---
+    if "rag_token_usage" not in playbook_results:
+        playbook_results["rag_token_usage"] = "N/A"
+    if "rag_cost_usd" not in playbook_results:
+        playbook_results["rag_cost_usd"] = 0.0
+    if "llm_token_usage" not in playbook_results:
+        playbook_results["llm_token_usage"] = "N/A"
+    if "llm_cost_usd" not in playbook_results:
+        playbook_results["llm_cost_usd"] = 0.0
+    if "total_cost_usd" not in playbook_results:
+        playbook_results["total_cost_usd"] = 0.0
     return jsonify(playbook_results)
 
 @app.route("/query_instinct", methods=["POST"])

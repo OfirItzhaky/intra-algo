@@ -30,6 +30,8 @@ Pillow
 # Utilities
 pyperclip
 
+praw>=7.7.0
+
 # For Jupyter integration (commented out for deployment)
 # ipywidgets
 # IPython
