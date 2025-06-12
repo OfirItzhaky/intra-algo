@@ -213,9 +213,9 @@ STARTING_CASH = 10000.0
 
 TARGET_TICKS = 10
 STOP_TICKS = 10
-MIN_DIST = 4
+MIN_DIST = 2
 MAX_DIST = 20.0
-MIN_CLASSIFIER_SIGNALS = 1
+MIN_CLASSIFIER_SIGNALS = 0
 SESSION_START = "17:00"
 SESSION_END = "23:00"
 
@@ -289,6 +289,9 @@ if __name__ == "__main__":
         df_strategy=df_regression_preds,
         df_classifiers=df_classifier_preds
     )
+    print(f"📦 Total broker orders: {len(cerebro.broker.orders)}")
+
+
     df_trades_intrabar = dashboard_intrabar.build_trade_dataframe_from_orders(list(cerebro.broker.orders))
 
     df_trades_intrabar["pnl"] = df_trades_intrabar["pnl"] / TICK_SIZE * TICK_DOLLAR_VALUE

@@ -2,6 +2,9 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import backtrader as bt
+import plotly.io as pio
+
+
 class AnalyzerDashboard:
     """
     Visual interface for analyzing strategy performance, trade validity, and classifier signals.
@@ -516,6 +519,7 @@ class AnalyzerDashboard:
             height=900,
             margin=dict(t=40, b=40)
         )
+        pio.renderers.default = "browser"
 
         fig.show()
 
@@ -692,6 +696,10 @@ class AnalyzerDashboard:
         Returns:
             pd.DataFrame: Clean trade log with entry/exit times, prices, PnL, duration.
         """
+        print(f"🔧 Received {len(order_list)} orders for processing.")
+        if len(order_list) == 0:
+            print("⚠️ No orders found — skipping trade DataFrame creation.")
+
         orders_df = pd.DataFrame([{
             'ref': o.ref,
             'type': 'SELL' if o.issell() else 'BUY',

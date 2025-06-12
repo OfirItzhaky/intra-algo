@@ -67,94 +67,134 @@
     @media (max-width: 900px) {
         .floating-rag-panel { width: 95vw; left: 2.5vw; right: 2.5vw; }
     }
+    .fade-out {
+        opacity: 0.4;
+        transition: opacity 0.4s;
+    }
+    .fade-in {
+        opacity: 1;
+        transition: opacity 0.5s;
+    }
+    .shimmer {
+        height: 18px;
+        width: 100px;
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.2s infinite;
+        border-radius: 6px;
+        margin-bottom: 8px;
+    }
+    @keyframes shimmer {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+    .rag-flash {
+        box-shadow: 0 0 0 3px #ffe066, 0 2px 8px rgba(0,0,0,0.08);
+        transition: box-shadow 0.5s;
+    }
     </style>
 </head>
 <body style="font-family: Arial; margin: 40px;">
 <div class="container">
     <h1>📈 Scalping Agent</h1>
-    <form method="POST" enctype="multipart/form-data" class="mb-4">
-        <div class="mb-3">
+    <!-- Bootstrap nav-tabs for two-step flow -->
+    <ul class="nav nav-tabs mb-3" id="scalpAgentTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="setup-tab" data-bs-toggle="tab" data-bs-target="#setup" type="button" role="tab" aria-controls="setup" aria-selected="true">Setup</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="interaction-tab" data-bs-toggle="tab" data-bs-target="#interaction" type="button" role="tab" aria-controls="interaction" aria-selected="false">Interaction</button>
+      </li>
+    </ul>
+    <div class="tab-content" id="scalpAgentTabContent">
+      <!-- TAB 1: SETUP -->
+      <div class="tab-pane fade show active" id="setup" role="tabpanel" aria-labelledby="setup-tab">
+        <form id="setup-form" method="POST" enctype="multipart/form-data" class="mb-4">
+          <div class="mb-3">
             <label for="max_risk" class="form-label">Max Risk</label>
             <input type="number" step="any" class="form-control" id="max_risk" name="max_risk" placeholder="Enter max risk" required>
-        </div>
-        <div class="mb-3">
+          </div>
+          <div class="mb-3">
             <label for="max_risk_per_trade" class="form-label">Max Risk Per Trade</label>
             <input type="number" step="any" class="form-control" id="max_risk_per_trade" name="max_risk_per_trade" placeholder="Enter max risk per trade (optional)">
-        </div>
-        <div id="paste-dropzone" class="border border-primary rounded p-4 mb-3 text-center" tabindex="0" style="background: #f8f9fa; cursor: pointer;">
+          </div>
+          <div id="paste-dropzone" class="border border-primary rounded p-4 mb-3 text-center" tabindex="0" style="background: #f8f9fa; cursor: pointer;">
             <span class="text-secondary">
-                <strong>📋 Paste chart image here (Ctrl+V)</strong><br>
-                <small>Or use the file upload below</small>
+              <strong>📋 Paste chart image here (Ctrl+V)</strong><br>
+              <small>Or use the file upload below</small>
             </span>
             <div id="paste-preview" class="mt-2"></div>
-        </div>
-        <div class="mb-3">
-            <label for="session_notes" class="form-label">Session Notes (optional)</label>
-            <textarea class="form-control" id="session_notes" name="session_notes" rows="3" placeholder="Enter any notes..."></textarea>
-        </div>
-        <div class="mb-3">
+          </div>
+          <input type="file" class="form-control" id="chart_file" name="chart_file" accept="image/*" style="margin-top: 8px;">
+          <div class="mb-3">
             <label for="csv_file" class="form-label">Upload CSV (OHLCV + indicators)</label>
             <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv,.txt,.xlsx,.xls">
-            <select class="form-select mt-2" id="csv_agent_select" name="csv_agent_select">
-                <option value="instinct">Instinct Agent</option>
-                <option value="playbook">Playbook Agent</option>
-            </select>
-        </div>
+          </div>
+          <div class="mb-3">
+            <label for="session_notes" class="form-label">Session Notes (optional)</label>
+            <textarea class="form-control" id="session_notes" name="session_notes" rows="3" placeholder="Enter any notes..."></textarea>
+          </div>
+          <div class="row">
+            <div class="col-md-6 d-grid">
+              <button type="button" class="btn btn-primary mb-2" id="run-instinct-btn">Run Instinct Agent</button>
+            </div>
+            <div class="col-md-6 d-grid">
+              <button type="button" class="btn btn-success mb-2" id="run-playbook-btn">Run Playbook Agent</button>
+            </div>
+          </div>
+        </form>
+      </div>
+      <!-- TAB 2: INTERACTION -->
+      <div class="tab-pane fade" id="interaction" role="tabpanel" aria-labelledby="interaction-tab">
         <div class="row">
-            <div class="col-md-6 d-grid">
-                <button type="button" class="btn btn-primary mb-2" id="run-instinct-btn">Run Instinct Agent</button>
-                <button type="button" class="btn btn-outline-info mb-2" id="enhance-instinct-btn" disabled>🧪 Enhance Strategy</button>
-                <div id="enhance-instinct-inputs" style="display:none;">
-                    <input type="file" class="form-control mt-2" id="enhance-instinct-csv" accept=".csv,.txt,.xlsx,.xls">
-                    <textarea class="form-control mt-2" id="enhance-instinct-notes" rows="2" placeholder="Add clarification or extra notes (optional)"></textarea>
-                </div>
-            </div>
-            <div class="col-md-6 d-grid">
-                <button type="button" class="btn btn-success mb-2" id="run-playbook-btn">Run Playbook Agent</button>
-                <button type="button" class="btn btn-outline-info mb-2" id="enhance-playbook-btn" disabled>🧪 Enhance Strategy</button>
-                <div id="enhance-playbook-inputs" style="display:none;">
-                    <input type="file" class="form-control mt-2" id="enhance-playbook-csv" accept=".csv,.txt,.xlsx,.xls">
-                    <textarea class="form-control mt-2" id="enhance-playbook-notes" rows="2" placeholder="Add clarification or extra notes (optional)"></textarea>
-                </div>
-            </div>
-        </div>
-        <a href="/" class="btn btn-secondary mt-2">Back to Dashboard</a>
-    </form>
-    <div class="row">
-        <div class="col-md-6">
+          <!-- Instinct Agent Panel -->
+          <div class="col-md-6">
             <div class="card mb-4">
-                <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
-                    <strong>Instinct Agent Results</strong>
-                    <button class="btn btn-outline-secondary btn-sm ms-2" type="button" onclick="toggleRagPanel('instinct')">🧠 Toggle RAG View</button>
+              <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                <strong>Instinct Agent Results</strong>
+                <button class="btn btn-outline-secondary btn-sm ms-2" type="button" onclick="toggleRagPanel('instinct')">🧠 Toggle RAG View</button>
+              </div>
+              <div class="card-body" id="instinct_output">
+                <!-- InstinctAgent output will be rendered here -->
+              </div>
+              <div class="card-footer">
+                <div class="input-group mb-2">
+                  <input type="text" class="form-control" id="instinct_query_input" placeholder="Ask Instinct Agent a question...">
+                  <button class="btn btn-outline-primary" type="button" id="send_instinct_query">Send</button>
                 </div>
-                <div class="card-body" id="instinct_output">
-                    <!-- InstinctAgent output will be rendered here -->
+                <div class="mb-2">
+                  <input type="file" class="form-control mt-2" id="enhance-instinct-csv" accept=".csv,.txt,.xlsx,.xls">
+                  <textarea class="form-control mt-2" id="enhance-instinct-notes" rows="2" placeholder="Add clarification or extra notes (optional)"></textarea>
+                  <button type="button" class="btn btn-outline-info mt-2" id="enhance-instinct-btn" disabled>🧪 Enhance Strategy</button>
                 </div>
-                <div class="card-footer">
-                    <div class="input-group">
-                        <input type="text" class="form-control" id="instinct_query_input" placeholder="Ask Instinct Agent a question...">
-                        <button class="btn btn-outline-primary" type="button" id="send_instinct_query">Send</button>
-                    </div>
-                </div>
+              </div>
             </div>
-        </div>
-        <div class="col-md-6">
+          </div>
+          <!-- Playbook Agent Panel -->
+          <div class="col-md-6">
             <div class="card mb-4">
-                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
-                    <strong>Playbook Strategy Results</strong>
-                    <button class="btn btn-outline-secondary btn-sm ms-2" type="button" onclick="toggleRagPanel('playbook')">🧠 Toggle RAG View</button>
+              <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <strong>Playbook Strategy Results</strong>
+                <button class="btn btn-outline-secondary btn-sm ms-2" type="button" onclick="toggleRagPanel('playbook')">🧠 Toggle RAG View</button>
+              </div>
+              <div class="card-body" id="playbook_output">
+                <!-- PlaybookAgent output will be rendered here -->
+              </div>
+              <div class="card-footer">
+                <div class="input-group mb-2">
+                  <input type="text" class="form-control" id="playbook_query_input" placeholder="Ask Playbook Agent a question...">
+                  <button class="btn btn-outline-success" type="button" id="send_playbook_query">Send</button>
                 </div>
-                <div class="card-body" id="playbook_output">
-                    <!-- PlaybookAgent output will be rendered here -->
+                <div class="mb-2">
+                  <input type="file" class="form-control mt-2" id="enhance-playbook-csv" accept=".csv,.txt,.xlsx,.xls">
+                  <textarea class="form-control mt-2" id="enhance-playbook-notes" rows="2" placeholder="Add clarification or extra notes (optional)"></textarea>
+                  <button type="button" class="btn btn-outline-info mt-2" id="enhance-playbook-btn" disabled>🧪 Enhance Strategy</button>
                 </div>
-                <div class="card-footer">
-                    <div class="input-group">
-                        <input type="text" class="form-control" id="playbook_query_input" placeholder="Ask Playbook Agent a question...">
-                        <button class="btn btn-outline-success" type="button" id="send_playbook_query">Send</button>
-                    </div>
-                </div>
+              </div>
             </div>
+          </div>
         </div>
+      </div>
     </div>
 </div>
 <div id="llm-cost-overlay">
@@ -193,7 +233,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const runPlaybookBtn = document.getElementById('run-playbook-btn');
     const instinctOutput = document.getElementById('instinct_output');
     const playbookOutput = document.getElementById('playbook_output');
-    const csvAgentSelect = document.getElementById('csv_agent_select');
     const csvFileInput = document.getElementById('csv_file');
     const sessionNotesInput = document.getElementById('session_notes');
     const maxRiskInput = document.getElementById('max_risk');
@@ -271,19 +310,60 @@ document.addEventListener('DOMContentLoaded', function() {
             return '<div class="alert alert-warning">No result.</div>';
         }
         let html = '';
+        // Feedback (if present)
+        if (data.feedback) {
+            html += `<div class="alert alert-warning mb-3"><strong>Feedback:</strong> <br>${data.feedback}</div>`;
+        }
         // Summary
         if (data.summary) {
-            html += `<div class="mb-3"><strong>💬 Summary:</strong><br><span>${data.summary}</span></div>`;
+            html += `<div class="mb-3"><strong>💬 Summary:</strong><br><p>${data.summary}</p></div>`;
         }
-        // Indicators
-        if (data.indicators && Array.isArray(data.indicators) && data.indicators.length > 0) {
-            html += `<div class="mb-3"><strong>📊 Indicators:</strong><ul>`;
-            data.indicators.forEach(ind => {
-                html += `<li>${ind}</li>`;
+        // Strategies (single or list)
+        let strategies = data.strategies;
+        if (strategies && !Array.isArray(strategies)) strategies = [strategies];
+        if (strategies && Array.isArray(strategies) && strategies.length > 0) {
+            html += `<div class="mb-3"><strong>⚙️ Strategy:</strong>`;
+            strategies.forEach((strat, idx) => {
+                if (!strat) return;
+                html += `<div class="card mb-2"><div class="card-body p-2">`;
+                html += `<table class="table table-sm mb-1"><tbody>`;
+                if (strat.entry_rule) html += `<tr><th>Entry Rule</th><td>${strat.entry_rule}</td></tr>`;
+                if (strat.confirmation) html += `<tr><th>Confirmation</th><td>${strat.confirmation}</td></tr>`;
+                if (strat.stop_rule) html += `<tr><th>Stop Rule</th><td>${strat.stop_rule}</td></tr>`;
+                if (strat.target_rule) html += `<tr><th>Target Rule</th><td>${strat.target_rule}</td></tr>`;
+                if (strat.tags) html += `<tr><th>Tags</th><td>${Array.isArray(strat.tags) ? strat.tags.join(', ') : strat.tags}</td></tr>`;
+                if (strat.complexity) html += `<tr><th>Complexity</th><td>${strat.complexity}</td></tr>`;
+                html += `</tbody></table>`;
+                html += `</div></div>`;
+            });
+            html += `</div>`;
+        }
+        // Support/Resistance Zones (if present)
+        if (data["support_resistance_zones"] && Array.isArray(data["support_resistance_zones"]) && data["support_resistance_zones"].length > 0) {
+            html += `<div class="mb-3"><strong>🧱 Support/Resistance Zones:</strong><ul>`;
+            data["support_resistance_zones"].forEach(zone => {
+                html += `<li>${zone}</li>`;
             });
             html += `</ul></div>`;
         }
-        // Strategy (single or list)
+        return html;
+    }
+
+    // Helper: Render PlaybookAgent output in a structured way (similar to InstinctAgent)
+    function renderPlaybookAgentResult(data) {
+        if (!data || typeof data !== 'object') {
+            return '<div class="alert alert-warning">No result.</div>';
+        }
+        let html = '';
+        // Feedback (if present)
+        if (data.feedback) {
+            html += `<div class="alert alert-warning mb-3"><strong>Feedback:</strong> <br>${data.feedback}</div>`;
+        }
+        // Summary
+        if (data.summary) {
+            html += `<div class="mb-3"><strong>💬 Summary:</strong><br><p>${data.summary}</p></div>`;
+        }
+        // Strategies (single or list)
         let strategies = data.strategies;
         if (strategies && !Array.isArray(strategies)) strategies = [strategies];
         if (strategies && Array.isArray(strategies) && strategies.length > 0) {
@@ -375,22 +455,64 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById(`enhance-${agent}-inputs`).style.display = 'block';
     }
 
+    function showLoadingState(agent) {
+        const output = document.getElementById(`${agent}_output`);
+        output.classList.add('fade-out');
+        // Insert spinner/shimmer at top if not present
+        let spinnerId = `${agent}-spinner`;
+        if (!document.getElementById(spinnerId)) {
+            const spinner = document.createElement('div');
+            spinner.id = spinnerId;
+            spinner.innerHTML = `<div class="d-flex align-items-center mb-2"><div class="spinner-border text-${agent === 'instinct' ? 'info' : 'success'} me-2" role="status" style="width: 1.5rem; height: 1.5rem;"></div><span>Running...</span></div>`;
+            output.parentNode.insertBefore(spinner, output);
+        }
+    }
+    function hideLoadingState(agent) {
+        const output = document.getElementById(`${agent}_output`);
+        output.classList.remove('fade-out');
+        output.classList.add('fade-in');
+        setTimeout(() => output.classList.remove('fade-in'), 600);
+        let spinner = document.getElementById(`${agent}-spinner`);
+        if (spinner) spinner.remove();
+    }
+    function setButtonLoading(btn, isLoading) {
+        if (isLoading) {
+            btn.disabled = true;
+            btn.dataset.originalText = btn.textContent;
+            btn.textContent = 'Running...';
+        } else {
+            btn.disabled = false;
+            if (btn.dataset.originalText) btn.textContent = btn.dataset.originalText;
+        }
+    }
+    function flashRagPanel(agent) {
+        const panel = document.getElementById(`rag-${agent}-panel`);
+        if (panel) {
+            panel.classList.add('rag-flash');
+            setTimeout(() => panel.classList.remove('rag-flash'), 700);
+        }
+    }
+
     runInstinctBtn.addEventListener('click', function() {
-        instinctOutput.innerHTML = '<div class="text-center"><div class="spinner-border text-info" role="status"></div><br>Running Instinct Agent...</div>';
+        showLoadingState('instinct');
+        setButtonLoading(runInstinctBtn, true);
+        instinctOutput.innerHTML = '';
         fetch('/start_instinct', {
             method: 'POST',
             body: getFormData()
         })
         .then(response => response.json())
         .then(data => {
+            hideLoadingState('instinct');
+            setButtonLoading(runInstinctBtn, false);
             instinctOutput.innerHTML = renderInstinctAgentResult(data);
             addTokens(extractTokenCount(data));
             updateCostPanel(data);
             if (data && data.rag_insights) {
                 document.getElementById('rag-instinct-content').innerHTML = renderRagMarkdown(data.rag_insights);
                 document.getElementById('rag-instinct-panel').style.display = 'block';
+                flashRagPanel('instinct');
             }
-            // Save last context for enhancement
             lastInstinctContext = {
                 ...getFormData(),
                 result: data
@@ -398,26 +520,32 @@ document.addEventListener('DOMContentLoaded', function() {
             enableEnhanceButton('instinct');
         })
         .catch(err => {
+            hideLoadingState('instinct');
+            setButtonLoading(runInstinctBtn, false);
             instinctOutput.innerHTML = '<div class="alert alert-danger">Error: ' + err + '</div>';
         });
     });
 
     runPlaybookBtn.addEventListener('click', function() {
-        playbookOutput.innerHTML = '<div class="text-center"><div class="spinner-border text-success" role="status"></div><br>Running Playbook Agent...</div>';
+        showLoadingState('playbook');
+        setButtonLoading(runPlaybookBtn, true);
+        playbookOutput.innerHTML = '';
         fetch('/start_playbook', {
             method: 'POST',
             body: getFormData()
         })
         .then(response => response.json())
         .then(data => {
-            playbookOutput.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            hideLoadingState('playbook');
+            setButtonLoading(runPlaybookBtn, false);
+            playbookOutput.innerHTML = renderPlaybookAgentResult(data);
             addTokens(extractTokenCount(data));
             updateCostPanel(data);
             if (data && data.rag_insights) {
                 document.getElementById('rag-playbook-content').innerHTML = renderRagMarkdown(data.rag_insights);
                 document.getElementById('rag-playbook-panel').style.display = 'block';
+                flashRagPanel('playbook');
             }
-            // Save last context for enhancement
             lastPlaybookContext = {
                 ...getFormData(),
                 result: data
@@ -425,6 +553,8 @@ document.addEventListener('DOMContentLoaded', function() {
             enableEnhanceButton('playbook');
         })
         .catch(err => {
+            hideLoadingState('playbook');
+            setButtonLoading(runPlaybookBtn, false);
             playbookOutput.innerHTML = '<div class="alert alert-danger">Error: ' + err + '</div>';
         });
     });
@@ -474,41 +604,27 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     document.getElementById('enhance-instinct-btn').addEventListener('click', function() {
-        const csvInput = document.getElementById('enhance-instinct-csv');
-        const notesInput = document.getElementById('enhance-instinct-notes');
-        const formData = new FormData();
-        // Add previous context if needed (could add more fields)
-        if (lastInstinctContext) {
-            // You may want to add more fields from lastInstinctContext
-            formData.append('previous_result', JSON.stringify(lastInstinctContext.result));
-        }
-        if (csvInput.files.length > 0) {
-            formData.append('csv_file', csvInput.files[0]);
-        }
-        if (notesInput.value.trim()) {
-            formData.append('enhance_notes', notesInput.value.trim());
-        }
-        fetch('/enhance_instinct', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            instinctOutput.innerHTML = '<div class="border border-info rounded p-2 mb-2 bg-light"><span class="badge bg-info text-dark">Enhanced Strategy Result</span></div>' + renderInstinctAgentResult(data);
-            addTokens(extractTokenCount(data));
-            updateCostPanel(data);
-            if (data && data.rag_insights) {
-                document.getElementById('rag-instinct-content').innerHTML = renderRagMarkdown(data.rag_insights);
-                document.getElementById('rag-instinct-panel').style.display = 'block';
-            }
-        });
+        showLoadingState('instinct');
+        setButtonLoading(document.getElementById('enhance-instinct-btn'), true);
+        fetchEnhance('instinct');
     });
 
     document.getElementById('enhance-playbook-btn').addEventListener('click', function() {
-        const csvInput = document.getElementById('enhance-playbook-csv');
-        const notesInput = document.getElementById('enhance-playbook-notes');
+        showLoadingState('playbook');
+        setButtonLoading(document.getElementById('enhance-playbook-btn'), true);
+        fetchEnhance('playbook');
+    });
+
+    function fetchEnhance(agent) {
+        const csvInput = document.getElementById(`enhance-${agent}-csv`);
+        const notesInput = document.getElementById(`enhance-${agent}-notes`);
+        const btn = document.getElementById(`enhance-${agent}-btn`);
+        const output = document.getElementById(`${agent}_output`);
         const formData = new FormData();
-        if (lastPlaybookContext) {
+        if (agent === 'instinct' && lastInstinctContext) {
+            formData.append('previous_result', JSON.stringify(lastInstinctContext.result));
+        }
+        if (agent === 'playbook' && lastPlaybookContext) {
             formData.append('previous_result', JSON.stringify(lastPlaybookContext.result));
         }
         if (csvInput.files.length > 0) {
@@ -517,21 +633,28 @@ document.addEventListener('DOMContentLoaded', function() {
         if (notesInput.value.trim()) {
             formData.append('enhance_notes', notesInput.value.trim());
         }
-        fetch('/enhance_playbook', {
+        fetch(`/enhance_${agent}`, {
             method: 'POST',
             body: formData
         })
         .then(response => response.json())
         .then(data => {
-            playbookOutput.innerHTML = '<div class="border border-info rounded p-2 mb-2 bg-light"><span class="badge bg-info text-dark">Enhanced Strategy Result</span></div>' + '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            hideLoadingState(agent);
+            setButtonLoading(btn, false);
+            if (agent === 'instinct') {
+                output.innerHTML = '<div class="border border-info rounded p-2 mb-2 bg-light"><span class="badge bg-info text-dark">Enhanced Strategy Result</span></div>' + renderInstinctAgentResult(data);
+            } else {
+                output.innerHTML = '<div class="border border-info rounded p-2 mb-2 bg-light"><span class="badge bg-info text-dark">Enhanced Strategy Result</span></div>' + renderPlaybookAgentResult(data);
+            }
             addTokens(extractTokenCount(data));
             updateCostPanel(data);
             if (data && data.rag_insights) {
-                document.getElementById('rag-playbook-content').innerHTML = renderRagMarkdown(data.rag_insights);
-                document.getElementById('rag-playbook-panel').style.display = 'block';
+                document.getElementById(`rag-${agent}-content`).innerHTML = renderRagMarkdown(data.rag_insights);
+                document.getElementById(`rag-${agent}-panel`).style.display = 'block';
+                flashRagPanel(agent);
             }
         });
-    });
+    }
 });
 </script>
 </body>
