@@ -205,29 +205,6 @@ HTML_TEMPLATE = '''
       </div>
     </div>
     
-    <!-- Image Analysis Card -->
-    <div class="card">
-      <div class="card-header">
-        <i class="text-primary">🖼️</i> Snapshot Analysis
-      </div>
-      <div class="card-body">
-        <form method="POST" enctype="multipart/form-data" action="/image_analysis">
-          <div class="mb-3">
-            <p>Paste your technical indicator charts here:</p>
-            <div id="image-dropzone" class="form-control" style="min-height: 100px; cursor: pointer;">
-              Click here and paste image (Ctrl+V)
-            </div>
-            <div id="preview-area" class="d-flex flex-wrap mt-2 gap-2"></div>
-            <input type="hidden" id="image_count" name="image_count" value="0">
-            <input type="hidden" id="clipboard_method" name="method" value="upload">
-          </div>
-          <button type="submit" class="btn btn-primary">
-            <i class="me-2">📸</i> Run Snapshot Analysis
-          </button>
-        </form>
-      </div>
-    </div>
-    
     <!-- Symbol Chart Card -->
     <div class="card mb-4">
       <div class="card-header">
@@ -280,6 +257,14 @@ HTML_TEMPLATE = '''
             {% for result in image_outputs %}
             <h5>{{ result.filename }}</h5>
             <pre class="result-pre">{{ result.text }}</pre>
+            <!-- HIGHLIGHTED: Cost info display -->
+            {% if result.cost_info %}
+            <div class="alert alert-info p-2 mt-2 mb-0 small" style="border-radius:6px;">
+              💰 Estimated Gemini Cost: ${{ '%.4f' % result.cost_info.estimated_cost_usd }}
+              ({{ result.cost_info.prompt_tokens }} input, {{ result.cost_info.output_tokens }} output tokens)
+            </div>
+            {% endif %}
+            <!-- END HIGHLIGHTED -->
             {% endfor %}
           </div>
         </div>
@@ -357,64 +342,6 @@ HTML_TEMPLATE = '''
         if (bytes < 1024) return bytes + ' B';
         else if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
         else return (bytes / 1048576).toFixed(2) + ' MB';
-      }
-      
-      // Image paste handling
-      var imageDropzone = $('#image-dropzone');
-      var previewArea = $('#preview-area');
-      var imageCount = 0;
-      var clipboardMethodInput = $('#clipboard_method');
-      
-      imageDropzone.on('click', function() {
-        $(this).focus();
-      });
-      
-      imageDropzone.on('paste', function(e) {
-        var items = (e.clipboardData || e.originalEvent.clipboardData).items;
-        var blobs = [];
-        
-        for (var i = 0; i < items.length; i++) {
-          if (items[i].type.indexOf('image') === 0) {
-            blobs.push(items[i].getAsFile());
-          }
-        }
-        
-        if (blobs.length > 0) {
-          clipboardMethodInput.val('clipboard');
-          handleImagePaste(blobs);
-        }
-      });
-      
-      function handleImagePaste(blobs) {
-        blobs.forEach(blob => {
-          var reader = new FileReader();
-          reader.onload = function(e) {
-            imageCount++;
-            
-            // Add preview
-            var imgPreview = $('<div>').addClass('position-relative');
-            var img = $('<img>').attr('src', e.target.result).css({
-              'max-width': '200px',
-              'max-height': '150px',
-              'border-radius': '5px'
-            });
-            
-            imgPreview.append(img);
-            previewArea.append(imgPreview);
-            
-            // Add hidden input with base64 data
-            var input = $('<input>').attr({
-              type: 'hidden',
-              name: 'image_' + imageCount,
-              value: e.target.result
-            });
-            
-            $('form').append(input);
-            $('#image_count').val(imageCount);
-          };
-          
-          reader.readAsDataURL(blob);
-        });
       }
     });
   </script>

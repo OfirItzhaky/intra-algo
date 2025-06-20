@@ -7,7 +7,6 @@ import pandas_ta as ta
 
 from research_fetchers import ResearchFetchers, summarize_with_cache, summarize_economic_events_with_cache
 from research_analyzer import ResearchAnalyzer
-from image_analyzer_ai import ImageAnalyzerAI
 from news_aggregator import NewsAggregator
 import os
 import pandas as pd
@@ -48,11 +47,6 @@ analyzer = ResearchAnalyzer(config=CONFIG, fetchers=fetchers, aggregator=aggrega
 UPLOAD_FOLDER = os.path.abspath("uploaded_csvs")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 symbol_data = {}  # global store
-image_ai = ImageAnalyzerAI(
-    model_provider=CONFIG["model_provider"],
-    model_name=CONFIG["model_name"],
-    api_key=CONFIG["openai_api_key"] if CONFIG["model_provider"] == "openai" else CONFIG["gemini_api_key"]
-)
 
 # === Prepare context ===
 def prepare_daily_context():
@@ -715,102 +709,6 @@ def momentum_analysis():
             <div class="container">
                 <div class="alert alert-danger">
                     <h3>Error in Momentum Analysis</h3>
-                    <p>{{ error }}</p>
-                    <pre>{{ traceback }}</pre>
-                </div>
-                <a href="/" class="btn btn-primary">Return to Dashboard</a>
-            </div>
-        </body>
-        </html>
-        """, error=str(e), traceback=error_details)
-
-@app.route("/image_analysis", methods=["POST"])
-def image_analysis():
-    print("===== IMAGE_ANALYSIS ROUTE CALLED =====")
-    global image_results
-    
-    try:
-        # Check for file upload from form
-        if 'image_file' in request.files:
-            file = request.files['image_file']
-            if file.filename != '':
-                # Process uploaded file
-                file_bytes = file.read()
-                
-                # Analyze the image
-                analysis = image_ai.analyze_image_with_bytes(file_bytes)
-                if analysis and analysis.get('analysis'):
-                    image_results = [{
-                        "filename": f"📊 Chart Analysis: {file.filename}",
-                        "text": analysis.get('analysis')
-                    }]
-                else:
-                    image_results = [{
-                        "filename": "❓ Chart Analysis",
-                        "text": "No analysis was generated for the image. The image may not contain analyzable chart data."
-                    }]
-        else:
-            # No file upload, try to use one of the other methods
-            method = request.form.get('method', 'upload')
-            
-            if method == 'clipboard':
-                # Process clipboard image
-                result = image_ai.analyze_clipboard_snapshot()
-                if result and result.get('raw_output'):
-                    image_results = [{
-                        "filename": "📋 Clipboard Chart Analysis",
-                        "text": result.get('raw_output')
-                    }]
-                else:
-                    image_results = [{
-                        "filename": "❌ Clipboard Analysis Failed",
-                        "text": "Could not capture clipboard data or analyze the image. Please ensure you have copied an image to your clipboard."
-                    }]
-            elif method == 'pick':
-                # User wants to pick images
-                results = image_ai.pick_snapshots_and_analyze()
-                if results:
-                    image_results = []
-                    for filename, analysis in results.items():
-                        image_results.append({
-                            "filename": f"📊 Chart Analysis: {os.path.basename(filename)}",
-                            "text": analysis.get('analysis', 'No analysis available')
-                        })
-                else:
-                    image_results = [{
-                        "filename": "❌ No Images Analyzed",
-                        "text": "No images were selected or the analysis failed."
-                    }]
-            else:
-                image_results = [{
-                    "filename": "❓ Unknown Method",
-                    "text": f"Unknown analysis method: {method}. Please try again."
-                }]
-        
-        return redirect(url_for("index", no_reset="true"))
-        
-    except Exception as e:
-        error_details = traceback.format_exc()
-        error_message = f"Error in image analysis: {str(e)}\n\nStacktrace:\n{error_details}"
-        print(error_message)  # Log to console/logs
-        
-        # Add error to image_results
-        image_results = [{
-            "filename": "❌ Error in Image Analysis",
-            "text": error_message
-        }]
-        
-        # Return both HTML display and JSON error
-        return render_template_string("""
-        <html>
-        <head>
-            <title>Error in Image Analysis</title>
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-        </head>
-        <body style="font-family: Arial; margin: 40px;">
-            <div class="container">
-                <div class="alert alert-danger">
-                    <h3>Error in Image Analysis</h3>
                     <p>{{ error }}</p>
                     <pre>{{ traceback }}</pre>
                 </div>
