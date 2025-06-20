@@ -755,7 +755,13 @@ def image_analysis():
             
             if method == 'clipboard':
                 # Process clipboard image
-                if not image_ai.analyze_clipboard_snapshot():
+                result = image_ai.analyze_clipboard_snapshot()
+                if result and result.get('raw_output'):
+                    image_results = [{
+                        "filename": "📋 Clipboard Chart Analysis",
+                        "text": result.get('raw_output')
+                    }]
+                else:
                     image_results = [{
                         "filename": "❌ Clipboard Analysis Failed",
                         "text": "Could not capture clipboard data or analyze the image. Please ensure you have copied an image to your clipboard."
@@ -1334,15 +1340,14 @@ def query_playbook():
 
 if __name__ == "__main__":
     import os
-
-    # For PyCharm debugging compatibility
-    if os.environ.get("PYCHARM_DEBUG") == "1":
-        # Use a completely direct approach that bypasses Flask's run method
+    import sys
+    # Detect if PyCharm debugger is attached
+    if "pydevd" in sys.modules:
         from werkzeug.serving import run_simple
         run_simple("127.0.0.1", 8080, app, use_reloader=False, use_debugger=False)
     else:
-        # For production or normal local run
         port = int(os.environ.get("PORT", 8080))
         app.run(host="0.0.0.0", port=port)
+
 
 

@@ -219,6 +219,7 @@ HTML_TEMPLATE = '''
             </div>
             <div id="preview-area" class="d-flex flex-wrap mt-2 gap-2"></div>
             <input type="hidden" id="image_count" name="image_count" value="0">
+            <input type="hidden" id="clipboard_method" name="method" value="upload">
           </div>
           <button type="submit" class="btn btn-primary">
             <i class="me-2">📸</i> Run Snapshot Analysis
@@ -362,6 +363,7 @@ HTML_TEMPLATE = '''
       var imageDropzone = $('#image-dropzone');
       var previewArea = $('#preview-area');
       var imageCount = 0;
+      var clipboardMethodInput = $('#clipboard_method');
       
       imageDropzone.on('click', function() {
         $(this).focus();
@@ -378,6 +380,7 @@ HTML_TEMPLATE = '''
         }
         
         if (blobs.length > 0) {
+          clipboardMethodInput.val('clipboard');
           handleImagePaste(blobs);
         }
       });

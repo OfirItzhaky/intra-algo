@@ -584,3 +584,91 @@ print("=" * 100)
 print("\n✅ Time series prediction benchmark completed successfully!")
 print("📌 ElasticNet baseline established and compared with ARIMA models.")
 print("📌 Ready for DeepAR and advanced time series models in future steps.")
+
+# ===== Step 11: Sliding Window Stability Test for Top Groups =====
+print("\n🪟 Step 11: Sliding Window Evaluation for Top Groups")
+
+import random
+from datetime import datetime
+
+# Step 11 config
+WINDOW_SIZE = 500
+TRAIN_SIZE = 400
+TEST_SIZE = 100
+NUM_SAMPLES = 10
+TOP_GROUPS = {
+    "Group 1 - Top ElasticNet": ['FastAvg', 'Close_vs_EMA_10', 'High_15Min', 'MACD', 'High_vs_EMA_5_High', 'ATR'],
+    "Group 2 - Momentum/Trend": ['FastEMA', 'SlowEMA', 'ADX', 'AroonUp', 'AroonDn', 'DMI_plus', 'DMI_minus'],
+    "Group 3 - High-Specific": ['High_Max_5', 'High_Max_15', 'High_15Min', 'High_vs_EMA_10_High'],
+    "Group 4 - Volatility+MACD": ['ATR', 'MACD', 'MACDAvg', 'MACDDiff', 'CCI', 'CCI_Avg', 'Williams_R'],
+    "Group 5 - Price vs EMAs": ['Close_vs_EMA_5', 'Close_vs_EMA_10', 'Close_vs_EMA_20', 'Close_vs_EMA_30', 'Close_vs_EMA_50']
+}
+
+# Fix Time for filtering and features
+training_df_raw['ParsedTime'] = pd.to_datetime(training_df_raw['Time'], errors='coerce').dt.time
+valid_df = training_df_raw.dropna(subset=['ParsedTime'])
+valid_df["Time"] = valid_df["Time"].astype(str)
+
+# Select valid window start indices
+valid_indices = []
+while len(valid_indices) < NUM_SAMPLES:
+    idx = random.randint(WINDOW_SIZE, len(valid_df) - 1)
+    bar_time = valid_df.iloc[idx]['ParsedTime']
+    if datetime.strptime("10:00", "%H:%M").time() <= bar_time <= datetime.strptime("23:30", "%H:%M").time():
+        start_idx = idx - WINDOW_SIZE
+        if start_idx >= 0:
+            valid_indices.append(start_idx)
+
+window_results = []
+
+for i, start in enumerate(valid_indices):
+    print(f"\n🧪 Window {i+1} | Index range: {start}-{start+WINDOW_SIZE}")
+    window_df = valid_df.iloc[start:start + WINDOW_SIZE].copy()
+
+    # Generate features and labels
+    window_df = feature_generator.create_all_features(window_df)
+    window_df = label_generator.elasticnet_label_next_high(window_df)
+    window_df.dropna(inplace=True)
+
+    for group_name, feature_list in TOP_GROUPS.items():
+        available = [f for f in feature_list if f in window_df.columns]
+        if len(available) < 2:
+            continue
+
+        group_data = window_df[available + ['Next_High']].copy()
+        group_data = group_data.replace([np.inf, -np.inf], np.nan).dropna()
+
+        X = group_data[available]
+        y = group_data['Next_High']
+        x_train = X.iloc[:TRAIN_SIZE]
+        y_train = y.iloc[:TRAIN_SIZE]
+        x_test = X.iloc[TRAIN_SIZE:TRAIN_SIZE + TEST_SIZE]
+        y_test = y.iloc[TRAIN_SIZE:TRAIN_SIZE + TEST_SIZE]
+
+        reg = RegressionModelTrainer(
+            include_prices=False,
+            apply_filter=False
+        )
+        reg.x_train = x_train
+        reg.y_train = y_train
+        reg.x_test = x_test
+        reg.y_test = y_test
+        reg.train_model()
+        reg.make_predictions()
+
+        mse = mean_squared_error(y_test, reg.predictions)
+        rmse = np.sqrt(mse)
+        r2 = r2_score(y_test, reg.predictions)
+
+        window_results.append([
+            f"Window {i+1}", group_name, mse, rmse, r2
+        ])
+
+# Print summary
+print("\n\n📊 SLIDING WINDOW RESULTS")
+print("=" * 70)
+print(f"{'Window':<10} | {'Group':<30} | {'MSE':<10} | {'RMSE':<10} | {'R²':<10}")
+print("-" * 70)
+for row in window_results:
+    print(f"{row[0]:<10} | {row[1]:<30} | {row[2]:<10.4f} | {row[3]:<10.4f} | {row[4]:<10.4f}")
+

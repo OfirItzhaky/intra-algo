@@ -179,6 +179,15 @@ class ImageAnalyzerAI:
 
         response = requests.post(endpoint, headers=headers, json=payload)
         response.raise_for_status()
+        print("\n[Gemini LOG] === Gemini Vision API Call ===")
+        print(f"[Gemini LOG] Endpoint: {endpoint}")
+        print(f"[Gemini LOG] Model Name: gemini-1.5-pro-latest")
+        print(f"[Gemini LOG] API Key Present: {'Yes' if self.api_key else 'No'}")
+        print(f"[Gemini LOG] Prompt (first 80 chars): {prompt[:80]}...")
+        print(f"[Gemini LOG] Image size (bytes): {len(image_bytes)}")
+        print(f"[Gemini LOG] MIME type: {mime_type}")
+        print("[Gemini LOG] Submitting request to Gemini...\n")
+
         content = response.json()["choices"][0]["message"]["content"]
         return {"raw_output": content}
 

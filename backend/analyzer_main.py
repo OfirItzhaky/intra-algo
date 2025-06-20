@@ -4,6 +4,7 @@ from pandasgui import show
 import backtrader as bt
 import joblib
 from imblearn.over_sampling import SMOTE
+import importlib
 
 from analyzer_load_eda import ModelLoaderAndExplorer
 from analyzer_cerebro_strategy_engine import CerebroStrategyEngine
@@ -16,7 +17,8 @@ from backend.label_generator import LabelGenerator
 from backend.feature_generator import FeatureGenerator
 from backend.regression_model_trainer import RegressionModelTrainer
 
-
+TRAIN_MODEL_FROM_SCRATCH = 1  # Set to 1 to train model from scratch; set to 0 to use pre-trained flow
+GROUP1_FEATURES = ['FastAvg', 'Close_vs_EMA_10', 'High_15Min', 'MACD', 'High_vs_EMA_5_High', 'ATR']
 
 def get_model_save_path(model_type, data_size):
     """Helper function to generate model save paths with timestamp and data size"""
@@ -233,11 +235,23 @@ MAX_DAILY_PROFIT = 36.0  # Equivalent to about 30 ticks
 MAX_DAILY_LOSS = -36.0   # Negative value for losses
 
 if __name__ == "__main__":
-    # Choose which function to use
-    # regression_trainer, classifier_trainer, df_classifier_preds, df_regression_preds, model_loader = run_analyzer_with_pretrained()
-    regression_trainer, classifier_trainer, df_classifier_preds, df_regression_preds, model_loader = run_analyzer_with_training()
+    if TRAIN_MODEL_FROM_SCRATCH:
+        # Dynamic ElasticNet mode
+        from backend.analyzer_regression_trainer import AnalyzerRegressionTrainer
+        data_loader = DataLoader()
+        raw_df = data_loader.load_from_csv(TRAINING_DATA_PATH)
+        raw_df = raw_df.drop_duplicates(subset=["Date", "Time"])
+        analyzer_trainer = AnalyzerRegressionTrainer(raw_df, GROUP1_FEATURES)
+        df_regression_preds = analyzer_trainer.train_and_predict()
+        # Create dummy placeholders for downstream code
+        regression_trainer = None
+        classifier_trainer = None
+        df_classifier_preds = pd.DataFrame(index=df_regression_preds.index)  # Empty
+        model_loader = ModelLoaderAndExplorer(regression_path=None, classifier_path=None)
+    else:
+        regression_trainer, classifier_trainer, df_classifier_preds, df_regression_preds, model_loader = run_analyzer_with_training()
 
-# === Load 1-minute bars for exit logic ===
+    # === Load 1-minute bars for exit logic ===
     df_1min = model_loader.load_1min_bars(INTRABAR_DATA_PATH)
 
     # ✅ Validate and fill 1-min bars needed for exit simulation
@@ -280,9 +294,9 @@ if __name__ == "__main__":
     results_5min1min, cerebro = strategy_engine.run_backtest_Long5min1minStrategy(
         df_5min=df_regression_preds,
         df_1min=df_1min_enriched,
-                strategy_class=Long5min1minStrategy,
-                use_multi_class=USE_MULTI_CLASS,
-                multi_class_threshold=MULTI_CLASS_THRESHOLD
+        strategy_class=Long5min1minStrategy,
+        use_multi_class=USE_MULTI_CLASS,
+        multi_class_threshold=MULTI_CLASS_THRESHOLD
     )
 
     dashboard_intrabar = AnalyzerDashboard(
@@ -290,7 +304,6 @@ if __name__ == "__main__":
         df_classifiers=df_classifier_preds
     )
     print(f"📦 Total broker orders: {len(cerebro.broker.orders)}")
-
 
     df_trades_intrabar = dashboard_intrabar.build_trade_dataframe_from_orders(list(cerebro.broker.orders))
 

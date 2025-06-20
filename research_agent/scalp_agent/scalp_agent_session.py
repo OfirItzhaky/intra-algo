@@ -143,6 +143,13 @@ class ScalpAgentSession:
             print(f"[ScalpAgentSession] Gemini Vision raw response: {response.text[:1000]}{'...' if len(response.text) > 1000 else ''}")
             response.raise_for_status()
             response_data = response.json()
+            model_in_response = response_data.get("candidates", [{}])[0].get("content", {}).get("role", "unknown")
+            print(f"[Gemini DEBUG] Returned Model Role: {model_in_response}")
+            if "usageMetadata" in response_data:
+                print(f"[Gemini DEBUG] Token usage: {response_data['usageMetadata']}")
+            else:
+                print("[Gemini DEBUG] No usageMetadata returned.")
+
             # Extract token usage metadata if present
             self.token_usage_summary = None
             if "usageMetadata" in response_data:
