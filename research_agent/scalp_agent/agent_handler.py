@@ -8,7 +8,7 @@ from typing import Dict, Any, List
 from scalp_agent.input_container import InputContainer
 from scalp_agent.scalp_base_agent import BaseAgent
 from scalp_agent.instinct_agent import InstinctAgent
-from scalp_agent.playbook_agent import PlaybookAgent
+from scalp_agent.multitimeframe3strategies_agent import MultiTimeframe3StrategiesAgent
 
 class AgentHandler:
     """
@@ -20,7 +20,7 @@ class AgentHandler:
         """
         self.agents: List[BaseAgent] = [
             InstinctAgent(),
-            PlaybookAgent()
+            MultiTimeframe3StrategiesAgent()
         ]
 
     def run_all(

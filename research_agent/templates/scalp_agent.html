@@ -96,23 +96,15 @@
 </head>
 <body style="font-family: Arial; margin: 40px;">
 <div class="container">
-    <h1>📈 Scalping Agent</h1>
-    <!-- Bootstrap nav-tabs for two-step flow -->
-    <ul class="nav nav-tabs mb-3" id="scalpAgentTabs" role="tablist">
-      <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="setup-tab" data-bs-toggle="tab" data-bs-target="#setup" type="button" role="tab" aria-controls="setup" aria-selected="true">Setup</button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="interaction-tab" data-bs-toggle="tab" data-bs-target="#interaction" type="button" role="tab" aria-controls="interaction" aria-selected="false">Interaction</button>
-      </li>
-    </ul>
+    {% include "shared_ui_blocks.html" %}
     <div class="tab-content" id="scalpAgentTabContent">
       <!-- TAB 1: SETUP -->
       <div class="tab-pane fade show active" id="setup" role="tabpanel" aria-labelledby="setup-tab">
         <form id="setup-form" method="POST" enctype="multipart/form-data" class="mb-4">
           <div class="mb-3">
-            <label for="max_risk" class="form-label">Max Risk</label>
-            <input type="number" step="any" class="form-control" id="max_risk" name="max_risk" placeholder="Enter max risk" required>
+            <label for="max_risk" class="form-label">Max Daily Risk</label>
+            <input type="number" step="any" class="form-control" id="max_risk" name="max_risk" placeholder="Enter your daily max risk" required>
+            <div class="form-text">This is your total loss cap for the day. The agent will not suggest trades that may exceed this.</div>
           </div>
           <div class="mb-3">
             <label for="max_risk_per_trade" class="form-label">Max Risk Per Trade</label>
@@ -120,12 +112,12 @@
           </div>
           <div id="paste-dropzone" class="border border-primary rounded p-4 mb-3 text-center" tabindex="0" style="background: #f8f9fa; cursor: pointer;">
             <span class="text-secondary">
-              <strong>📋 Paste chart image here (Ctrl+V)</strong><br>
-              <small>Or use the file upload below</small>
+              <strong>📋 Paste chart images here (Ctrl+V)</strong><br>
+              <small>Or use the file upload below (multiple images supported)</small>
             </span>
-            <div id="paste-preview" class="mt-2"></div>
+            <div id="multi-image-preview" class="mt-3" style="display: flex; flex-wrap: wrap; gap: 12px; overflow-x: auto;"></div>
           </div>
-          <input type="file" class="form-control" id="chart_file" name="chart_file" accept="image/*" style="margin-top: 8px;">
+          <input type="file" class="form-control" id="chart_file" name="chart_file" accept="image/*" multiple style="margin-top: 8px;">
           <div class="mb-3">
             <label for="csv_file" class="form-label">Upload CSV (OHLCV + indicators)</label>
             <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv,.txt,.xlsx,.xls">
@@ -134,14 +126,27 @@
             <label for="session_notes" class="form-label">Session Notes (optional)</label>
             <textarea class="form-control" id="session_notes" name="session_notes" rows="3" placeholder="Enter any notes..."></textarea>
           </div>
-          <div class="row">
-            <div class="col-md-6 d-grid">
-              <button type="button" class="btn btn-primary mb-2" id="run-instinct-btn">Run Instinct Agent</button>
+          <div class="action-btns-container" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1.5rem;">
+            <div class="d-flex flex-row gap-2" style="width: 100%;">
+              <button id="run-instinct-btn" class="btn btn-primary fw-bold text-uppercase flex-fill" type="button" style="min-width: 0;">
+                Run Instinct Agent
+              </button>
+              <button id="run-playbook-btn" class="btn btn-success fw-bold text-uppercase flex-fill" type="button" style="min-width: 0;">
+                Run Playbook Agent
+              </button>
             </div>
-            <div class="col-md-6 d-grid">
-              <button type="button" class="btn btn-success mb-2" id="run-playbook-btn">Run Playbook Agent</button>
+            <div class="d-flex flex-row" style="width: 100%;">
+              <div style="flex: 1;"></div>
+              <button id="run-multitimeframe-agent-btn" class="btn fw-bold text-uppercase" type="button" style="background-color: #66bb6a; color: #fff; border-radius: 0.375rem; padding: 0.5rem 1.25rem; font-size: 1rem; flex: 1; max-width: 50%; min-width: 220px;">
+                Run MultiTimeframe Agent
+              </button>
             </div>
           </div>
+          <div id="multitimeframe-agent-result" class="mt-3"></div>
+          <!-- HIGHLIGHTED: Playbook response container for feedback/messages -->
+          <div id="playbook-response-container" class="mt-2"></div>
+          <div id="bias-summary-block"></div>
+          <!-- END HIGHLIGHTED -->
         </form>
       </div>
       <!-- TAB 2: INTERACTION -->
@@ -197,29 +202,6 @@
       </div>
     </div>
 </div>
-<div id="llm-cost-overlay">
-  <div><span>📄</span> RAG Summary: <span id="rag-tokens">N/A</span> tokens used (<span id="rag-cost">$0.0000</span>)</div>
-  <div><span>🔢</span> LLM: <span id="llm-tokens">0</span> tokens used (<span id="llm-cost">$0.0000</span>)</div>
-  <div><span>💰</span> Estimated total cost: <span id="total-cost">$0.0000</span></div>
-</div>
-
-<!-- Floating RAG Panel for Instinct Agent -->
-<div id="rag-instinct-panel" class="floating-rag-panel floating-rag-panel-left" style="display:none;">
-  <div class="floating-rag-panel-header">
-    <span>🧠 RAG for Instinct Agent</span>
-    <button class="floating-rag-panel-close" onclick="document.getElementById('rag-instinct-panel').style.display='none'">✖️</button>
-  </div>
-  <div class="floating-rag-panel-content" id="rag-instinct-content"></div>
-</div>
-
-<!-- Floating RAG Panel for Playbook Agent -->
-<div id="rag-playbook-panel" class="floating-rag-panel floating-rag-panel-right" style="display:none;">
-  <div class="floating-rag-panel-header">
-    <span>🧠 RAG for Playbook Agent</span>
-    <button class="floating-rag-panel-close" onclick="document.getElementById('rag-playbook-panel').style.display='none'">✖️</button>
-  </div>
-  <div class="floating-rag-panel-content" id="rag-playbook-content"></div>
-</div>
 
 <!-- Add marked.js for markdown rendering -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -227,7 +209,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const dropzone = document.getElementById('paste-dropzone');
-    const previewArea = document.getElementById('paste-preview');
+    const multiPreviewArea = document.getElementById('multi-image-preview');
     let chartFileInput = document.getElementById('chart_file');
     const runInstinctBtn = document.getElementById('run-instinct-btn');
     const runPlaybookBtn = document.getElementById('run-playbook-btn');
@@ -248,38 +230,108 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelector('form').prepend(chartFileInput);
     }
 
-    // Focus dropzone on click for better UX
-    dropzone.addEventListener('click', function() {
-        dropzone.focus();
+    // --- MULTI-IMAGE STATE ---
+    let chartImages = []; // { file: File, url: string, tag: string }
+    const TIMEFRAME_OPTIONS = ["15m", "30m", "60m", "4h", "Daily", "Weekly"];
+
+    function renderMultiImagePreview() {
+        multiPreviewArea.innerHTML = '';
+        chartImages.forEach((img, idx) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'border rounded p-2 d-flex flex-column align-items-center';
+            wrapper.style.width = '120px';
+            wrapper.style.position = 'relative';
+            // Remove button
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'btn-close position-absolute top-0 end-0 m-1';
+            removeBtn.style.zIndex = 2;
+            removeBtn.title = 'Remove image';
+            removeBtn.onclick = () => {
+                chartImages.splice(idx, 1);
+                renderMultiImagePreview();
+            };
+            wrapper.appendChild(removeBtn);
+            // Image
+            const imgElem = document.createElement('img');
+            imgElem.src = img.url;
+            imgElem.style.maxWidth = '90px';
+            imgElem.style.maxHeight = '70px';
+            imgElem.className = 'mb-1';
+            wrapper.appendChild(imgElem);
+            // Timeframe tag dropdown
+            const tfSelect = document.createElement('select');
+            tfSelect.className = 'form-select form-select-sm mt-1';
+            tfSelect.style.width = '90px';
+            TIMEFRAME_OPTIONS.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt;
+                option.textContent = opt;
+                if (img.tag === opt) option.selected = true;
+                tfSelect.appendChild(option);
+            });
+            tfSelect.value = img.tag || '';
+            tfSelect.onchange = (e) => {
+                img.tag = e.target.value;
+            };
+            wrapper.appendChild(tfSelect);
+            // Label
+            const label = document.createElement('div');
+            label.className = 'text-muted small mt-1';
+            label.textContent = img.file.name || 'Pasted Image';
+            wrapper.appendChild(label);
+            multiPreviewArea.appendChild(wrapper);
+        });
+    }
+
+    // Handle file input (multiple)
+    chartFileInput.addEventListener('change', function(e) {
+        const files = Array.from(e.target.files);
+        files.forEach(file => {
+            if (!file.type.startsWith('image/')) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                chartImages.push({ file, url: event.target.result, tag: '' });
+                renderMultiImagePreview();
+            };
+            reader.readAsDataURL(file);
+        });
+        // Reset input so same file can be re-added if removed
+        chartFileInput.value = '';
     });
 
+    // Handle paste (multiple images)
     dropzone.addEventListener('paste', function(e) {
         let items = (e.clipboardData || window.clipboardData).items;
         for (let i = 0; i < items.length; i++) {
             let item = items[i];
             if (item.type.indexOf('image') !== -1) {
                 let blob = item.getAsFile();
-                // Show preview
+                let file = new File([blob], `pasted_chart_${Date.now()}_${i}.png`, {type: blob.type});
                 let reader = new FileReader();
                 reader.onload = function(event) {
-                    previewArea.innerHTML = '<div class="alert alert-info p-2"><strong>Pasted Chart Image:</strong><br><img src="' + event.target.result + '" style="max-width:200px; max-height:150px; border-radius:5px; margin-top:5px;"></div>';
+                    chartImages.push({ file, url: event.target.result, tag: '' });
+                    renderMultiImagePreview();
                 };
-                reader.readAsDataURL(blob);
-                // Convert blob to File and assign to input
-                let file = new File([blob], 'pasted_chart.png', {type: blob.type});
-                let dt = new DataTransfer();
-                dt.items.add(file);
-                chartFileInput.files = dt.files;
-                break;
+                reader.readAsDataURL(file);
             }
         }
     });
 
+    // Focus dropzone on click for better UX
+    dropzone.addEventListener('click', function() {
+        dropzone.focus();
+    });
+
+    // --- FORM DATA: append all images and tags ---
     function getFormData() {
         const formData = new FormData();
-        if (chartFileInput.files.length > 0) {
-            formData.append('chart_file', chartFileInput.files[0]);
-        }
+        // Chart images
+        chartImages.forEach((img, idx) => {
+            formData.append('chart_files', img.file); // Flask: request.files.getlist('chart_files')
+            formData.append(`chart_file_tag_${idx}`, img.tag || '');
+        });
+        // CSV
         if (csvFileInput.files.length > 0) {
             formData.append('csv_file', csvFileInput.files[0]);
         }
@@ -355,9 +407,53 @@ document.addEventListener('DOMContentLoaded', function() {
             return '<div class="alert alert-warning">No result.</div>';
         }
         let html = '';
-        // Feedback (if present)
+        // HIGHLIGHTED: Show input validation error if present
+        if (data.feedback && data.step === 'validation_failed') {
+            html += `<div class="alert alert-danger mb-3"><strong>⚠️ Input Validation Error</strong><br>${data.feedback}</div>`;
+            return html; // Only show this error, skip rest
+        }
+        // END HIGHLIGHTED
+        // --- Bias Summary block (multi-image) ---
+        if (Array.isArray(data.bias_summary) && data.bias_summary.length > 0) {
+            html += `<div class="card border-warning mb-3" style="max-width: 28rem;">
+                <div class="card-header bg-warning text-dark"><strong>Bias Summary</strong></div>
+                <div class="card-body pb-2 pt-2">
+                  <ul class="list-unstyled mb-0">`;
+            data.bias_summary.forEach(bias => {
+                let icon = '';
+                const tf = (bias.interval || '').toLowerCase();
+                if (tf.includes('day')) icon = '🗓';
+                else if (tf.includes('60') || tf.includes('1h')) icon = '🕐';
+                else if (tf.includes('15')) icon = '🕒';
+                else if (tf.includes('30')) icon = '🕧';
+                else icon = '⏱';
+                const conf = bias.confidence !== undefined ? ` (Confidence: ${(bias.confidence * 100).toFixed(0)}%)` : '';
+                html += `<li class="mb-1">${icon} <strong>${bias.interval || ''}</strong> → <span class="fw-bold">${bias.bias_direction}</span>${conf}</li>`;
+            });
+            html += `</ul></div></div>`;
+        }
+        // --- End Bias Summary block ---
+        // HIGHLIGHTED: Show Multi-Timeframe Bias Summary if present
+        if (data.multi_tf_bias && typeof data.multi_tf_bias === 'object' && Object.keys(data.multi_tf_bias).length > 0) {
+            html += `<div class="card border-info mb-3" style="max-width: 28rem;">`;
+            html += `<div class="card-header bg-info text-white"><strong>Multi-Timeframe Bias</strong></div>`;
+            html += `<div class="card-body">`;
+            html += `<ul class="list-unstyled mb-0">`;
+            for (const [tf, bias] of Object.entries(data.multi_tf_bias)) {
+                let icon = '';
+                if (tf.toLowerCase().includes('day')) icon = '🗓';
+                else if (tf.includes('60') || tf.includes('1h')) icon = '🕐';
+                else if (tf.includes('15')) icon = '🕒';
+                else if (tf.includes('30')) icon = '🕧';
+                else icon = '⏱';
+                html += `<li class="mb-1">${icon} <strong>${tf}:</strong> ${bias}</li>`;
+            }
+            html += `</ul></div></div>`;
+        }
+        // END HIGHLIGHTED
+        // Show feedback if present (other cases)
         if (data.feedback) {
-            html += `<div class="alert alert-warning mb-3"><strong>Feedback:</strong> <br>${data.feedback}</div>`;
+            html += `<div class="alert alert-warning mb-3"><strong>⚠️ ${data.feedback}</strong></div>`;
         }
         // Summary
         if (data.summary) {
@@ -530,6 +626,11 @@ document.addEventListener('DOMContentLoaded', function() {
         showLoadingState('playbook');
         setButtonLoading(runPlaybookBtn, true);
         playbookOutput.innerHTML = '';
+        // HIGHLIGHTED: Clear response container before new run
+        document.getElementById('playbook-response-container').innerHTML = '';
+        // Clear bias summary before new run
+        const biasSummaryDiv = document.getElementById('bias-summary-block');
+        if (biasSummaryDiv) biasSummaryDiv.innerHTML = '';
         fetch('/start_playbook', {
             method: 'POST',
             body: getFormData()
@@ -538,6 +639,36 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             hideLoadingState('playbook');
             setButtonLoading(runPlaybookBtn, false);
+            // HIGHLIGHTED: Show feedback in response container if present
+            const responseContainer = document.getElementById('playbook-response-container');
+            if (data.feedback) {
+                responseContainer.innerHTML = `<div class="alert alert-warning"><strong>⚠️ ${data.feedback}</strong></div>`;
+            } else {
+                responseContainer.innerHTML = '';
+            }
+            // END HIGHLIGHTED
+            // --- Render Bias Summary block below response container ---
+            const biasDiv = document.getElementById('bias-summary-block');
+            if (biasDiv) {
+                if (Array.isArray(data.bias_summary) && data.bias_summary.length > 0) {
+                    let html = '<h4 class="mt-2 mb-2">🧠 Multi-Timeframe Bias Summary</h4><ul class="mb-2">';
+                    data.bias_summary.forEach(bias => {
+                        const conf = bias.confidence !== undefined ? ` (${(bias.confidence * 100).toFixed(0)}%)` : '';
+                        html += `<li><b>${bias.interval || ''}</b> → ${bias.bias_direction}${conf} – ${bias.reasoning || ''}</li>`;
+                    });
+                    html += '</ul>';
+                    biasDiv.innerHTML = html;
+                } else {
+                    let html = '<div class="alert alert-info">No bias summary returned. Showing raw Gemini insights instead:</div>';
+                    if (Array.isArray(data.raw_bias_data) && data.raw_bias_data.length > 0) {
+                        data.raw_bias_data.forEach(item => {
+                            html += `<pre>${item.reasoning_summary || ''}</pre>`;
+                        });
+                    }
+                    biasDiv.innerHTML = html;
+                }
+            }
+            // --- End Bias Summary block ---
             playbookOutput.innerHTML = renderPlaybookAgentResult(data);
             addTokens(extractTokenCount(data));
             updateCostPanel(data);
@@ -558,6 +689,65 @@ document.addEventListener('DOMContentLoaded', function() {
             playbookOutput.innerHTML = '<div class="alert alert-danger">Error: ' + err + '</div>';
         });
     });
+
+    // --- MultiTimeframe Agent button logic ---
+    const runMultiBtn = document.getElementById('run-multitimeframe-agent-btn');
+    const multiResultDiv = document.getElementById('multitimeframe-agent-result');
+    let multiBtnOriginal = runMultiBtn ? runMultiBtn.innerHTML : '';
+    if (runMultiBtn) {
+      runMultiBtn.addEventListener('click', function() {
+        // Show spinner and running text inside the button
+        runMultiBtn.disabled = true;
+        multiBtnOriginal = runMultiBtn.innerHTML;
+        runMultiBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Running...';
+        multiResultDiv.innerHTML = '';
+        const formData = getFormData(); // Reuse the same form data as Playbook
+        fetch('/start_multitimeframe_agent', {
+          method: 'POST',
+          body: formData
+        })
+        .then(resp => resp.json())
+        .then(data => {
+          runMultiBtn.disabled = false;
+          runMultiBtn.innerHTML = multiBtnOriginal;
+          let html = '';
+          if (Array.isArray(data.bias_summary) && data.bias_summary.length > 0) {
+            html += '<h4>🧠 Multi-Timeframe Bias Summary</h4><ul>';
+            data.bias_summary.forEach(item => {
+              const conf = item.confidence !== undefined ? ` (${(item.confidence * 100).toFixed(0)}%)` : '';
+              html += `<li><b>${item.interval || ''}</b>: ${item.bias_direction}${conf} — ${item.reasoning || ''}</li>`;
+            });
+            html += '</ul>';
+          } else {
+            html += '<div class="alert alert-info">No usable bias extracted. Try with a different image.</div>';
+          }
+          if (data.llm_token_usage) {
+            html += `<div class="small text-muted">Token usage: ${data.llm_token_usage}, Cost: $${data.llm_cost_usd}</div>`;
+          }
+          // Always show raw Gemini JSON
+          if (Array.isArray(data.raw_bias_data) && data.raw_bias_data.length > 0) {
+            html += '<details class="mt-2" open><summary>Raw Gemini Vision Output</summary>';
+            data.raw_bias_data.forEach(item => {
+              html += `<pre>${JSON.stringify(item, null, 2)}</pre>`;
+            });
+            html += '</details>';
+          }
+          // Show feedback or LLM output if present
+          if (data.feedback) {
+            html += `<div class="alert alert-warning mt-2">${data.feedback}</div>`;
+          }
+          if (data.raw && typeof data.raw === 'string') {
+            html += `<div class="alert alert-secondary mt-2"><strong>LLM Output:</strong><pre>${data.raw}</pre></div>`;
+          }
+          multiResultDiv.innerHTML = html;
+        })
+        .catch(err => {
+          runMultiBtn.disabled = false;
+          runMultiBtn.innerHTML = multiBtnOriginal;
+          multiResultDiv.innerHTML = `<div class='alert alert-danger'>Error: ${err}</div>`;
+        });
+      });
+    }
 
     // Instinct Agent chat
     document.getElementById('send_instinct_query').addEventListener('click', function() {

@@ -1,0 +1,38 @@
+{# shared_ui_blocks.html #}
+<!-- Global Header -->
+<h1>📈 Scalping Agent</h1>
+
+<!-- Bootstrap nav-tabs for two-step flow -->
+<ul class="nav nav-tabs mb-3" id="scalpAgentTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="setup-tab" data-bs-toggle="tab" data-bs-target="#setup" type="button" role="tab" aria-controls="setup" aria-selected="true">Setup</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="interaction-tab" data-bs-toggle="tab" data-bs-target="#interaction" type="button" role="tab" aria-controls="interaction" aria-selected="false">Interaction</button>
+  </li>
+</ul>
+
+<!-- LLM Cost Tracker Overlay -->
+<div id="llm-cost-overlay">
+  <div><span>📄</span> RAG Summary: <span id="rag-tokens">N/A</span> tokens used (<span id="rag-cost">$0.0000</span>)</div>
+  <div><span>🔢</span> LLM: <span id="llm-tokens">0</span> tokens used (<span id="llm-cost">$0.0000</span>)</div>
+  <div><span>💰</span> Estimated total cost: <span id="total-cost">$0.0000</span></div>
+</div>
+
+<!-- Floating RAG Panel for Instinct Agent -->
+<div id="rag-instinct-panel" class="floating-rag-panel floating-rag-panel-left" style="display:none;">
+  <div class="floating-rag-panel-header">
+    <span>🧠 RAG for Instinct Agent</span>
+    <button class="floating-rag-panel-close" onclick="document.getElementById('rag-instinct-panel').style.display='none'">✖️</button>
+  </div>
+  <div class="floating-rag-panel-content" id="rag-instinct-content"></div>
+</div>
+
+<!-- Floating RAG Panel for Playbook Agent -->
+<div id="rag-playbook-panel" class="floating-rag-panel floating-rag-panel-right" style="display:none;">
+  <div class="floating-rag-panel-header">
+    <span>🧠 RAG for Playbook Agent</span>
+    <button class="floating-rag-panel-close" onclick="document.getElementById('rag-playbook-panel').style.display='none'">✖️</button>
+  </div>
+  <div class="floating-rag-panel-content" id="rag-playbook-content"></div>
+</div> 

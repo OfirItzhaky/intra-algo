@@ -73,43 +73,14 @@ class ScalpAgentSession:
         self.session_notes = session_notes
         self.csv_requirements = None
         self.gemini_response_raw = None
-        self.gemini_prompt = self._build_gemini_prompt()
 
-    def _build_gemini_prompt(self):
-        return (
-            "You are an expert trading analyst preparing to backtest and simulate trade strategies based on the attached chart image. "
-            "Visually analyze the chart and infer what data would be required to realistically simulate and evaluate the most appropriate trading strategies for this setup. "
-            "Do not rely on user-specified logic. Instead, recommend the indicators, timeframe, volume or volatility data, bar count, and any other features you would need to test strategies that fit the visible chart structure (e.g., trends, flags, breakouts, ranges, etc). "
-            "Output ONLY a valid JSON object with the following fields:"
-            "{\n"
-            '  "symbol": "<symbol shown on chart, or null if not visible>",\n'
-            '  "interval": "<chart interval, e.g., \'5m\', \'15m\', \'1h\', or null if not visible>",\n'
-            '  "last_bar_datetime": "<ISO 8601 datetime of the last visible bar, or null>",\n'
-            '  "detected_indicators": [\n'
-            '    {"name": "<indicator name, e.g., \'EMA\', \'MACD\', \'RSI\'>", "parameters": "<parameters as shown, e.g., \'10\', \'12,26,9\'>"}\n'
-            '    // ... more indicators\n'
-            '  ],\n'
-            '  "required_bar_count": <number of bars visible on the chart, or estimate>,\n'
-            '  "required_timeframe": "<date range covered by the chart, e.g., \'2024-05-01 to 2024-05-10\'>",\n'
-            '  "special_requests": ["<any special data needs, e.g., \'volume average\', \'VWAP\', or null>"] ,\n'
-            '  "support_resistance_zones": ["<zone description, e.g., \'5200–5220 (resistance)\', \'5050 (support)\'>"],\n'
-            '  "patterns_detected": ["<pattern name, e.g., \'bull flag\', \'double top\', \'ascending triangle\'>"],\n'
-            '  "suggested_strategies": ["<strategy type, e.g., \'trend breakout\', \'pullback continuation\', \'range fade\'>"],\n'
-            '  "reasoning_summary": "<short explanation of why these strategies were suggested, based on the chart>"\n'
-            "}\n"
-            "If any field is not visible, set it to null or an empty list as appropriate. Do not include any explanation outside the JSON."
-        )
-
-    def analyze_chart_image(self):
+    def analyze_chart_image(self, prompt_text):
         """
-        Sends the image and prompt to Gemini Vision API using API key, parses the response,
-        and returns a dictionary describing required CSV data.
+        Sends the image and prompt_text to Gemini Vision API and returns the raw response text.
         """
-        self.token_usage_summary = None
         try:
             api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
-                # Try loading from .env if not set
                 load_dotenv()
                 api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
@@ -126,7 +97,7 @@ class ScalpAgentSession:
             body = {
                 "contents": [{
                     "parts": [
-                        {"text": self.gemini_prompt},
+                        {"text": prompt_text},
                         {
                             "inlineData": {
                                 "mimeType": mime_type,
@@ -137,41 +108,18 @@ class ScalpAgentSession:
                 }]
             }
             print(f"[ScalpAgentSession] Calling Gemini Vision API at {endpoint} (HTTP, API key)...")
-            print(f"[ScalpAgentSession] Prompt: {self.gemini_prompt[:500]}{'...' if len(self.gemini_prompt) > 500 else ''}")
+            print(f"[ScalpAgentSession] Prompt: {prompt_text[:500]}{'...' if len(prompt_text) > 500 else ''}")
             print(f"[ScalpAgentSession] Image byte size: {len(self.image_bytes) if self.image_bytes else 0}")
             response = requests.post(endpoint, headers=headers, json=body)
             print(f"[ScalpAgentSession] Gemini Vision raw response: {response.text[:1000]}{'...' if len(response.text) > 1000 else ''}")
             response.raise_for_status()
             response_data = response.json()
-            model_in_response = response_data.get("candidates", [{}])[0].get("content", {}).get("role", "unknown")
-            print(f"[Gemini DEBUG] Returned Model Role: {model_in_response}")
-            if "usageMetadata" in response_data:
-                print(f"[Gemini DEBUG] Token usage: {response_data['usageMetadata']}")
-            else:
-                print("[Gemini DEBUG] No usageMetadata returned.")
-
-            # Extract token usage metadata if present
-            self.token_usage_summary = None
-            if "usageMetadata" in response_data:
-                self.token_usage_summary = response_data["usageMetadata"]
-            # Parse the Gemini response for the JSON object
+            # Return the raw Gemini response text (not parsed)
             response_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
-            self.gemini_response_raw = response_text
-            # Remove markdown code blocks (e.g., ```json ... ```)
-            try:
-                cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", response_text.strip())
-                print(f"[ScalpAgentSession] Cleaned Gemini JSON for parsing: {cleaned[:500]}")
-                self.csv_requirements = json.loads(cleaned)
-                # Extract reasoning_summary if present
-                if isinstance(self.csv_requirements, dict) and 'reasoning_summary' in self.csv_requirements:
-                    self.csv_requirements['reasoning_summary'] = self.csv_requirements['reasoning_summary']
-            except Exception as e:
-                print(f"[ScalpAgentSession] JSON parse error: {e}")
-                self.csv_requirements = {"error": f"Gemini response could not be parsed as JSON. Raw response: {response_text}"}
+            return response_text
         except Exception as e:
             print(f"[ScalpAgentSession] Gemini Vision call failed: {e}")
-            self.csv_requirements = {"error": f"Gemini Vision call failed: {e}"}
-        return self.csv_requirements
+            return {"error": f"Gemini Vision call failed: {e}"}
 
     def get_requirements_summary(self):
         """

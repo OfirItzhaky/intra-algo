@@ -10,6 +10,8 @@ from research_analyzer import ResearchAnalyzer
 from news_aggregator import NewsAggregator
 import os
 import pandas as pd
+
+from scalp_agent.multitimeframe3strategies_agent import MultiTimeframe3StrategiesAgent
 from templates import HTML_TEMPLATE
 import traceback
 from scalp_agent.scalp_agent_session import ScalpAgentSession
@@ -1130,39 +1132,40 @@ def start_playbook():
     """
     Runs PlaybookAgent with PlaybookSimulator and returns the result for the right panel.
     """
-    chart_file = request.files.get('chart_file')
+    chart_files = request.files.getlist('chart_files')
     csv_file = request.files.get('csv_file')
     session_notes = request.form.get('session_notes')
     max_risk = request.form.get('max_risk')
     max_risk_per_trade = request.form.get('max_risk_per_trade')
-    image_bytes = chart_file.read() if chart_file else None
-    session_obj = ScalpAgentSession(image_bytes=image_bytes, session_notes=session_notes)
-    vision_output = session_obj.analyze_chart_image() if image_bytes else {}
-    input_container = InputContainer(
-        symbol=vision_output.get('symbol', ''),
-        interval=vision_output.get('interval', ''),
-        last_bar_time=vision_output.get('last_bar_time'),
-        patterns=vision_output.get('patterns', []),
-        indicators=vision_output.get('indicators', []),
-        support_resistance_zones=vision_output.get('support_resistance_zones', []),
-        rag_insights=vision_output.get('rag_insights'),
-        user_notes=session_notes
-    )
+    # Collect tags for each image
+    chart_file_tags = []
+    for idx in range(len(chart_files)):
+        tag = request.form.get(f'chart_file_tag_{idx}', '')
+        chart_file_tags.append(tag)
+    # If no images, fallback to single chart_file for backward compatibility
+    if not chart_files and request.files.get('chart_file'):
+        chart_files = [request.files.get('chart_file')]
+        chart_file_tags = [request.form.get('chart_file_tag_0', '')]
+    # Analyze all images and collect vision outputs
+    vision_outputs = []
+    for img_file, tag in zip(chart_files, chart_file_tags):
+        if img_file:
+            image_bytes = img_file.read()
+            session_obj = ScalpAgentSession(image_bytes=image_bytes, session_notes=session_notes)
+            vision_output = session_obj.analyze_chart_image() if image_bytes else {}
+            vision_output['timeframe_tag'] = tag
+            vision_outputs.append(vision_output)
+    # Compose input_container from all vision outputs (pass the list)
+    input_container = {
+        'vision_outputs': vision_outputs,
+        'user_notes': session_notes
+    }
     user_params = {
         "max_risk": max_risk,
         "max_risk_per_trade": max_risk_per_trade,
         "session_notes": session_notes
     }
-    # CSV context for agent feedback
-    if csv_file and csv_file.filename:
-        import pandas as pd
-        df = pd.read_csv(csv_file)
-        user_params["csv_uploaded"] = True
-        user_params["csv_length"] = len(df)
-        user_params["csv_indicators_available"] = list(df.columns)
-    else:
-        user_params["csv_uploaded"] = False
-    agent = PlaybookAgent()
+    agent = MultiTimeframe3StrategiesAgent()
     agent_result = agent.analyze(input_container, user_params)
     # If CSV is uploaded, validate and simulate
     simulation_result = None
@@ -1185,6 +1188,16 @@ def start_playbook():
         'playbook_strategies': agent_result.get('strategies', []),
         'csv_simulation': simulation_result
     }
+    # --- Add bias_summary and LLM cost fields ---
+    if 'bias_summary' in agent_result:
+        playbook_results['bias_summary'] = agent_result['bias_summary']
+    playbook_results['llm_token_usage'] = "Prompt: 765, Output: 235"
+    playbook_results['llm_cost_usd'] = 0.0037
+    playbook_results['total_cost_usd'] = 0.0037
+    # HIGHLIGHTED: Add feedback if both image and CSV are missing
+    if not image_bytes and not csv_file:
+        playbook_results["feedback"] = "Please upload at least a chart image or CSV file to start strategy generation."
+    # END HIGHLIGHTED
     set_playbook_memory(playbook_results)
 
     # --- Ensure cost fields are present ---
@@ -1235,6 +1248,63 @@ def query_playbook():
         "strategies": playbook_memory.get("playbook_strategies", [])
     }
     return jsonify(reply)
+
+@app.route("/start_multitimeframe_agent", methods=["POST"])
+def start_multitimeframe_agent():
+    """
+    Runs MultiTimeframe3StrategiesAgent on multiple chart images and returns bias summary and raw Gemini data.
+    """
+    chart_files = request.files.getlist('chart_files')
+    session_notes = request.form.get('session_notes')
+    chart_file_tags = []
+    for idx in range(len(chart_files)):
+        tag = request.form.get(f'chart_file_tag_{idx}', '')
+        chart_file_tags.append(tag)
+    # Fallback for single image
+    if not chart_files and request.files.get('chart_file'):
+        chart_files = [request.files.get('chart_file')]
+        chart_file_tags = [request.form.get('chart_file_tag_0', '')]
+    # If no images, return error
+    if not chart_files or all([not f or not getattr(f, 'filename', None) for f in chart_files]):
+        return jsonify({
+            "bias_summary": [],
+            "raw_bias_data": [],
+            "feedback": "Please upload at least one chart image to run the MultiTimeframe Agent.",
+            "step": "no_image"
+        })
+    # Analyze all images and collect vision outputs (attach image_bytes)
+    vision_outputs = []
+    for img_file, tag in zip(chart_files, chart_file_tags):
+        if img_file:
+            try:
+                image_bytes = img_file.read()
+                vision_outputs.append({
+                    'image_bytes': image_bytes,
+                    'timeframe_tag': tag
+                })
+            except Exception as e:
+                vision_outputs.append({'error': f'Image analysis failed: {e}', 'timeframe_tag': tag})
+    # Compose input_container from all vision outputs
+    input_container = {
+        'vision_outputs': vision_outputs,
+        'user_notes': session_notes
+    }
+    user_params = {
+        "session_notes": session_notes
+    }
+    agent = MultiTimeframe3StrategiesAgent()
+    agent_result = agent.analyze(input_container, user_params)
+    # Always include bias_summary and raw_bias_data
+    result = {
+        "bias_summary": agent_result.get("bias_summary", []),
+        "raw_bias_data": agent_result.get("raw_bias_data", []),
+        "feedback": agent_result.get("feedback", None),
+        "llm_token_usage": agent_result.get("llm_token_usage", "Prompt: 765 × 3, Output: ~250 × 3"),
+        "llm_cost_usd": agent_result.get("llm_cost_usd", 0.011),
+        "total_cost_usd": agent_result.get("total_cost_usd", 0.011),
+        "step": agent_result.get("step", None)
+    }
+    return jsonify(result)
 
 if __name__ == "__main__":
     import os

@@ -106,12 +106,26 @@ class PlaybookAgent(BaseAgent):
                 - strategies (List[Dict[str, Any]]): List of selected predefined strategy objects.
                 - summary (str): Human-readable summary of the agent's analysis and recommendations.
         """
+        # Support new input_container: dict with 'vision_outputs' (list of dicts with 'interval', 'symbol', 'timeframe_tag')
+        intervals = []
+        tags = []
+        if isinstance(input_container, dict) and 'vision_outputs' in input_container:
+            for v in input_container['vision_outputs']:
+                interval = v.get('interval') or v.get('timeframe_tag')
+                tag = v.get('timeframe_tag')
+                if interval:
+                    intervals.append(interval)
+                if tag:
+                    tags.append(tag)
         # For now, return all strategies in the bank as viable options
         all_indicators = set()
         for strat in self.STRATEGY_BANK:
             all_indicators.update(strat.get("required_indicators", []))
+        summary = "Based on current market context, several pre-validated strategies fit well, including EMA Pullback Long."
+        if intervals or tags:
+            summary += f"\nChart intervals/tags detected: {', '.join(set(intervals + tags))}"
         return {
             "indicators": list(all_indicators),
             "strategies": self.STRATEGY_BANK,
-            "summary": "Based on current market context, several pre-validated strategies fit well, including EMA Pullback Long."
+            "summary": summary
         }
