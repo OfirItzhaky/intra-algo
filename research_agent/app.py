@@ -98,6 +98,33 @@ def set_playbook_memory(result: dict) -> None:
     """
     session["playbook_results"] = result
 
+# --- Session-level LLM cost tracking ---
+def update_llm_session_cost(token_usage, cost_usd, model_name):
+    if 'llm_session_total_tokens' not in session:
+        session['llm_session_total_tokens'] = 0
+    if 'llm_session_total_cost' not in session:
+        session['llm_session_total_cost'] = 0.0
+    if 'llm_model_name' not in session:
+        session['llm_model_name'] = model_name
+    # Parse token_usage (e.g., "Prompt: 765 × 3, Output: ~250 × 3")
+    import re
+    tokens = 0
+    if isinstance(token_usage, str):
+        matches = re.findall(r'(\d+)', token_usage)
+        tokens = sum(int(m) for m in matches)
+    elif isinstance(token_usage, int):
+        tokens = token_usage
+    session['llm_session_total_tokens'] += tokens
+    session['llm_session_total_cost'] += float(cost_usd or 0.0)
+    session['llm_model_name'] = model_name
+
+def get_llm_session_cost():
+    return {
+        'llm_session_total_tokens': session.get('llm_session_total_tokens', 0),
+        'llm_session_total_cost': session.get('llm_session_total_cost', 0.0),
+        'llm_model_name': session.get('llm_model_name', 'Gemini 1.5 Pro')
+    }
+
 @app.route("/upload_csv", methods=["POST"])
 def upload_csv():
     print("===== UPLOAD_CSV ROUTE CALLED =====")
@@ -1295,14 +1322,25 @@ def start_multitimeframe_agent():
     agent = MultiTimeframe3StrategiesAgent()
     agent_result = agent.analyze(input_container, user_params)
     # Always include bias_summary and raw_bias_data
+    model_name = "Gemini 1.5 Pro"
+    bias_cost_metadata = agent_result.get("bias_cost_metadata", {})
+    llm_token_usage = bias_cost_metadata.get("total_tokens")
+    llm_cost_usd = bias_cost_metadata.get("total_cost_usd")
+    update_llm_session_cost(llm_token_usage, llm_cost_usd, model_name)
+    session_cost = get_llm_session_cost()
     result = {
         "bias_summary": agent_result.get("bias_summary", []),
         "raw_bias_data": agent_result.get("raw_bias_data", []),
         "feedback": agent_result.get("feedback", None),
-        "llm_token_usage": agent_result.get("llm_token_usage", "Prompt: 765 × 3, Output: ~250 × 3"),
-        "llm_cost_usd": agent_result.get("llm_cost_usd", 0.011),
-        "total_cost_usd": agent_result.get("total_cost_usd", 0.011),
-        "step": agent_result.get("step", None)
+        "llm_token_usage": llm_token_usage,
+        "llm_cost_usd": llm_cost_usd,
+        "total_cost_usd": llm_cost_usd,
+        "step": agent_result.get("step", None),
+        "llm_model_name": model_name,
+        "llm_session_total_tokens": session_cost['llm_session_total_tokens'],
+        "llm_session_total_cost": session_cost['llm_session_total_cost'],
+        "llm_session_model_name": session_cost['llm_model_name'],
+        "bias_cost_metadata": bias_cost_metadata
     }
     return jsonify(result)
 

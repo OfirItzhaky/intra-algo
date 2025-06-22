@@ -76,50 +76,128 @@ class ScalpAgentSession:
 
     def analyze_chart_image(self, prompt_text):
         """
-        Sends the image and prompt_text to Gemini Vision API and returns the raw response text.
+        Sends the image and prompt_text to the selected Vision API (Gemini or OpenAI) and returns the raw response text and token usage metadata.
         """
-        try:
-            api_key = os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                load_dotenv()
-                api_key = os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                raise ValueError("GEMINI_API_KEY environment variable not set.")
-            model_name = "gemini-1.5-pro-latest"
-            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-            mime_type = imghdr.what(None, h=self.image_bytes) or "png"
-            mime_type = f"image/{mime_type}"
-            encoded_image = base64.b64encode(self.image_bytes).decode("utf-8")
-            headers = {
-                "Content-Type": "application/json",
-                "x-goog-api-key": api_key
-            }
-            body = {
-                "contents": [{
-                    "parts": [
-                        {"text": prompt_text},
-                        {
-                            "inlineData": {
-                                "mimeType": mime_type,
-                                "data": encoded_image
+        import base64
+        import imghdr
+        import requests
+        import os
+        from dotenv import load_dotenv
+        model_name = CONFIG["image_analysis_model"]
+        print(f"[ScalpAgentSession] Model: {model_name}")
+        if model_name.startswith("gemini-"):
+            # --- Gemini Vision API ---
+            try:
+                api_key = CONFIG.get("gemini_api_key") or os.getenv("GEMINI_API_KEY")
+                if not api_key:
+                    load_dotenv()
+                    api_key = os.getenv("GEMINI_API_KEY")
+                if not api_key:
+                    raise ValueError("GEMINI_API_KEY environment variable not set.")
+                endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+                print(f"[ScalpAgentSession] Gemini endpoint: {endpoint}")
+                mime_type = imghdr.what(None, h=self.image_bytes) or "png"
+                mime_type = f"image/{mime_type}"
+                encoded_image = base64.b64encode(self.image_bytes).decode("utf-8")
+                headers = {
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": api_key
+                }
+                body = {
+                    "contents": [{
+                        "parts": [
+                            {"text": prompt_text},
+                            {
+                                "inlineData": {
+                                    "mimeType": mime_type,
+                                    "data": encoded_image
+                                }
                             }
+                        ]
+                    }]
+                }
+                response = requests.post(endpoint, headers=headers, json=body)
+                print(f"[ScalpAgentSession] Gemini Vision raw response: {response.text[:1000]}{'...' if len(response.text) > 1000 else ''}")
+                response.raise_for_status()
+                response_data = response.json()
+                usage = response_data.get('usage', {})
+                prompt_tokens = usage.get('promptTokenCount', 0)
+                output_tokens = usage.get('candidatesTokenCount', 0)
+                total_tokens = usage.get('totalTokenCount', 0)
+                cost_usd = usage.get('totalCostUsd', None)
+                response_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
+                return {
+                    "response_text": response_text,
+                    "token_usage": {
+                        "promptTokenCount": prompt_tokens,
+                        "candidatesTokenCount": output_tokens,
+                        "totalTokenCount": total_tokens,
+                        "cost_usd": cost_usd
+                    }
+                }
+            except Exception as e:
+                print(f"[ScalpAgentSession] Gemini Vision call failed: {e}")
+                return {"error": f"Gemini Vision call failed: {e}"}
+        elif model_name.startswith("gpt-4") or model_name.startswith("gpt-3"):
+            # --- OpenAI Vision API ---
+            try:
+                api_key = CONFIG.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    load_dotenv()
+                    api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    raise ValueError("OPENAI_API_KEY environment variable not set.")
+                endpoint = "https://api.openai.com/v1/chat/completions"
+                print(f"[ScalpAgentSession] OpenAI endpoint: {endpoint}")
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                }
+                mime_type = imghdr.what(None, h=self.image_bytes) or "png"
+                image_data = f"data:image/{mime_type};base64,{base64.b64encode(self.image_bytes).decode()}"
+                payload = {
+                    "model": model_name,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt_text},
+                                {"type": "image_url", "image_url": {"url": image_data}}
+                            ]
                         }
-                    ]
-                }]
-            }
-            print(f"[ScalpAgentSession] Calling Gemini Vision API at {endpoint} (HTTP, API key)...")
-            print(f"[ScalpAgentSession] Prompt: {prompt_text[:500]}{'...' if len(prompt_text) > 500 else ''}")
-            print(f"[ScalpAgentSession] Image byte size: {len(self.image_bytes) if self.image_bytes else 0}")
-            response = requests.post(endpoint, headers=headers, json=body)
-            print(f"[ScalpAgentSession] Gemini Vision raw response: {response.text[:1000]}{'...' if len(response.text) > 1000 else ''}")
-            response.raise_for_status()
-            response_data = response.json()
-            # Return the raw Gemini response text (not parsed)
-            response_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
-            return response_text
-        except Exception as e:
-            print(f"[ScalpAgentSession] Gemini Vision call failed: {e}")
-            return {"error": f"Gemini Vision call failed: {e}"}
+                    ],
+                    "max_tokens": 1000
+                }
+                response = requests.post(endpoint, headers=headers, json=payload)
+                print(f"[ScalpAgentSession] OpenAI Vision raw response: {response.text[:1000]}{'...' if len(response.text) > 1000 else ''}")
+                response.raise_for_status()
+                response_data = response.json()
+                usage = response_data.get('usage', {})
+                prompt_tokens = usage.get('prompt_tokens', 0)
+                output_tokens = usage.get('completion_tokens', 0)
+                total_tokens = usage.get('total_tokens', 0)
+                # Estimate cost for gpt-4-vision-preview (as of 2024-06: $0.01/1K prompt, $0.03/1K output)
+                cost_usd = None
+                try:
+                    cost_usd = (prompt_tokens * 0.01 + output_tokens * 0.03) / 1000
+                except Exception:
+                    cost_usd = None
+                response_text = response_data["choices"][0]["message"]["content"]
+                return {
+                    "response_text": response_text,
+                    "token_usage": {
+                        "promptTokenCount": prompt_tokens,
+                        "candidatesTokenCount": output_tokens,
+                        "totalTokenCount": total_tokens,
+                        "cost_usd": cost_usd
+                    }
+                }
+            except Exception as e:
+                print(f"[ScalpAgentSession] OpenAI Vision call failed: {e}")
+                return {"error": f"OpenAI Vision call failed: {e}"}
+        else:
+            print(f"[ScalpAgentSession] ERROR: Unknown or unsupported model_name '{model_name}'")
+            return {"error": f"Unknown or unsupported model_name '{model_name}'. Please use a Gemini or OpenAI model."}
 
     def get_requirements_summary(self):
         """

@@ -515,16 +515,18 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('rag-tokens').textContent = ragTokens;
         document.getElementById('rag-cost').textContent = (ragCost === "N/A" ? "$0.0000" : `$${parseFloat(ragCost).toFixed(4)}`);
 
-        // LLM
-        let llmTokens = data.llm_token_usage !== undefined ? data.llm_token_usage : 0;
-        let llmCost = data.llm_cost_usd !== undefined ? data.llm_cost_usd : 0.0;
+        // LLM (prefer session totals if present)
+        let llmTokens = data.llm_session_total_tokens !== undefined ? data.llm_session_total_tokens : (data.llm_token_usage !== undefined ? data.llm_token_usage : 0);
+        let llmCost = data.llm_session_total_cost !== undefined ? data.llm_session_total_cost : (data.llm_cost_usd !== undefined ? data.llm_cost_usd : 0.0);
         document.getElementById('llm-tokens').textContent = llmTokens;
         document.getElementById('llm-cost').textContent = `$${parseFloat(llmCost).toFixed(4)}`;
 
-        // Total
-        let totalCost = data.total_cost_usd !== undefined
-            ? data.total_cost_usd
-            : (parseFloat(ragCost) || 0) + (parseFloat(llmCost) || 0);
+        // Total (prefer session total cost if present)
+        let totalCost = data.llm_session_total_cost !== undefined
+            ? data.llm_session_total_cost
+            : (data.total_cost_usd !== undefined
+                ? data.total_cost_usd
+                : (parseFloat(ragCost) || 0) + (parseFloat(llmCost) || 0));
         document.getElementById('total-cost').textContent = `$${parseFloat(totalCost).toFixed(4)}`;
     }
 
@@ -721,7 +723,20 @@ document.addEventListener('DOMContentLoaded', function() {
           } else {
             html += '<div class="alert alert-info">No usable bias extracted. Try with a different image.</div>';
           }
-          if (data.llm_token_usage) {
+          // --- Token usage/cost summary ---
+          if (data.bias_cost_metadata) {
+            const meta = data.bias_cost_metadata;
+            const n = (meta.per_image_breakdown && meta.per_image_breakdown.length) ? meta.per_image_breakdown.length : 1;
+            html += `<div class="small text-muted">Token usage: ${meta.total_tokens?.toLocaleString() || 0} tokens (x${n}), Cost: $${meta.total_cost_usd?.toFixed(4) || '0.0000'}`;
+            if (meta.per_image_breakdown && meta.per_image_breakdown.length > 1) {
+              html += `<details class="mt-1"><summary>Per-image breakdown</summary><ul style='margin-bottom:0;'>`;
+              meta.per_image_breakdown.forEach((img, idx) => {
+                html += `<li>Image ${idx + 1} (${img.interval || 'N/A'}): ${img.token_usage.totalTokenCount || 0} tokens, $${img.token_usage.cost_usd !== undefined ? Number(img.token_usage.cost_usd).toFixed(4) : 'N/A'}</li>`;
+              });
+              html += '</ul></details>';
+            }
+            html += '</div>';
+          } else if (data.llm_token_usage) {
             html += `<div class="small text-muted">Token usage: ${data.llm_token_usage}, Cost: $${data.llm_cost_usd}</div>`;
           }
           // Always show raw Gemini JSON

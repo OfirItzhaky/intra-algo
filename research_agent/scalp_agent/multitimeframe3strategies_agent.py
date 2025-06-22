@@ -21,6 +21,11 @@ class MultiTimeframe3StrategiesAgent(BaseAgent):
     def analyze(self, input_container, user_params):
         # Step 1: Input Validation (removed all blocking validation)
         vision_outputs = []
+        per_image_costs = []
+        total_prompt_tokens = 0
+        total_output_tokens = 0
+        total_tokens = 0
+        total_cost_usd = 0.0
         if isinstance(input_container, dict) and 'vision_outputs' in input_container:
             # For each image, call ScalpAgentSession.analyze_chart_image with agent's prompt
             for v in input_container['vision_outputs']:
@@ -28,20 +33,37 @@ class MultiTimeframe3StrategiesAgent(BaseAgent):
                 if image_bytes:
                     session = ScalpAgentSession(image_bytes=image_bytes)
                     prompt_text = self._build_vision_prompt(v)
-                    raw_response = session.analyze_chart_image(prompt_text)
-                    # Parse the raw_response as JSON if possible
-                    try:
-                        cleaned = raw_response.strip()
-                        if cleaned.startswith('```json'):
-                            cleaned = cleaned[7:]
-                        if cleaned.startswith('```'):
-                            cleaned = cleaned[3:]
-                        if cleaned.endswith('```'):
-                            cleaned = cleaned[:-3]
-                        parsed = json.loads(cleaned)
-                        vision_outputs.append(parsed)
-                    except Exception:
-                        vision_outputs.append({'error': 'Could not parse Gemini output', 'raw': raw_response})
+                    result = session.analyze_chart_image(prompt_text)
+                    if isinstance(result, dict) and 'response_text' in result:
+                        raw_response = result['response_text']
+                        token_usage = result.get('token_usage', {})
+                        per_image_costs.append({
+                            'interval': v.get('interval') or v.get('timeframe_tag'),
+                            'token_usage': token_usage
+                        })
+                        total_prompt_tokens += token_usage.get('promptTokenCount', 0)
+                        total_output_tokens += token_usage.get('candidatesTokenCount', 0)
+                        total_tokens += token_usage.get('totalTokenCount', 0)
+                        if token_usage.get('cost_usd') is not None:
+                            try:
+                                total_cost_usd += float(token_usage['cost_usd'])
+                            except Exception:
+                                pass
+                        # Parse the raw_response as JSON if possible
+                        try:
+                            cleaned = raw_response.strip()
+                            if cleaned.startswith('```json'):
+                                cleaned = cleaned[7:]
+                            if cleaned.startswith('```'):
+                                cleaned = cleaned[3:]
+                            if cleaned.endswith('```'):
+                                cleaned = cleaned[:-3]
+                            parsed = json.loads(cleaned)
+                            vision_outputs.append(parsed)
+                        except Exception:
+                            vision_outputs.append({'error': 'Could not parse Gemini output', 'raw': raw_response})
+                    else:
+                        vision_outputs.append({'error': 'No valid Gemini response'})
                 else:
                     vision_outputs.append({'error': 'No image bytes provided'})
         # Optionally set a flag for downstream logic
@@ -49,22 +71,43 @@ class MultiTimeframe3StrategiesAgent(BaseAgent):
         # Step 2: LLM-powered bias detection
         try:
             prompt = self._build_bias_prompt(input_container)
-            api_key = CONFIG.get("gemini_api_key") or os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                return {"feedback": "Gemini API key not set.", "step": "llm_error", "raw_bias_data": vision_outputs or []}
-            model_name = "gemini-1.5-pro-latest"
-            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-            headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
-            body = {
-                "contents": [{
-                    "parts": [
-                        {"text": prompt}
-                    ]
-                }]
-            }
-            response = requests.post(endpoint, headers=headers, json=body, timeout=30)
-            response.raise_for_status()
-            content = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+            model_name = CONFIG["image_analysis_model"]
+            # --- Model/provider routing based on model_name only ---
+            if model_name.startswith("gemini-"):
+                api_key = CONFIG.get("gemini_api_key") or os.getenv("GEMINI_API_KEY")
+                if not api_key:
+                    return {"feedback": "Gemini API key not set.", "step": "llm_error", "raw_bias_data": vision_outputs or []}
+                endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+                headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
+                body = {
+                    "contents": [{
+                        "parts": [
+                            {"text": prompt}
+                        ]
+                    }]
+                }
+                response = requests.post(endpoint, headers=headers, json=body, timeout=30)
+                response.raise_for_status()
+                content = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+            elif model_name.startswith("gpt-4") or model_name.startswith("gpt-3"):
+                api_key = CONFIG.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    return {"feedback": "OpenAI API key not set.", "step": "llm_error", "raw_bias_data": vision_outputs or []}
+                endpoint = "https://api.openai.com/v1/chat/completions"
+                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": model_name,
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ],
+                    "max_tokens": 1000
+                }
+                response = requests.post(endpoint, headers=headers, json=payload, timeout=30)
+                response.raise_for_status()
+                content = response.json()["choices"][0]["message"]["content"]
+            else:
+                print(f"[MultiTimeframe3StrategiesAgent] ERROR: Unknown or unsupported model_name '{model_name}'")
+                return {"feedback": f"Unknown or unsupported model_name '{model_name}'. Please use a Gemini or OpenAI model.", "step": "llm_error", "raw_bias_data": vision_outputs or []}
             try:
                 cleaned = content.strip()
                 if cleaned.startswith("```json"):
@@ -79,16 +122,30 @@ class MultiTimeframe3StrategiesAgent(BaseAgent):
             # Step 3: Multi-Timeframe Bias Summary
             try:
                 multi_tf_prompt = self._build_multi_tf_bias_prompt(input_container)
-                multi_body = {
-                    "contents": [{
-                        "parts": [
-                            {"text": multi_tf_prompt}
-                        ]
-                    }]
-                }
-                multi_response = requests.post(endpoint, headers=headers, json=multi_body, timeout=30)
-                multi_response.raise_for_status()
-                multi_content = multi_response.json()["candidates"][0]["content"]["parts"][0]["text"]
+                if model_name.startswith("gemini-"):
+                    multi_body = {
+                        "contents": [{
+                            "parts": [
+                                {"text": multi_tf_prompt}
+                            ]
+                        }]
+                    }
+                    multi_response = requests.post(endpoint, headers=headers, json=multi_body, timeout=30)
+                    multi_response.raise_for_status()
+                    multi_content = multi_response.json()["candidates"][0]["content"]["parts"][0]["text"]
+                elif model_name.startswith("gpt-4") or model_name.startswith("gpt-3"):
+                    multi_payload = {
+                        "model": model_name,
+                        "messages": [
+                            {"role": "user", "content": multi_tf_prompt}
+                        ],
+                        "max_tokens": 1000
+                    }
+                    multi_response = requests.post(endpoint, headers=headers, json=multi_payload, timeout=30)
+                    multi_response.raise_for_status()
+                    multi_content = multi_response.json()["choices"][0]["message"]["content"]
+                else:
+                    multi_content = "{}"
                 multi_cleaned = multi_content.strip()
                 if multi_cleaned.startswith("```json"):
                     multi_cleaned = multi_cleaned[7:]
@@ -134,7 +191,14 @@ class MultiTimeframe3StrategiesAgent(BaseAgent):
                 "bias_rationale": bias_result.get("bias_rationale"),
                 "bias_break_conditions": bias_result.get("bias_break_conditions"),
                 "multi_tf_bias": multi_tf_bias,
-                "step": "bias_detected"
+                "step": "bias_detected",
+                "bias_cost_metadata": {
+                    "total_prompt_tokens": total_prompt_tokens,
+                    "total_output_tokens": total_output_tokens,
+                    "total_tokens": total_tokens,
+                    "total_cost_usd": total_cost_usd,
+                    "per_image_breakdown": per_image_costs
+                }
             }
         except Exception as e:
             return {"feedback": f"LLM bias detection failed: {e}", "step": "llm_error", "raw_bias_data": vision_outputs or []}

@@ -10,6 +10,12 @@ CONFIG = {
     "model_provider": "openai",
     "model_name": "gpt-4o",
 
+    "image_analysis_model": "gpt-4o",  # Vision Analysis Model for Scalping Agent
+    # gemini-1.5-pro-latest
+    # gpt-4o
+    # gpt-4.1
+
+
     "openai_api_key": os.getenv("OPENAI_API_KEY"),
     "gemini_api_key": os.getenv("GEMINI_API_KEY"),
 

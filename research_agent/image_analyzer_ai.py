@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 import imghdr  # make sure this is at the top of your file
 import os
+from config import CONFIG
 
 # Try to import optional dependencies, but don't fail if they're not available
 try:
@@ -165,7 +166,7 @@ class ImageAnalyzerAI:
         image_data = f"data:image/{mime_type};base64,{base64.b64encode(image_bytes).decode()}"
 
         payload = {
-            "model": self.model_name,
+            "model": CONFIG["image_analysis_model_openai"],
             "messages": [
                 {"role": "user", "content": [
                     {"type": "text", "text": prompt},
@@ -179,20 +180,21 @@ class ImageAnalyzerAI:
 
         response = requests.post(endpoint, headers=headers, json=payload)
         response.raise_for_status()
-        print("\n[Gemini LOG] === Gemini Vision API Call ===")
-        print(f"[Gemini LOG] Endpoint: {endpoint}")
-        print(f"[Gemini LOG] Model Name: gemini-1.5-pro-latest")
-        print(f"[Gemini LOG] API Key Present: {'Yes' if self.api_key else 'No'}")
-        print(f"[Gemini LOG] Prompt (first 80 chars): {prompt[:80]}...")
-        print(f"[Gemini LOG] Image size (bytes): {len(image_bytes)}")
-        print(f"[Gemini LOG] MIME type: {mime_type}")
-        print("[Gemini LOG] Submitting request to Gemini...\n")
+        print("\n[OpenAI LOG] === OpenAI Vision API Call ===")
+        print(f"[OpenAI LOG] Endpoint: {endpoint}")
+        print(f"[OpenAI LOG] Model Name: {CONFIG['image_analysis_model_openai']}")
+        print(f"[OpenAI LOG] API Key Present: {'Yes' if self.api_key else 'No'}")
+        print(f"[OpenAI LOG] Prompt (first 80 chars): {prompt[:80]}...")
+        print(f"[OpenAI LOG] Image size (bytes): {len(image_bytes)}")
+        print(f"[OpenAI LOG] MIME type: {mime_type}")
+        print("[OpenAI LOG] Submitting request to OpenAI...\n")
 
         content = response.json()["choices"][0]["message"]["content"]
         return {"raw_output": content}
 
     def _analyze_with_gemini(self, image_bytes, prompt):
-        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent"
+        model_name = CONFIG["image_analysis_model"]
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
         headers = {
             "Content-Type": "application/json",
             "x-goog-api-key": self.api_key
