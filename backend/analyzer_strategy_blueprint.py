@@ -347,6 +347,147 @@ class Long5min1minStrategy(bt.Strategy):
                 "pnl": pnl
             })
 
+class RegressionScalpingStrategy(bt.Strategy):
+    params = dict(
+        long_threshold=3.0,
+        short_threshold=3.0,
+        target_ticks=10,
+        stop_ticks=10,
+        tick_size=0.25,
+        session_start='10:00',
+        session_end='23:00',
+        max_daily_profit=36.0,
+        max_daily_loss=-36.0,
+        slippage=0.0,
+        force_exit=True,
+    )
+
+    def __init__(self):
+        self.order = None
+        self.last_bar_time = None
+        self.trades = []
+        self.last_entry_price = None
+        self.last_exit_price = None
+        self.daily_pnl = 0
+        self.current_trade_date = None
+        self.entry_side = None  # 'long' or 'short'
+        self.entry_dt = None
+
+    def next(self):
+        dt5 = self.datas[0].datetime.datetime(0)  # 5m bar datetime
+        dt1 = self.datas[1].datetime.datetime(0)  # 1m bar datetime (should be aligned)
+
+        # Reset daily PnL at new day
+        if self.current_trade_date != dt5.date():
+            self.current_trade_date = dt5.date()
+            self.daily_pnl = 0
+            print(f"📅 New trading day: {dt5.date()}, Daily PnL reset to 0")
+
+        # Session time checks
+        current_time = dt5.time()
+        session_start = datetime.datetime.strptime(self.p.session_start, "%H:%M").time()
+        session_end = datetime.datetime.strptime(self.p.session_end, "%H:%M").time()
+        if current_time < session_start:
+            return
+        if current_time >= session_end:
+            if self.position and self.p.force_exit:
+                self.close()
+            return
+
+        # Risk control
+        if self.daily_pnl >= self.p.max_daily_profit:
+            print(f"💰 Max daily profit reached (${self.daily_pnl:.2f}). No new trades.")
+            return
+        if self.daily_pnl <= self.p.max_daily_loss:
+            print(f"⚠️ Max daily loss reached (${self.daily_pnl:.2f}). No new trades.")
+            return
+
+        # Only act on new 5m bar
+        if self.last_bar_time == dt5:
+            return
+        self.last_bar_time = dt5
+
+        # Only one trade at a time
+        if self.position or self.order:
+            return
+
+        # --- ENTRY LOGIC ---
+        close5 = self.datas[0].close[0]
+        pred_high = self.datas[0].predicted_high[0]
+        pred_low = self.datas[0].predicted_low[0]
+        long_signal = (pred_high - close5) > self.p.long_threshold
+        short_signal = (close5 - pred_low) > self.p.short_threshold
+
+        if not (long_signal or short_signal):
+            return
+
+        # Use 1m data for execution
+        open1 = self.datas[1].open[0]
+        entry_price = open1 + self.p.slippage if long_signal else open1 - self.p.slippage
+        tp = entry_price + self.p.target_ticks * self.p.tick_size if long_signal else entry_price - self.p.target_ticks * self.p.tick_size
+        sl = entry_price - self.p.stop_ticks * self.p.tick_size if long_signal else entry_price + self.p.stop_ticks * self.p.tick_size
+
+        if long_signal:
+            print(f"🟢 LONG SIGNAL at {dt5} | Entry: {entry_price:.2f}, TP: {tp:.2f}, SL: {sl:.2f}")
+            self.order = self.buy_bracket(
+                data=self.datas[1],
+                price=entry_price,
+                size=1,
+                limitprice=tp,
+                stopprice=sl
+            )
+            self.entry_side = 'long'
+            self.entry_dt = dt1
+            self.last_entry_price = entry_price
+        elif short_signal:
+            print(f"🔴 SHORT SIGNAL at {dt5} | Entry: {entry_price:.2f}, TP: {tp:.2f}, SL: {sl:.2f}")
+            self.order = self.sell_bracket(
+                data=self.datas[1],
+                price=entry_price,
+                size=1,
+                limitprice=tp,
+                stopprice=sl
+            )
+            self.entry_side = 'short'
+            self.entry_dt = dt1
+            self.last_entry_price = entry_price
+
+    def notify_trade(self, trade):
+        if trade.isclosed:
+            self.daily_pnl += trade.pnl
+            print(f"💵 Trade PnL: ${trade.pnl:.2f}, Daily PnL: ${self.daily_pnl:.2f}")
+            entry_time = bt.num2date(trade.dtopen, tz=pytz.UTC)
+            exit_time = bt.num2date(trade.dtclose, tz=pytz.UTC)
+            self.trades.append({
+                "entry_time": entry_time,
+                "exit_time": exit_time,
+                "entry_price": self.last_entry_price,
+                "exit_price": trade.price,
+                "side": self.entry_side,
+                "pnl": trade.pnl
+            })
+            self.last_exit_price = trade.price
+            self.order = None
+            self.entry_side = None
+            self.entry_dt = None
+
+    def notify_order(self, order):
+        if order.status in [order.Submitted, order.Accepted]:
+            return
+        if order.status in [order.Completed]:
+            if order.isbuy():
+                print(f"✅ BUY EXECUTED @ {order.executed.price:.2f}")
+            elif order.issell():
+                print(f"✅ SELL EXECUTED @ {order.executed.price:.2f}")
+            self.order = None
+        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+            print(f"❌ Order Failed: {order.Status[order.status]}")
+            self.order = None
+
+    def log(self, txt: str) -> None:
+        dt = self.datas[0].datetime.datetime(0)
+        print(f"[{dt}] {txt}")
+
 
 
 

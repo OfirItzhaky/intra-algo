@@ -120,8 +120,25 @@
           <input type="file" class="form-control" id="chart_file" name="chart_file" accept="image/*" multiple style="margin-top: 8px;">
           <div class="mb-3">
             <label for="csv_file" class="form-label">Upload CSV (OHLCV + indicators)</label>
-            <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv,.txt,.xlsx,.xls">
+            <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv,.txt,.xlsx,.xls" multiple>
           </div>
+          <div id="csv-summary-list" class="mb-2"></div>
+          {% if csv_summaries and csv_summaries|length > 0 %}
+            <div class="mb-2">
+              <ul class="list-unstyled mb-0">
+                {% for csv in csv_summaries %}
+                  <li>
+                    📄 <b>{{ csv.filename }}</b>:
+                    {% if csv.error %}
+                      <span class="text-danger">Error: {{ csv.error }}</span>
+                    {% else %}
+                      <span class="text-primary">{{ csv.num_bars }}</span> bars loaded (<span class="text-secondary">{{ csv.timeframe }}</span>)
+                    {% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
           <div class="mb-3">
             <label for="session_notes" class="form-label">Session Notes (optional)</label>
             <textarea class="form-control" id="session_notes" name="session_notes" rows="3" placeholder="Enter any notes..."></textarea>
@@ -323,6 +340,66 @@ document.addEventListener('DOMContentLoaded', function() {
         dropzone.focus();
     });
 
+    // --- CSV INTERVAL DETECTION ---
+    function inferIntervalFromContent(text) {
+        // Try to parse the time column and compute the most common difference in minutes
+        const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+        if (lines.length < 3) return null;
+        const header = lines[0].split(/,|\t|;/).map(s => s.trim().toLowerCase());
+        let timeIdx = header.findIndex(h => h === 'time' || h === 'datetime' || h === 'timestamp');
+        if (timeIdx === -1) return null;
+        let times = [];
+        for (let i = 1; i < Math.min(lines.length, 50); ++i) {
+            const cols = lines[i].split(/,|\t|;/);
+            let t = cols[timeIdx];
+            if (!t) continue;
+            // Try to parse as HH:MM or HH:MM:SS
+            let m = t.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+            if (m) {
+                let h = parseInt(m[1], 10), m2 = parseInt(m[2], 10), s = m[3] ? parseInt(m[3], 10) : 0;
+                times.push(h * 60 + m2 + s / 60);
+            }
+        }
+        if (times.length < 2) return null;
+        let diffs = times.slice(1).map((t, i) => t - times[i]);
+        let minDiff = diffs.reduce((a, b) => Math.abs(a) < Math.abs(b) ? a : b);
+        if (Math.abs(minDiff - 1) < 0.1) return '1m';
+        if (Math.abs(minDiff - 5) < 0.1) return '5m';
+        if (Math.abs(minDiff - 15) < 0.1) return '15m';
+        if (Math.abs(minDiff - 30) < 0.1) return '30m';
+        if (Math.abs(minDiff - 60) < 1) return '60m';
+        return `${minDiff}m`;
+    }
+
+    // --- CSV SUMMARY LIST (show detected interval) ---
+    function updateCsvSummaryList() {
+        const csvSummaryDiv = document.getElementById('csv-summary-list');
+        const files = csvFileInput.files;
+        if (!files || files.length === 0) {
+            csvSummaryDiv.innerHTML = '';
+            return;
+        }
+        let html = '<ul class="list-unstyled mb-0">';
+        let filesProcessed = 0;
+        Array.from(files).forEach((file, idx) => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+                const numBars = Math.max(0, lines.length - 1); // header
+                const tf = inferIntervalFromContent(text) || 'Unknown';
+                html += `<li>📄 <b>${file.name}</b>: <span class='text-primary'>${numBars}</span> bars loaded (<span class='text-secondary'>${tf}</span>)</li>`;
+                filesProcessed++;
+                if (filesProcessed === files.length) {
+                    html += '</ul>';
+                    csvSummaryDiv.innerHTML = html;
+                }
+            };
+            reader.readAsText(file);
+        });
+    }
+    csvFileInput.addEventListener('change', updateCsvSummaryList);
+
     // --- FORM DATA: append all images and tags ---
     function getFormData() {
         const formData = new FormData();
@@ -331,9 +408,11 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('chart_files', img.file); // Flask: request.files.getlist('chart_files')
             formData.append(`chart_file_tag_${idx}`, img.tag || '');
         });
-        // CSV
+        // CSVs
         if (csvFileInput.files.length > 0) {
-            formData.append('csv_file', csvFileInput.files[0]);
+            Array.from(csvFileInput.files).forEach(file => {
+                formData.append('csv_files', file); // Flask: request.files.getlist('csv_files')
+            });
         }
         formData.append('session_notes', sessionNotesInput.value);
         formData.append('max_risk', maxRiskInput.value);
@@ -661,7 +740,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     html += '</ul>';
                     // --- Regression Predictor Button & CSV Info ---
                     html += `<div id="regression-csv-info" class="mb-2 text-end"></div>`;
-                    html += `<div class="d-flex justify-content-end mb-2"><button id="run-regression-strategy-btn" class="btn btn-success" style="display:inline-block; min-width:260px;">💡 Run Regression Predictor Strategy</button></div>`;
+                    html += `<div class="d-flex justify-content-end mb-2"><button id="run-regression-strategy-btn" type="button" class="btn btn-success" style="display:inline-block; min-width:260px;">💡 Run Regression Predictor Strategy</button></div>`;
                     html += `<div id="regression-strategy-result"></div>`;
                 } else {
                     let html = '<div class="alert alert-info">No bias summary returned. Showing raw Gemini insights instead:</div>';
@@ -818,16 +897,13 @@ document.addEventListener('DOMContentLoaded', function() {
     regressionSectionDiv.innerHTML = `
       <div id="regression-csv-info" class="mb-2 text-end"></div>
       <div class="d-flex justify-content-end mb-2">
-        <button id="run-regression-strategy-btn" class="btn btn-success" style="display:inline-block; min-width:260px;" disabled title="Upload a CSV and run Multi-Timeframe Agent to enable">💡 Run Regression Predictor Strategy</button>
+        <button id="run-regression-strategy-btn" type="button" class="btn btn-success" style="display:inline-block; min-width:260px;" disabled title="Upload a CSV and run Multi-Timeframe Agent to enable">💡 Run Regression Predictor Strategy</button>
       </div>
       <div id="regression-strategy-result"></div>
     `;
     if (!document.getElementById('regression-predictor-section')) {
       multiResultDiv.parentNode.insertBefore(regressionSectionDiv, multiResultDiv.nextSibling);
     }
-
-    let lastBiasSummary = null;
-    let lastCsvValid = false;
 
     function updateRegressionButtonState() {
       const regBtn = document.getElementById('run-regression-strategy-btn');
@@ -851,22 +927,12 @@ document.addEventListener('DOMContentLoaded', function() {
           } else {
             csvIsValid = true;
           }
-          lastCsvValid = csvIsValid;
-          // Enable/disable button based on both CSV and bias summary
-          if (csvIsValid && lastBiasSummary) {
-            regBtn.disabled = false;
-            regBtn.title = '';
-          } else {
-            regBtn.disabled = true;
-            regBtn.title = !csvIsValid ? 'Upload a CSV with at least 500 bars.' : 'Run Multi-Timeframe Agent to enable.';
-          }
+          regBtn.disabled = !csvIsValid;
         };
         reader.readAsText(file);
       } else {
         regCsvInfo.innerHTML = `<span class='text-danger'>No CSV uploaded. Please upload a CSV to run regression strategy.</span>`;
         regBtn.disabled = true;
-        regBtn.title = 'Upload a CSV with at least 500 bars.';
-        lastCsvValid = false;
       }
     }
 
@@ -899,10 +965,8 @@ document.addEventListener('DOMContentLoaded', function() {
               html += `<li><b>${item.interval || ''}</b>: ${item.bias_direction}${conf} — ${item.reasoning || ''}</li>`;
             });
             html += '</ul>';
-            lastBiasSummary = true;
           } else {
             html += '<div class="alert alert-info">No usable bias extracted. Try with a different image.</div>';
-            lastBiasSummary = false;
           }
           // --- Token usage/cost summary ---
           if (data.bias_cost_metadata) {
@@ -942,100 +1006,42 @@ document.addEventListener('DOMContentLoaded', function() {
           runMultiBtn.disabled = false;
           runMultiBtn.innerHTML = multiBtnOriginal;
           multiResultDiv.innerHTML = `<div class='alert alert-danger'>Error: ${err}</div>`;
-          lastBiasSummary = false;
           updateRegressionButtonState();
         });
       });
     }
 
     // --- Regression Predictor Button Logic ---
-    const regBtn = document.getElementById('run-regression-strategy-btn');
-    const regResultDiv = document.getElementById('regression-strategy-result');
-    if (regBtn) {
-      regBtn.onclick = function() {
-        if (regBtn.disabled) return;
-        regBtn.disabled = true;
-        regBtn.innerHTML = 'Running...';
-        regResultDiv.innerHTML = '';
-        // Prepare FormData
-        const csvFileInput = document.getElementById('csv_file');
-        const formData = new FormData();
-        if (csvFileInput && csvFileInput.files.length > 0) {
-          formData.append('csv_file', csvFileInput.files[0]);
-        }
-        // Use last bias summary from last MultiTimeframe run
-        formData.append('bias_summary', JSON.stringify(lastBiasSummary ? true : []));
-        // (raw_bias_data can be added if needed)
-        fetch('/run_regression_predictor', {
-          method: 'POST',
-          body: formData
-        })
-        .then(resp => resp.json())
-        .then(result => {
-          regBtn.disabled = false;
-          regBtn.innerHTML = '💡 Run Regression Predictor Strategy';
-          // Render results
-          let out = '';
-          if (result.feedback) {
-            out += `<div class='alert alert-warning'>${result.feedback}</div>`;
-          }
-          if (result.strategy_name) {
-            out += `<div class='card border-success mb-2'><div class='card-header bg-success text-white'><b>${result.strategy_name}</b></div><div class='card-body'>`;
-            out += `<div class='mb-2'><b>Entry Conditions:</b> min_high_delta=${result.entry_conditions?.min_high_delta}, min_low_delta=${result.entry_conditions?.min_low_delta}</div>`;
-            out += `<ul class='mb-2'>`;
-            const s = result.backtest_summary || {};
-            out += `<li><b>Num trades:</b> ${s.num_trades ?? '-'}</li>`;
-            out += `<li><b>Win rate:</b> ${(s.win_rate*100).toFixed(1) ?? '-'}%</li>`;
-            out += `<li><b>Avg return:</b> ${s.avg_return?.toFixed(2) ?? '-'}</li>`;
-            out += `<li><b>Avg duration:</b> ${s.avg_duration?.toFixed(1) ?? '-'}</li>`;
-            out += `<li><b>Max drawdown:</b> ${s.max_drawdown?.toFixed(2) ?? '-'}</li>`;
-            out += `<li><b>Profit factor:</b> ${s.profit_factor?.toFixed(2) ?? '-'}</li>`;
-            out += `</ul>`;
-            if (result.llm_summary) {
-              out += `<div class='mb-2'><b>Summary:</b> ${result.llm_summary}</div>`;
-            }
-            if (result.model_scores) {
-              out += `<div class='mb-2'><b>Model R²:</b> high=${result.model_scores.high_r2?.toFixed(3)}, low=${result.model_scores.low_r2?.toFixed(3)}</div>`;
-            }
-            // Cost tracking (if present)
-            if (result.cost_metadata) {
-              out += `<div class='small text-muted'>Tokens: ${result.cost_metadata.prompt_tokens || '-'} + ${result.cost_metadata.output_tokens || '-'}, Cost: $${result.cost_metadata.total_cost_usd?.toFixed(4) || '0.0000'}</div>`;
-            }
-            // --- Top 3 Strategy Configurations Table ---
-            if (Array.isArray(result.top_strategies) && result.top_strategies.length > 0) {
-              out += `<div class='card border-info mb-2'><div class='card-header bg-info text-white'><b>Top 3 Strategy Configurations</b></div><div class='card-body p-2'>`;
-              out += `<div class='table-responsive'><table class='table table-sm table-bordered mb-2'><thead class='table-light'><tr>`;
-              out += `<th>Long Threshold</th><th>Short Threshold</th><th>Win Rate</th><th>Avg Return</th><th>Profit Factor</th><th>Drawdown</th><th>Trades</th>`;
-              out += `</tr></thead><tbody>`;
-              result.top_strategies.forEach((cfg) => {
-                out += `<tr>`;
-                out += `<td>${cfg.long_threshold}</td>`;
-                out += `<td>${cfg.short_threshold}</td>`;
-                out += `<td>${(cfg.win_rate*100).toFixed(1)}%</td>`;
-                out += `<td>${cfg.avg_return?.toFixed(2) ?? '-'}</td>`;
-                out += `<td>${cfg.profit_factor?.toFixed(2) ?? '-'}</td>`;
-                out += `<td>${cfg.max_drawdown?.toFixed(2) ?? '-'}</td>`;
-                out += `<td>${cfg.num_trades ?? '-'}</td>`;
-                out += `</tr>`;
-              });
-              out += `</tbody></table></div>`;
-              out += `</div></div>`;
-            }
-            // --- Recommended Strategy Summary ---
-            if (result.recommended_strategy_summary) {
-              out += `<div class='alert alert-success mt-2 mb-2'><b>Recommended Strategy:</b> ${result.recommended_strategy_summary}</div>`;
-            }
-            out += `</div></div>`;
-          }
-          regResultDiv.innerHTML = out;
-        })
-        .catch(err => {
-          regBtn.disabled = false;
-          regBtn.innerHTML = '💡 Run Regression Predictor Strategy';
-          regResultDiv.innerHTML = `<div class='alert alert-danger'>Error: ${err}</div>`;
-        });
-      };
+    function has1minAnd5min(files) {
+      let has1 = false, has5 = false;
+      Array.from(files).forEach(f => {
+        const name = f.name.toLowerCase();
+        if (name.includes('1min')) has1 = true;
+        if (name.includes('5min')) has5 = true;
+      });
+      return has1 && has5;
     }
+    function updateRegressionPredictorButtonState() {
+      const regBtn = document.getElementById('run-regression-strategy-btn');
+      if (!regBtn) return;
+      const csvFileInput = document.getElementById('csv_file');
+      let files = csvFileInput && csvFileInput.files ? csvFileInput.files : [];
+      if (has1minAnd5min(files)) {
+        regBtn.disabled = false;
+        regBtn.style.display = '';
+        regBtn.title = '';
+      } else {
+        regBtn.disabled = true;
+        regBtn.style.display = '';
+        regBtn.title = 'Please upload both 1-minute and 5-minute CSVs to enable regression prediction.';
+      }
+    }
+    // Listen for CSV file changes
+    if (csvFileInput) {
+      csvFileInput.addEventListener('change', updateRegressionPredictorButtonState);
+    }
+    // Also call on page load in case files are prefilled
+    document.addEventListener('DOMContentLoaded', updateRegressionPredictorButtonState);
 
     // Instinct Agent chat
     document.getElementById('send_instinct_query').addEventListener('click', function() {
@@ -1133,6 +1139,97 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    function attachRegressionPredictorHandler() {
+      const regBtn = document.getElementById('run-regression-strategy-btn');
+      const regResultDiv = document.getElementById('regression-strategy-result');
+      if (!regBtn || regBtn._handlerAttached) return;
+      regBtn._handlerAttached = true;
+      regBtn.onclick = function() {
+        if (regBtn.disabled) return;
+        regBtn.disabled = true;
+        regBtn.innerHTML = 'Running...';
+        regResultDiv.innerHTML = '';
+        const csvFileInput = document.getElementById('csv_file');
+        const files = csvFileInput && csvFileInput.files ? csvFileInput.files : [];
+        const formData = new FormData();
+        Array.from(files).forEach(file => formData.append('csv_files', file));
+        console.log('Calling /run_regression_predictor with files:', Array.from(files).map(f => f.name));
+        fetch('/run_regression_predictor', {
+          method: 'POST',
+          body: formData
+        })
+        .then(resp => resp.json())
+        .then(result => {
+          regBtn.disabled = false;
+          regBtn.innerHTML = '💡 Run Regression Predictor Strategy';
+          let out = '';
+          if (result.feedback) {
+            out += `<div class='alert alert-warning'>${result.feedback}</div>`;
+          }
+          if (result.strategy_name) {
+            out += `<div class='card border-success mb-2'><div class='card-header bg-success text-white'><b>${result.strategy_name}</b></div><div class='card-body'>`;
+            out += `<div class='mb-2'><b>Entry Conditions:</b> min_high_delta=${result.entry_conditions?.min_high_delta}, min_low_delta=${result.entry_conditions?.min_low_delta}</div>`;
+            out += `<ul class='mb-2'>`;
+            const s = result.backtest_summary || {};
+            out += `<li><b>Num trades:</b> ${s.num_trades ?? '-'}</li>`;
+            out += `<li><b>Win rate:</b> ${(s.win_rate*100).toFixed(1) ?? '-'}%</li>`;
+            out += `<li><b>Avg return:</b> ${s.avg_return?.toFixed(2) ?? '-'}</li>`;
+            out += `<li><b>Avg duration:</b> ${s.avg_duration?.toFixed(1) ?? '-'}</li>`;
+            out += `<li><b>Max drawdown:</b> ${s.max_drawdown?.toFixed(2) ?? '-'}</li>`;
+            out += `<li><b>Profit factor:</b> ${s.profit_factor?.toFixed(2) ?? '-'}</li>`;
+            out += `</ul>`;
+            if (result.llm_summary) {
+              out += `<div class='mb-2'><b>Summary:</b> ${result.llm_summary}</div>`;
+            }
+            if (result.model_scores) {
+              out += `<div class='mb-2'><b>Model R²:</b> high=${result.model_scores.high_r2?.toFixed(3)}, low=${result.model_scores.low_r2?.toFixed(3)}</div>`;
+            }
+            if (result.cost_metadata) {
+              out += `<div class='small text-muted'>Tokens: ${result.cost_metadata.prompt_tokens || '-'} + ${result.cost_metadata.output_tokens || '-'}, Cost: $${result.cost_metadata.total_cost_usd?.toFixed(4) || '0.0000'}</div>`;
+            }
+            if (Array.isArray(result.top_strategies) && result.top_strategies.length > 0) {
+              out += `<div class='card border-info mb-2'><div class='card-header bg-info text-white'><b>Top 3 Strategy Configurations</b></div><div class='card-body p-2'>`;
+              out += `<div class='table-responsive'><table class='table table-sm table-bordered mb-2'><thead class='table-light'><tr>`;
+              out += `<th>Long Threshold</th><th>Short Threshold</th><th>Win Rate</th><th>Avg Return</th><th>Profit Factor</th><th>Drawdown</th><th>Trades</th>`;
+              out += `</tr></thead><tbody>`;
+              result.top_strategies.forEach((cfg) => {
+                out += `<tr>`;
+                out += `<td>${cfg.long_threshold}</td>`;
+                out += `<td>${cfg.short_threshold}</td>`;
+                out += `<td>${(cfg.win_rate*100).toFixed(1)}%</td>`;
+                out += `<td>${cfg.avg_return?.toFixed(2) ?? '-'}</td>`;
+                out += `<td>${cfg.profit_factor?.toFixed(2) ?? '-'}</td>`;
+                out += `<td>${cfg.max_drawdown?.toFixed(2) ?? '-'}</td>`;
+                out += `<td>${cfg.num_trades ?? '-'}</td>`;
+                out += `</tr>`;
+              });
+              out += `</tbody></table></div>`;
+              out += `</div></div>`;
+            }
+            if (result.recommended_strategy_summary) {
+              out += `<div class='alert alert-success mt-2 mb-2'><b>Recommended Strategy:</b> ${result.recommended_strategy_summary}</div>`;
+            }
+            out += `</div></div>`;
+          }
+          regResultDiv.innerHTML = out;
+        })
+        .catch(err => {
+          regBtn.disabled = false;
+          regBtn.innerHTML = '💡 Run Regression Predictor Strategy';
+          regResultDiv.innerHTML = `<div class='alert alert-danger'>Error: ${err}</div>`;
+        });
+      };
+    }
+    // Attach after CSV upload and on DOMContentLoaded
+    if (csvFileInput) {
+      csvFileInput.addEventListener('change', function() {
+        setTimeout(attachRegressionPredictorHandler, 100);
+      });
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(attachRegressionPredictorHandler, 200);
+    });
 });
 </script>
 </body>

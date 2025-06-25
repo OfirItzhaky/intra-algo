@@ -1,6 +1,7 @@
 import backtrader as bt
 import pandas as pd
 from backend.analyzer_strategy_blueprint import ElasticNetStrategy
+from backend.analyzer_cerebro_custom_feeds import CustomRegressionData
 
 class CustomClassifierData(bt.feeds.PandasData):
     """
@@ -20,7 +21,6 @@ class CustomClassifierData(bt.feeds.PandasData):
         ('XGBoost', -1),
         ('multi_class_label', -1),
     )
-
 
 class CerebroStrategyEngine:
     """
@@ -169,3 +169,67 @@ class CerebroStrategyEngine:
         print("🚀 Running Long5min1minStrategy backtest...")
         results = cerebro.run()
         return results, cerebro
+
+    def run_backtest_RegressionScalpingStrategy(
+        self,
+        df_5min: pd.DataFrame,
+        df_1min: pd.DataFrame,
+        params: dict
+    ) -> tuple:
+        """
+        Runs RegressionScalpingStrategy with CustomRegressionData (5m) and standard PandasData (1m).
+        params: dict of strategy parameters to pass to RegressionScalpingStrategy.
+        Returns (results, strategy_instance, cerebro)
+        """
+        from backend.analyzer_strategy_blueprint import RegressionScalpingStrategy
+        cerebro = bt.Cerebro()
+        # Prepare 5min data feed
+        df_5min = df_5min.copy()
+        if 'datetime' not in df_5min.columns:
+            df_5min['datetime'] = pd.to_datetime(df_5min['Date'] + ' ' + df_5min['Time'])
+        df_5min.set_index('datetime', inplace=True)
+        # Ensure predicted_high and predicted_low columns exist
+        if 'Predicted_High' in df_5min.columns:
+            df_5min['predicted_high'] = df_5min['Predicted_High']
+        elif 'Predicted' in df_5min.columns:
+            df_5min['predicted_high'] = df_5min['Predicted']
+        if 'Predicted_Low' in df_5min.columns:
+            df_5min['predicted_low'] = df_5min['Predicted_Low']
+        else:
+            df_5min['predicted_low'] = float('nan')
+        df_5min.index = pd.to_datetime(df_5min.index)
+        data_5min = CustomRegressionData(dataname=df_5min)
+        # Prepare 1min data feed
+        df_1min = df_1min.copy()
+        # 🔧 Normalize columns to lowercase
+        df_1min.columns = [col.lower() for col in df_1min.columns]
+        # Dynamically detect the volume column
+        if 'volume' in df_1min.columns:
+            vol_col = 'volume'
+        else:
+            vol_col = next((col for col in df_1min.columns if 'vol' in col), None)
+        if not vol_col:
+            raise ValueError("No volume column found in 1-min data. Tried to match 'volume' or any column containing 'vol'. Columns: " + str(list(df_1min.columns)))
+        vol_idx = df_1min.columns.get_loc(vol_col)
+        # Define custom 1-min data feed class with correct volume mapping by index
+        class CustomPandas1Min(bt.feeds.PandasData):
+            lines = (vol_col,)
+            params = ((vol_col, vol_idx),)
+        if 'datetime' not in df_1min.columns:
+            df_1min['datetime'] = pd.to_datetime(df_1min['date'] + ' ' + df_1min['time'])
+        df_1min.set_index('datetime', inplace=True)
+        df_1min.index = pd.to_datetime(df_1min.index)
+        data_1min = CustomPandas1Min(dataname=df_1min)
+        # Add feeds
+        cerebro.adddata(data_5min)  # data0: 5m
+        cerebro.adddata(data_1min)  # data1: 1m
+        # Add strategy
+        cerebro.addstrategy(RegressionScalpingStrategy, **params)
+        # Add analyzer
+        cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
+        # Run
+        print("🚀 Running RegressionScalpingStrategy backtest (CustomRegressionData + PandasData)...")
+        results = cerebro.run()
+        # Get the strategy instance (first in results)
+        strategy_instance = results[0] if results else None
+        return results, strategy_instance, cerebro

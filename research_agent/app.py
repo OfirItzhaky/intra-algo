@@ -314,35 +314,6 @@ def upload_csv():
                         interval = "Unknown (not enough data points)"
                         interval_status = "error"
                         interval_message = "Not enough data points to determine interval"
-                    
-                    # Get last date
-                    try:
-                        if len(dates) > 0:
-                            last_date = dates.iloc[-1] if hasattr(dates, 'iloc') else dates[-1]
-                            last_date_str = last_date.strftime('%Y-%m-%d %H:%M')
-                            print(f"Last date: {last_date_str}")
-                            
-                            # Check if data is recent enough (within last 30 days)
-                            days_old = (datetime.now() - last_date).days
-                            if days_old > 30:
-                                interval_status = "warning" if interval_status == "valid" else interval_status
-                                interval_message += f" Data is {days_old} days old."
-                                
-                        else:
-                            last_date_str = "No valid dates found"
-                            interval_status = "error"
-                            interval_message = "No valid dates found in file"
-                    except Exception as date_format_err:
-                        print(f"Error getting last date: {str(date_format_err)}")
-                        last_date_str = "Error getting last date"
-                        interval_status = "error"
-                        interval_message = f"Error getting last date: {str(date_format_err)}"
-                else:
-                    print("No date column identified")
-                    interval = "Unknown (no date column found)"
-                    last_date_str = "Unknown (no date column found)"
-                    interval_status = "error"
-                    interval_message = "No date column identified in data"
                 
                 # Store the DataFrame in symbol_data
                 if symbol not in symbol_data:
@@ -977,80 +948,44 @@ def scalp_agent():
                 trade_idea_result=None,
                 max_risk_per_trade=request.form.get("max_risk_per_trade"),
                 gemini_cost_info=gemini_cost_info,
-                requirements_summary=requirements_summary
+                requirements_summary=requirements_summary,
+                csv_summaries=[]
             )
         # Phase 2: CSV upload and validation (optional)
-        elif 'csv_file' in request.files:
-            csv_file = request.files['csv_file']
-            if csv_file and csv_file.filename:
-                try:
-                    df = pd.read_csv(csv_file)
-                    df.columns = [col.lower() for col in df.columns]
-                except Exception as e:
-                    validation_result = {
-                        'is_valid': False,
-                        'errors': [f"Failed to read CSV: {e}"],
-                        'validated_df': None
-                    }
-                    return render_template(
-                        "scalp_agent.html",
-                        result=None,
-                        csv_request_info=session.get('scalp_agent_requirements'),
-                        show_csv_upload=True,
-                        validation_result=validation_result,
-                        trade_idea_result=None,
-                        max_risk_per_trade=request.form.get("max_risk_per_trade")
-                    )
-                requirements = session.get('scalp_agent_requirements')
-                if not requirements:
-                    validation_result = {
-                        'is_valid': False,
-                        'errors': ["No requirements found. Please upload a chart image first."],
-                        'validated_df': None
-                    }
-                    return render_template(
-                        "scalp_agent.html",
-                        result=None,
-                        csv_request_info=None,
-                        show_csv_upload=False,
-                        validation_result=validation_result,
-                        trade_idea_result=None,
-                        max_risk_per_trade=request.form.get("max_risk_per_trade")
-                    )
-                controller = ScalpAgentController()
-                validation_result = controller.validate_csv_against_requirements(df, requirements)
-                trade_idea_result = None
-                max_risk_per_trade = request.form.get("max_risk_per_trade")
-                if max_risk_per_trade is not None and max_risk_per_trade != "":
+        elif 'csv_files' in request.files or (hasattr(request.files, 'getlist') and request.files.getlist('csv_files')):
+            csv_files = request.files.getlist('csv_files')
+            csv_summaries = []
+            for csv_file in csv_files:
+                if csv_file and csv_file.filename:
                     try:
-                        max_risk_per_trade = float(max_risk_per_trade)
-                    except Exception:
-                        max_risk_per_trade = None
-                else:
-                    max_risk_per_trade = None
-                if validation_result['is_valid']:
-                    trade_idea_result = controller.generate_trade_idea(validation_result['validated_df'], max_risk_per_trade)
-                return render_template(
-                    "scalp_agent.html",
-                    result=None,
-                    csv_request_info=requirements,
-                    show_csv_upload=True,
-                    validation_result=validation_result,
-                    trade_idea_result=trade_idea_result,
-                    max_risk_per_trade=max_risk_per_trade
-                )
-            else:
-                # No CSV uploaded, just show requirements and allow user to proceed or skip
-                requirements = session.get('scalp_agent_requirements')
-                return render_template(
-                    "scalp_agent.html",
-                    result=None,
-                    csv_request_info=requirements,
-                    show_csv_upload=True,
-                    validation_result=None,
-                    trade_idea_result=None,
-                    max_risk_per_trade=request.form.get("max_risk_per_trade")
-                )
+                        df = pd.read_csv(csv_file)
+                        num_bars = len(df)
+                        fname = csv_file.filename
+                        tf = "1m" if "1min" in fname.lower() else "5m"
+                        # Optionally, smarter inference can be added here
+                        csv_summaries.append({
+                            'filename': fname,
+                            'num_bars': num_bars,
+                            'timeframe': tf
+                        })
+                    except Exception as e:
+                        csv_summaries.append({
+                            'filename': csv_file.filename,
+                            'num_bars': 0,
+                            'timeframe': 'Unknown',
+                            'error': str(e)
+                        })
+            requirements = session.get('scalp_agent_requirements')
+            return render_template(
+                "scalp_agent.html",
+                result=None,
+                csv_request_info=requirements,
+                show_csv_upload=True,
+                validation_result=None,
+                trade_idea_result=None,
+                max_risk_per_trade=request.form.get("max_risk_per_trade"),
+                csv_summaries=csv_summaries
+            )
     # GET or initial load
     return render_template("scalp_agent.html", result=None, csv_request_info=None, show_csv_upload=False, validation_result=None, trade_idea_result=None, max_risk_per_trade=None)
 
@@ -1350,6 +1285,140 @@ def start_multitimeframe_agent():
     }
     return jsonify(result)
 
+@app.route("/run_regression_predictor", methods=["POST"])
+def run_regression_predictor():
+    print("[run_regression_predictor] Endpoint called.")
+    import pandas as pd
+    # Accept multiple files and select the 5m file by content
+    files = request.files.getlist('csv_files')
+    if not files or all(f.filename == '' for f in files):
+        print("[run_regression_predictor] No CSV files uploaded.")
+        return jsonify({'feedback': 'No CSV files uploaded. Please upload at least one CSV to run regression strategy.'})
+    def infer_interval_from_df(df, filename=None):
+        # Try to infer interval from the time column and date column
+        time_col = None
+        date_col = None
+        for c in df.columns:
+            if c.lower() in ['time', 'datetime', 'timestamp']:
+                time_col = c
+            if c.lower() == 'date':
+                date_col = c
+        print(f"[interval_detect] {filename}: columns={list(df.columns)}, time_col={time_col}, date_col={date_col}, n_rows={len(df)}")
+        if not time_col:
+            print(f"[interval_detect] {filename}: No time column found.")
+            return None
+        n = len(df)
+        if n < 2:
+            print(f"[interval_detect] {filename}: Not enough rows.")
+            return None
+        # Use last 5 bars if possible
+        last_rows = df.iloc[-5:] if n >= 5 else df.iloc[-2:]
+        # Check if all dates are the same
+        if date_col and len(set(last_rows[date_col].astype(str))) == 1:
+            # All same date, use all rows
+            times = last_rows[time_col].astype(str).tolist()
+            dates = last_rows[date_col].astype(str).tolist()
+            print(f"[interval_detect] {filename}: Using last 5 times (same date): {times}, date: {dates[0] if dates else 'N/A'}")
+        else:
+            # Use only last 2 bars
+            times = df.iloc[-2:][time_col].astype(str).tolist()
+            dates = df.iloc[-2:][date_col].astype(str).tolist() if date_col else ['N/A', 'N/A']
+            print(f"[interval_detect] {filename}: Using last 2 times (diff date): {times}, dates: {dates}")
+        if len(times) < 2:
+            print(f"[interval_detect] {filename}: Not enough times for diff.")
+            return None
+        import re
+        mins = []
+        for t in times:
+            m = re.match(r'(\d{1,2}):(\d{2})(?::(\d{2}))?', t)
+            if m:
+                h = int(m[1]); m2 = int(m[2]); s = int(m[3]) if m[3] else 0
+                mins.append(h * 60 + m2 + s / 60)
+            else:
+                print(f"[interval_detect] {filename}: Could not parse time '{t}'")
+        print(f"[interval_detect] {filename}: minute values: {mins}")
+        if len(mins) < 2:
+            print(f"[interval_detect] {filename}: Not enough valid minute values.")
+            return None
+        diffs = [mins[i+1] - mins[i] for i in range(len(mins)-1)]
+        print(f"[interval_detect] {filename}: diffs: {diffs}")
+        # Only consider positive diffs
+        pos_diffs = [d for d in diffs if d > 0]
+        print(f"[interval_detect] {filename}: positive diffs: {pos_diffs}")
+        if not pos_diffs:
+            print(f"[interval_detect] {filename}: No positive diffs.")
+            return None
+        # Use mode (most common) difference
+        from collections import Counter
+        mode_diff, _ = Counter(pos_diffs).most_common(1)[0]
+        print(f"[interval_detect] {filename}: mode_diff: {mode_diff}")
+        if abs(mode_diff - 1) < 0.1:
+            print(f"[interval_detect] {filename}: Detected interval: 1m")
+            return '1m'
+        if abs(mode_diff - 5) < 0.1:
+            print(f"[interval_detect] {filename}: Detected interval: 5m")
+            return '5m'
+        if abs(mode_diff - 15) < 0.1:
+            print(f"[interval_detect] {filename}: Detected interval: 15m")
+            return '15m'
+        if abs(mode_diff - 30) < 0.1:
+            print(f"[interval_detect] {filename}: Detected interval: 30m")
+            return '30m'
+        if abs(mode_diff - 60) < 1:
+            print(f"[interval_detect] {filename}: Detected interval: 60m")
+            return '60m'
+        print(f"[interval_detect] {filename}: Detected interval: {mode_diff}m")
+        return f'{mode_diff}m'
+    file_5m = None
+    file_1m = None
+    for f in files:
+        try:
+            df = pd.read_csv(f)
+            # --- Normalize columns and volume column ---
+            df.columns = [col.lower() for col in df.columns]
+            vol_col = next((col for col in df.columns if 'vol' in col), None)
+            if vol_col:
+                if vol_col != 'volume':
+                    df.rename(columns={vol_col: 'volume'}, inplace=True)
+            else:
+                raise ValueError(f"No volume column found in uploaded file {f.filename}. Columns: {list(df.columns)}")
+            interval = infer_interval_from_df(df, filename=f.filename)
+            print(f"[run_regression_predictor] {f.filename} interval detected: {interval}")
+            if interval == '5m' and file_5m is None:
+                file_5m = (f, df)
+            elif interval == '1m' and file_1m is None:
+                file_1m = (f, df)
+        except Exception as e:
+            print(f"[run_regression_predictor] Failed to read {f.filename}: {e}")
+    if not file_5m or not file_1m:
+        return jsonify({'feedback': 'Both 1-minute and 5-minute CSVs are required for regression simulation. Please upload both intervals.'})
+    f_5m, df_5m = file_5m
+    f_1m, df_1m = file_1m
+    df_5m.columns = [col.lower() for col in df_5m.columns]
+    df_1m.columns = [col.lower() for col in df_1m.columns]
+    print(f"[run_regression_predictor] Using 5m file: {f_5m.filename}, shape: {df_5m.shape}")
+    print(f"[run_regression_predictor] Using 1m file: {f_1m.filename}, shape: {df_1m.shape}")
+    # Optionally, get user_params from form
+    user_params = {}
+    for k in ['max_risk_per_trade', 'max_daily_risk', 'long_threshold', 'short_threshold']:
+        v = request.form.get(k)
+        if v is not None:
+            user_params[k] = v
+    print(f"[run_regression_predictor] user_params: {user_params}")
+    agent = RegressionPredictorAgent(user_params=user_params)
+    fit_result = agent.fit(df_5m)
+    print(f"[run_regression_predictor] agent.fit() returned: {fit_result}")
+    result = agent.find_best_threshold_strategy(df_5m, df_1min=df_1m, user_params=user_params)
+    print(f"[run_regression_predictor] agent.find_best_threshold_strategy() returned keys: {list(result.keys())}")
+    print(f"[run_regression_predictor] Returning result to client.")
+    # --- LLM cost tracking fields (simulate for now) ---
+    result["llm_token_usage"] = 0
+    result["llm_cost_usd"] = 0.0
+    result["llm_model_name"] = "Gemini 1.5 Pro"
+    result["llm_session_total_cost"] = 0.0
+    result["total_cost_usd"] = 0.0
+    return jsonify(result)
+
 def to_serializable(val):
     if isinstance(val, dict):
         return {k: to_serializable(v) for k, v in val.items()}
@@ -1363,38 +1432,6 @@ def to_serializable(val):
         return val.tolist()
     else:
         return val
-
-@app.route("/run_regression_predictor", methods=["POST"])
-def run_regression_predictor():
-    print("[run_regression_predictor] Endpoint called.")
-    csv_file = request.files.get('csv_file')
-    if not csv_file or not csv_file.filename:
-        print("[run_regression_predictor] No CSV file uploaded.")
-        return jsonify({'feedback': 'No CSV file uploaded. Please upload a CSV to run regression strategy.'})
-    try:
-        import pandas as pd
-        print(f"[run_regression_predictor] Reading CSV: {csv_file.filename}")
-        df = pd.read_csv(csv_file)
-        df.columns = [col.lower() for col in df.columns]
-        print(f"[run_regression_predictor] DataFrame shape: {df.shape}")
-        print(f"[run_regression_predictor] DataFrame columns: {list(df.columns)}")
-    except Exception as e:
-        print(f"[run_regression_predictor] Failed to read CSV: {e}")
-        return jsonify({'feedback': f'Failed to read CSV: {str(e)}'})
-    # Optionally, get user_params from form
-    user_params = {}
-    for k in ['max_risk_per_trade', 'max_daily_risk', 'long_threshold', 'short_threshold']:
-        v = request.form.get(k)
-        if v is not None:
-            user_params[k] = v
-    print(f"[run_regression_predictor] user_params: {user_params}")
-    agent = RegressionPredictorAgent(user_params=user_params)
-    fit_result = agent.fit(df)
-    print(f"[run_regression_predictor] agent.fit() returned: {fit_result}")
-    result = agent.find_best_threshold_strategy(df, user_params=user_params)
-    print(f"[run_regression_predictor] agent.find_best_threshold_strategy() returned keys: {list(result.keys())}")
-    print(f"[run_regression_predictor] Returning result to client.")
-    return jsonify(result)
 
 if __name__ == "__main__":
     import os
