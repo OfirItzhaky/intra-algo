@@ -22,6 +22,8 @@ from scalp_agent.instinct_agent import InstinctAgent
 from scalp_agent.playbook_agent import PlaybookAgent
 from scalp_agent.playbook_simulator import PlaybookSimulator
 from scalp_agent.csv_utils import validate_csv_against_indicators
+from scalp_agent.regression_prediction_agent import RegressionPredictorAgent
+import numpy as np
 
 # === Runtime Constants ===
 today = datetime.today().strftime("%Y-%m-%d")
@@ -983,6 +985,7 @@ def scalp_agent():
             if csv_file and csv_file.filename:
                 try:
                     df = pd.read_csv(csv_file)
+                    df.columns = [col.lower() for col in df.columns]
                 except Exception as e:
                     validation_result = {
                         'is_valid': False,
@@ -1197,6 +1200,9 @@ def start_playbook():
     # If CSV is uploaded, validate and simulate
     simulation_result = None
     if csv_file and csv_file.filename:
+        import pandas as pd
+        df = pd.read_csv(csv_file)
+        df.columns = [col.lower() for col in df.columns]
         required_indicators = agent_result.get('indicators', [])
         validation = validate_csv_against_indicators(df, required_indicators)
         if validation['is_valid']:
@@ -1342,6 +1348,52 @@ def start_multitimeframe_agent():
         "llm_session_model_name": session_cost['llm_model_name'],
         "bias_cost_metadata": bias_cost_metadata
     }
+    return jsonify(result)
+
+def to_serializable(val):
+    if isinstance(val, dict):
+        return {k: to_serializable(v) for k, v in val.items()}
+    elif isinstance(val, list):
+        return [to_serializable(v) for v in val]
+    elif isinstance(val, (np.integer, np.int64, np.int32)):
+        return int(val)
+    elif isinstance(val, (np.floating, np.float64, np.float32)):
+        return float(val)
+    elif isinstance(val, np.ndarray):
+        return val.tolist()
+    else:
+        return val
+
+@app.route("/run_regression_predictor", methods=["POST"])
+def run_regression_predictor():
+    print("[run_regression_predictor] Endpoint called.")
+    csv_file = request.files.get('csv_file')
+    if not csv_file or not csv_file.filename:
+        print("[run_regression_predictor] No CSV file uploaded.")
+        return jsonify({'feedback': 'No CSV file uploaded. Please upload a CSV to run regression strategy.'})
+    try:
+        import pandas as pd
+        print(f"[run_regression_predictor] Reading CSV: {csv_file.filename}")
+        df = pd.read_csv(csv_file)
+        df.columns = [col.lower() for col in df.columns]
+        print(f"[run_regression_predictor] DataFrame shape: {df.shape}")
+        print(f"[run_regression_predictor] DataFrame columns: {list(df.columns)}")
+    except Exception as e:
+        print(f"[run_regression_predictor] Failed to read CSV: {e}")
+        return jsonify({'feedback': f'Failed to read CSV: {str(e)}'})
+    # Optionally, get user_params from form
+    user_params = {}
+    for k in ['max_risk_per_trade', 'max_daily_risk', 'long_threshold', 'short_threshold']:
+        v = request.form.get(k)
+        if v is not None:
+            user_params[k] = v
+    print(f"[run_regression_predictor] user_params: {user_params}")
+    agent = RegressionPredictorAgent(user_params=user_params)
+    fit_result = agent.fit(df)
+    print(f"[run_regression_predictor] agent.fit() returned: {fit_result}")
+    result = agent.find_best_threshold_strategy(df, user_params=user_params)
+    print(f"[run_regression_predictor] agent.find_best_threshold_strategy() returned keys: {list(result.keys())}")
+    print(f"[run_regression_predictor] Returning result to client.")
     return jsonify(result)
 
 if __name__ == "__main__":

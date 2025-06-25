@@ -1,6 +1,6 @@
 import backtrader as bt
 import pandas as pd
-from analyzer_strategy_blueprint import ElasticNetStrategy  # Make sure it's correct path
+from backend.analyzer_strategy_blueprint import ElasticNetStrategy
 
 class CustomClassifierData(bt.feeds.PandasData):
     """
