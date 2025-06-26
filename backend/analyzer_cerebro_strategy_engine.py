@@ -174,7 +174,13 @@ class CerebroStrategyEngine:
         self,
         df_5min: pd.DataFrame,
         df_1min: pd.DataFrame,
-        params: dict
+        params: dict,
+        config_index: int = None,
+        total_configs: int = None,
+        long_t: float = None,
+        short_t: float = None,
+        min_vol: float = None,
+        bar_color: bool = None
     ) -> tuple:
         """
         Runs RegressionScalpingStrategy with CustomRegressionData (5m) and standard PandasData (1m).
@@ -185,19 +191,34 @@ class CerebroStrategyEngine:
         cerebro = bt.Cerebro()
         # Prepare 5min data feed
         df_5min = df_5min.copy()
+        # --- Always use lowercase columns ---
+        df_5min.columns = [col.lower() for col in df_5min.columns]
         if 'datetime' not in df_5min.columns:
-            df_5min['datetime'] = pd.to_datetime(df_5min['Date'] + ' ' + df_5min['Time'])
+            if 'date' in df_5min.columns and 'time' in df_5min.columns:
+                df_5min['datetime'] = pd.to_datetime(df_5min['date'] + ' ' + df_5min['time'])
+            else:
+                raise KeyError(f"'date' and/or 'time' columns not found in df_5min. Columns: {list(df_5min.columns)}")
         df_5min.set_index('datetime', inplace=True)
         # Ensure predicted_high and predicted_low columns exist
-        if 'Predicted_High' in df_5min.columns:
-            df_5min['predicted_high'] = df_5min['Predicted_High']
-        elif 'Predicted' in df_5min.columns:
-            df_5min['predicted_high'] = df_5min['Predicted']
-        if 'Predicted_Low' in df_5min.columns:
-            df_5min['predicted_low'] = df_5min['Predicted_Low']
-        else:
+        if 'predicted_high' not in df_5min.columns and 'predicted' in df_5min.columns:
+            df_5min['predicted_high'] = df_5min['predicted']
+        if 'predicted_low' not in df_5min.columns:
             df_5min['predicted_low'] = float('nan')
         df_5min.index = pd.to_datetime(df_5min.index)
+        # CustomRegressionData feed expects lowercase columns
+        class CustomRegressionData(bt.feeds.PandasData):
+            lines = ('predicted_high', 'predicted_low',)
+            params = (
+                ('datetime', None),
+                ('open', 'open'),
+                ('high', 'high'),
+                ('low', 'low'),
+                ('close', 'close'),
+                ('volume', 'volume'),
+                ('openinterest', -1),
+                ('predicted_high', 'predicted_high'),
+                ('predicted_low', 'predicted_low'),
+            )
         data_5min = CustomRegressionData(dataname=df_5min)
         # Prepare 1min data feed
         df_1min = df_1min.copy()
@@ -224,12 +245,54 @@ class CerebroStrategyEngine:
         cerebro.adddata(data_5min)  # data0: 5m
         cerebro.adddata(data_1min)  # data1: 1m
         # Add strategy
+        print(f"[DEBUG] Params sent to RegressionScalpingStrategy: {params}")
         cerebro.addstrategy(RegressionScalpingStrategy, **params)
         # Add analyzer
         cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
+        # Memory usage before cerebro.run()
+        print("[DEBUG] Attempting to import psutil for memory logging", flush=True)
+        try:
+            import psutil
+            process = psutil.Process()
+            mem_before = process.memory_info().rss / 1024 / 1024
+        except ImportError:
+            psutil = None
+            mem_before = None
+            print("[DEBUG] psutil not available, skipping memory logging", flush=True)
+            print("[ERROR] psutil is required for memory logging. Please install it with: pip install psutil", flush=True)
         # Run
-        print("🚀 Running RegressionScalpingStrategy backtest (CustomRegressionData + PandasData)...")
+        if config_index is not None and total_configs is not None:
+            print(f"🚀 Running RegressionScalpingStrategy backtest {config_index+1}/{total_configs} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}) ...")
+        else:
+            print("🚀 Running RegressionScalpingStrategy backtest (CustomRegressionData + PandasData)...")
         results = cerebro.run()
+        # Memory usage after cerebro.run()
+        if psutil:
+            mem_after = process.memory_info().rss / 1024 / 1024
+            mem_delta = mem_after - mem_before if mem_before is not None else 0
+            print(f"[Memory] Config {config_index+1 if config_index is not None else '?'} — long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}: {mem_before:.1f} MB -> {mem_after:.1f} MB (delta: {mem_delta:+.1f} MB)", flush=True)
         # Get the strategy instance (first in results)
         strategy_instance = results[0] if results else None
-        return results, strategy_instance, cerebro
+        # Print a single summary line per iteration
+        trades_attr = getattr(strategy_instance, 'trades', None)
+        if isinstance(trades_attr, (list, tuple)):
+            num_trades = len(trades_attr)
+        else:
+            num_trades = 0
+        print(f"✅ Finished RegressionScalpingStrategy backtest {config_index+1}/{total_configs} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}) | Trades: {num_trades}")
+        # Always return a dict as the first value for downstream code
+        if isinstance(results, list) and (not results or not isinstance(results[0], dict)):
+            strategy_instance = results[0] if results else None
+            sim = {}
+            if strategy_instance is not None:
+                # Extract serializable fields if present
+                trades = getattr(strategy_instance, 'trades', None)
+                if trades is not None:
+                    sim['trades'] = trades
+                backtest_summary = getattr(strategy_instance, 'backtest_summary', None)
+                if backtest_summary is not None:
+                    sim['backtest_summary'] = backtest_summary
+            sim['results'] = results
+        else:
+            sim = results[0] if results else {}
+        return sim, strategy_instance, cerebro

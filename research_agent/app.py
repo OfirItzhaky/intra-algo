@@ -24,6 +24,7 @@ from scalp_agent.playbook_simulator import PlaybookSimulator
 from scalp_agent.csv_utils import validate_csv_against_indicators
 from scalp_agent.regression_prediction_agent import RegressionPredictorAgent
 import numpy as np
+import time
 
 # === Runtime Constants ===
 today = datetime.today().strftime("%Y-%m-%d")
@@ -36,6 +37,15 @@ COPY_TO_CLIPBOARD = False
 SAVE_DIRECTORY = "research_outputs"
 
 from config import CONFIG, SUMMARY_CACHE, EVENT_CACHE
+
+# --- Global progress tracker ---
+regression_backtest_tracker = {
+    "current": 0,
+    "total": 0,
+    "start_time": None,
+    "status": "idle",
+    "cancel_requested": False
+}
 
 app = Flask(__name__)
 app.secret_key = 'snapshot-session-key'
@@ -159,6 +169,11 @@ def upload_csv():
                         df = pd.read_csv(file)
                     except Exception:
                         raise Exception("Unsupported file format. Please upload CSV, TXT, or Excel files.")
+                
+                # --- Normalize volume column to 'volume' ---
+                vol_col = next((col for col in df.columns if 'vol' in col.lower()), None)
+                if vol_col and vol_col != 'volume':
+                    df.rename(columns={vol_col: 'volume'}, inplace=True)
                 
                 print(f"Successfully read file. Shape: {df.shape}")
                 
@@ -1408,7 +1423,16 @@ def run_regression_predictor():
     agent = RegressionPredictorAgent(user_params=user_params)
     fit_result = agent.fit(df_5m)
     print(f"[run_regression_predictor] agent.fit() returned: {fit_result}")
+    # --- Progress tracker setup ---
+    regression_backtest_tracker.update({
+        "current": 0,
+        "total": 0,
+        "start_time": time.time(),
+        "status": "running",
+        "cancel_requested": False
+    })
     result = agent.find_best_threshold_strategy(df_5m, df_1min=df_1m, user_params=user_params)
+    regression_backtest_tracker["status"] = "done"
     print(f"[run_regression_predictor] agent.find_best_threshold_strategy() returned keys: {list(result.keys())}")
     print(f"[run_regression_predictor] Returning result to client.")
     # --- LLM cost tracking fields (simulate for now) ---
@@ -1418,6 +1442,15 @@ def run_regression_predictor():
     result["llm_session_total_cost"] = 0.0
     result["total_cost_usd"] = 0.0
     return jsonify(result)
+
+@app.route("/regression_backtest_progress", methods=["GET"])
+def regression_backtest_progress():
+    return jsonify(regression_backtest_tracker)
+
+@app.route("/cancel_regression_backtest", methods=["POST"])
+def cancel_regression_backtest():
+    regression_backtest_tracker["cancel_requested"] = True
+    return jsonify({"message": "Cancellation requested"})
 
 def to_serializable(val):
     if isinstance(val, dict):

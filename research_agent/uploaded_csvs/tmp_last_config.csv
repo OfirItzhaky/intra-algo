@@ -1,0 +1,2 @@
+long_threshold,short_threshold,min_volume_pct_change,bar_color_filter
+4,4,0.05,False

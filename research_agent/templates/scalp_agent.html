@@ -801,15 +801,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     regBtn.onclick = function() {
                         if (regBtn.disabled) return;
                         regBtn.disabled = true;
-                        regBtn.innerHTML = 'Running...';
+                        regBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Running...';
                         regResultDiv.innerHTML = '';
-                        // Prepare FormData
+                        const csvFileInput = document.getElementById('csv_file');
+                        const files = csvFileInput && csvFileInput.files ? csvFileInput.files : [];
                         const formData = new FormData();
-                        if (csvFileInput.files.length > 0) {
-                            formData.append('csv_file', csvFileInput.files[0]);
-                        }
-                        formData.append('bias_summary', JSON.stringify(data.bias_summary));
-                        formData.append('raw_bias_data', JSON.stringify(data.raw_bias_data));
+                        Array.from(files).forEach(file => formData.append('csv_files', file));
+                        console.log('Calling /run_regression_predictor with files:', Array.from(files).map(f => f.name));
                         fetch('/run_regression_predictor', {
                             method: 'POST',
                             body: formData
@@ -818,7 +816,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         .then(result => {
                             regBtn.disabled = false;
                             regBtn.innerHTML = '💡 Run Regression Predictor Strategy';
-                            // Render results
                             let out = '';
                             if (result.feedback) {
                                 out += `<div class='alert alert-warning'>${result.feedback}</div>`;
@@ -841,11 +838,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                 if (result.model_scores) {
                                     out += `<div class='mb-2'><b>Model R²:</b> high=${result.model_scores.high_r2?.toFixed(3)}, low=${result.model_scores.low_r2?.toFixed(3)}</div>`;
                                 }
-                                // Cost tracking (if present)
                                 if (result.cost_metadata) {
                                     out += `<div class='small text-muted'>Tokens: ${result.cost_metadata.prompt_tokens || '-'} + ${result.cost_metadata.output_tokens || '-'}, Cost: $${result.cost_metadata.total_cost_usd?.toFixed(4) || '0.0000'}</div>`;
                                 }
-                                // --- Top 3 Strategy Configurations Table ---
                                 if (Array.isArray(result.top_strategies) && result.top_strategies.length > 0) {
                                     out += `<div class='card border-info mb-2'><div class='card-header bg-info text-white'><b>Top 3 Strategy Configurations</b></div><div class='card-body p-2'>`;
                                     out += `<div class='table-responsive'><table class='table table-sm table-bordered mb-2'><thead class='table-light'><tr>`;
@@ -865,7 +860,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                     out += `</tbody></table></div>`;
                                     out += `</div></div>`;
                                 }
-                                // --- Recommended Strategy Summary ---
                                 if (result.recommended_strategy_summary) {
                                     out += `<div class='alert alert-success mt-2 mb-2'><b>Recommended Strategy:</b> ${result.recommended_strategy_summary}</div>`;
                                 }
@@ -1145,16 +1139,53 @@ document.addEventListener('DOMContentLoaded', function() {
       const regResultDiv = document.getElementById('regression-strategy-result');
       if (!regBtn || regBtn._handlerAttached) return;
       regBtn._handlerAttached = true;
+      let polling = false;
+      let regressionInterval = null;
+      let originalBtnHTML = regBtn.innerHTML;
+      let cancelRequested = false;
+      async function pollProgress() {
+        regressionInterval = setInterval(async () => {
+          try {
+            const response = await fetch("/regression_backtest_progress");
+            const data = await response.json();
+            const { current, total, start_time, status } = data;
+            if (total > 0) {
+              const pct = Math.round((current / total) * 100);
+              const elapsed = (Date.now() / 1000) - start_time;
+              const estTotal = current > 0 ? (elapsed / current) * total : 0;
+              const eta = current > 0 ? estTotal - elapsed : 0;
+              regBtn.innerHTML = `<span class='spinner-border spinner-border-sm me-2' role='status' aria-hidden='true'></span>${pct}% (${eta > 0 ? eta.toFixed(0) : '...'}s left)`;
+            } else {
+              regBtn.innerHTML = `<span class='spinner-border spinner-border-sm me-2' role='status' aria-hidden='true'></span>Running...`;
+            }
+            if (status === "done" || status === "cancelled") {
+              clearInterval(regressionInterval);
+              regBtn.disabled = false;
+              regBtn.innerHTML = originalBtnHTML;
+              polling = false;
+            }
+            if (status === "cancelled") {
+              regBtn.innerHTML = 'Cancelled';
+            }
+          } catch (e) {
+            // Optionally handle error
+          }
+        }, 1000);
+      }
+      // Add cancel button logic (optional, if you want to support cancel)
+      // You can add a right-aligned cancel button next to the main button if desired
       regBtn.onclick = function() {
         if (regBtn.disabled) return;
         regBtn.disabled = true;
-        regBtn.innerHTML = 'Running...';
+        regBtn.innerHTML = `<span class='spinner-border spinner-border-sm me-2' role='status' aria-hidden='true'></span>Running...`;
         regResultDiv.innerHTML = '';
         const csvFileInput = document.getElementById('csv_file');
         const files = csvFileInput && csvFileInput.files ? csvFileInput.files : [];
         const formData = new FormData();
         Array.from(files).forEach(file => formData.append('csv_files', file));
         console.log('Calling /run_regression_predictor with files:', Array.from(files).map(f => f.name));
+        polling = true;
+        pollProgress();
         fetch('/run_regression_predictor', {
           method: 'POST',
           body: formData
@@ -1162,7 +1193,9 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(resp => resp.json())
         .then(result => {
           regBtn.disabled = false;
-          regBtn.innerHTML = '💡 Run Regression Predictor Strategy';
+          regBtn.innerHTML = originalBtnHTML;
+          polling = false;
+          clearInterval(regressionInterval);
           let out = '';
           if (result.feedback) {
             out += `<div class='alert alert-warning'>${result.feedback}</div>`;
@@ -1216,7 +1249,9 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(err => {
           regBtn.disabled = false;
-          regBtn.innerHTML = '💡 Run Regression Predictor Strategy';
+          regBtn.innerHTML = originalBtnHTML;
+          polling = false;
+          clearInterval(regressionInterval);
           regResultDiv.innerHTML = `<div class='alert alert-danger'>Error: ${err}</div>`;
         });
       };

@@ -217,7 +217,7 @@ class Long5min1minStrategy(bt.Strategy):
         if self.current_trade_date != dt.date():
             self.current_trade_date = dt.date()
             self.daily_pnl = 0
-            print(f"📅 New trading day: {dt.date()}, Daily PnL reset to 0")
+            # print(f"📅 New trading day: {dt.date()}, Daily PnL reset to 0")
 
         print(f"🕒 Current dt: {dt}, Previous bar time: {self.last_bar_time}")
 
@@ -236,7 +236,7 @@ class Long5min1minStrategy(bt.Strategy):
 
         if self.position and self.position.size > 0 and self.last_entry_price is None:
             self.last_entry_price = self.position.price
-            print(f"📥 Position opened at {self.last_entry_price:.2f}")
+            # print(f"📥 Position opened at {self.last_entry_price:.2f}")
             return
         if self.position or self.order:
             return
@@ -245,10 +245,10 @@ class Long5min1minStrategy(bt.Strategy):
             return
 
         if self.daily_pnl >= self.p.max_daily_profit:
-            print(f"💰 Max daily profit reached (${self.daily_pnl:.2f}). No new trades.")
+            # print(f"💰 Max daily profit reached (${self.daily_pnl:.2f}). No new trades.")
             return
         if self.daily_pnl <= self.p.max_daily_loss:
-            print(f"⚠️ Max daily loss reached (${self.daily_pnl:.2f}). No new trades.")
+            # print(f"⚠️ Max daily loss reached (${self.daily_pnl:.2f}). No new trades.")
             return
 
         pred = self.data.predicted_high[0]
@@ -266,16 +266,17 @@ class Long5min1minStrategy(bt.Strategy):
                     if hasattr(self.data, 'multi_class_label'):
                         multi_class_value = self.data.multi_class_label[0]
                         if pd.isna(multi_class_value):
-                            print(f"🕳️ Skipping bar — multi_class_label is NaN")
+                            # print(f"🕳️ Skipping bar — multi_class_label is NaN")
                             return
                         
                         if multi_class_value < self.p.multi_class_threshold:
-                            print(f"🚫 Multi-class signal ({multi_class_value}) below threshold ({self.p.multi_class_threshold})")
+                            # print(f"🚫 Multi-class signal ({multi_class_value}) below threshold ({self.p.multi_class_threshold})")
                             return
                         else:
-                            print(f"✅ Multi-class signal ({multi_class_value}) meets threshold")
+                            # print(f"✅ Multi-class signal ({multi_class_value}) meets threshold")
+                            pass
                     else:
-                        print(f"❌ multi_class_label not available")
+                        # print(f"❌ multi_class_label not available")
                         return
                 else:
                     signal_count = sum(
@@ -312,40 +313,35 @@ class Long5min1minStrategy(bt.Strategy):
     def notify_trade(self, trade):
         if trade.isclosed:
             self.daily_pnl += trade.pnl
-            print(f"💵 Trade PnL: ${trade.pnl:.2f}, Daily PnL: ${self.daily_pnl:.2f}")
-
-            orders = list(self.broker.orders)
-            orders_df = pd.DataFrame([{
-                'ref': o.ref,
-                'type': 'SELL' if o.issell() else 'BUY',
-                'status': o.getstatusname(),
-                'exec_type': o.exectype,
-                'submitted_price': o.created.price,
-                'filled_price': o.executed.price if o.status == bt.Order.Completed else None,
-                'executed_dt': bt.num2date(o.executed.dt) if o.status == bt.Order.Completed else None
-            } for o in orders])
-
-            last_filled_sell = orders_df[(orders_df['type'] == 'SELL') & (orders_df['status'] == 'Completed')].iloc[-1]
-            exit_price_from_orders = last_filled_sell['filled_price']
-
-            pnl = trade.pnl
+            # print(f"💵 Trade PnL: ${trade.pnl:.2f}, Daily PnL: ${self.daily_pnl:.2f}")
             entry_time = bt.num2date(trade.dtopen, tz=pytz.UTC)
             exit_time = bt.num2date(trade.dtclose, tz=pytz.UTC)
-
-            entry_price = self.last_entry_price
-            exit_price = trade.price
-            self.exit_orders_sent = False
-
-            print(f"🌐 Trade closed. PnL: {pnl:.2f}")
-            print(f"🧾 Stored from trade — Entry: {entry_price}, Exit: {exit_price}")
-
             self.trades.append({
                 "entry_time": entry_time,
                 "exit_time": exit_time,
-                "entry_price": entry_price,
-                "exit_price": exit_price_from_orders,
-                "pnl": pnl
+                "entry_price": self.last_entry_price,
+                "exit_price": trade.price,
+                "pnl": trade.pnl
             })
+            self.last_exit_price = trade.price
+            self.order = None
+
+    def notify_order(self, order):
+        if order.status in [order.Submitted, order.Accepted]:
+            return
+        if order.status in [order.Completed]:
+            # if order.isbuy():
+            #     print(f"✅ BUY EXECUTED @ {order.executed.price:.2f}")
+            # elif order.issell():
+            #     print(f"✅ SELL EXECUTED @ {order.executed.price:.2f}")
+            self.order = None
+        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+            # print(f"❌ Order Failed: {order.Status[order.status]}")
+            self.order = None
+
+    def log(self, txt: str) -> None:
+        dt = self.datas[0].datetime.datetime(0)
+        print(f"[{dt}] {txt}")
 
 class RegressionScalpingStrategy(bt.Strategy):
     params = dict(
@@ -354,12 +350,32 @@ class RegressionScalpingStrategy(bt.Strategy):
         target_ticks=10,
         stop_ticks=10,
         tick_size=0.25,
+        tick_value=1.25,
+        contract_size=1,
+        initial_cash=10000.0,
+        min_classifier_signals=0,
         session_start='10:00',
         session_end='23:00',
         max_daily_profit=36.0,
         max_daily_loss=-36.0,
         slippage=0.0,
         force_exit=True,
+        min_volume_pct_change=0.0,
+        max_drawdown=100.0,
+        bar_color_filter=False,
+        min_dist=3.0,
+        max_dist=20.0,
+        max_risk_per_trade=15.0,
+        max_daily_risk=100.0,
+        min_trades=0,
+        min_profit_factor=0.0,
+        use_multi_class=False,
+        multi_class_threshold=3,
+        bias_summary='',
+        stop_loss_dollars=0.0,
+        suggested_contracts=1,
+        direction_tag='',
+        # Add any other dynamic params here with sensible defaults
     )
 
     def __init__(self):
@@ -381,7 +397,7 @@ class RegressionScalpingStrategy(bt.Strategy):
         if self.current_trade_date != dt5.date():
             self.current_trade_date = dt5.date()
             self.daily_pnl = 0
-            print(f"📅 New trading day: {dt5.date()}, Daily PnL reset to 0")
+            # print(f"📅 New trading day: {dt5.date()}, Daily PnL reset to 0")
 
         # Session time checks
         current_time = dt5.time()
@@ -396,10 +412,10 @@ class RegressionScalpingStrategy(bt.Strategy):
 
         # Risk control
         if self.daily_pnl >= self.p.max_daily_profit:
-            print(f"💰 Max daily profit reached (${self.daily_pnl:.2f}). No new trades.")
+            # print(f"💰 Max daily profit reached (${self.daily_pnl:.2f}). No new trades.")
             return
         if self.daily_pnl <= self.p.max_daily_loss:
-            print(f"⚠️ Max daily loss reached (${self.daily_pnl:.2f}). No new trades.")
+            # print(f"⚠️ Max daily loss reached (${self.daily_pnl:.2f}). No new trades.")
             return
 
         # Only act on new 5m bar
@@ -421,6 +437,28 @@ class RegressionScalpingStrategy(bt.Strategy):
         if not (long_signal or short_signal):
             return
 
+        # --- min_volume_pct_change filter ---
+        if self.p.min_volume_pct_change > 0:
+            vol_now = self.datas[1].volume[0]
+            vol_prev = self.datas[1].volume[-1]
+            if vol_prev == 0:
+                return
+            vol_change_pct = abs((vol_now - vol_prev) / vol_prev) * 100
+            if vol_change_pct < self.p.min_volume_pct_change:
+                # print(f"📉 Skipping — Volume change ({vol_change_pct:.2f}%) below threshold ({self.p.min_volume_pct_change}%)")
+                return
+
+        # --- bar_color_filter logic ---
+        if self.p.bar_color_filter:
+            close = self.datas[1].close[0]
+            open_ = self.datas[1].open[0]
+            if long_signal and close <= open_:
+                # print("❌ Long signal but candle not green. Skipping.")
+                return
+            if short_signal and close >= open_:
+                # print("❌ Short signal but candle not red. Skipping.")
+                return
+
         # Use 1m data for execution
         open1 = self.datas[1].open[0]
         entry_price = open1 + self.p.slippage if long_signal else open1 - self.p.slippage
@@ -428,7 +466,7 @@ class RegressionScalpingStrategy(bt.Strategy):
         sl = entry_price - self.p.stop_ticks * self.p.tick_size if long_signal else entry_price + self.p.stop_ticks * self.p.tick_size
 
         if long_signal:
-            print(f"🟢 LONG SIGNAL at {dt5} | Entry: {entry_price:.2f}, TP: {tp:.2f}, SL: {sl:.2f}")
+            # print(f"🟢 LONG SIGNAL at {dt5} | Entry: {entry_price:.2f}, TP: {tp:.2f}, SL: {sl:.2f}")
             self.order = self.buy_bracket(
                 data=self.datas[1],
                 price=entry_price,
@@ -440,7 +478,7 @@ class RegressionScalpingStrategy(bt.Strategy):
             self.entry_dt = dt1
             self.last_entry_price = entry_price
         elif short_signal:
-            print(f"🔴 SHORT SIGNAL at {dt5} | Entry: {entry_price:.2f}, TP: {tp:.2f}, SL: {sl:.2f}")
+            # print(f"🔴 SHORT SIGNAL at {dt5} | Entry: {entry_price:.2f}, TP: {tp:.2f}, SL: {sl:.2f}")
             self.order = self.sell_bracket(
                 data=self.datas[1],
                 price=entry_price,
@@ -455,7 +493,7 @@ class RegressionScalpingStrategy(bt.Strategy):
     def notify_trade(self, trade):
         if trade.isclosed:
             self.daily_pnl += trade.pnl
-            print(f"💵 Trade PnL: ${trade.pnl:.2f}, Daily PnL: ${self.daily_pnl:.2f}")
+            # print(f"💵 Trade PnL: ${trade.pnl:.2f}, Daily PnL: ${self.daily_pnl:.2f}")
             entry_time = bt.num2date(trade.dtopen, tz=pytz.UTC)
             exit_time = bt.num2date(trade.dtclose, tz=pytz.UTC)
             self.trades.append({
@@ -475,13 +513,13 @@ class RegressionScalpingStrategy(bt.Strategy):
         if order.status in [order.Submitted, order.Accepted]:
             return
         if order.status in [order.Completed]:
-            if order.isbuy():
-                print(f"✅ BUY EXECUTED @ {order.executed.price:.2f}")
-            elif order.issell():
-                print(f"✅ SELL EXECUTED @ {order.executed.price:.2f}")
+            # if order.isbuy():
+            #     print(f"✅ BUY EXECUTED @ {order.executed.price:.2f}")
+            # elif order.issell():
+            #     print(f"✅ SELL EXECUTED @ {order.executed.price:.2f}")
             self.order = None
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            print(f"❌ Order Failed: {order.Status[order.status]}")
+            # print(f"❌ Order Failed: {order.Status[order.status]}")
             self.order = None
 
     def log(self, txt: str) -> None:
