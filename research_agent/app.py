@@ -1441,6 +1441,8 @@ def run_regression_predictor():
     result["llm_model_name"] = "Gemini 1.5 Pro"
     result["llm_session_total_cost"] = 0.0
     result["total_cost_usd"] = 0.0
+    # Ensure all numpy types are converted to native Python types
+    result = to_serializable(result)
     return jsonify(result)
 
 @app.route("/regression_backtest_progress", methods=["GET"])

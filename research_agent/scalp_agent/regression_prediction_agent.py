@@ -218,13 +218,16 @@ class RegressionPredictorAgent:
             tb = traceback.format_exc()
             return {'feedback': f'Backtest failed: {type(e).__name__}: {e}\nTraceback:\n{tb}'}
         # --- Extract trades using AnalyzerDashboard ---
-        trades_df = AnalyzerDashboard.build_trade_dataframe_from_orders(list(cerebro.broker.orders))
+        tick_value = params.get('tick_value', 1.25)
+        contract_size = params.get('contract_size', 1)
+        trades_df = AnalyzerDashboard.build_trade_dataframe_from_orders(list(cerebro.broker.orders), tick_value=tick_value, contract_size=contract_size)
         trades_list = trades_df.to_dict(orient='records') if not trades_df.empty else []
         # --- Compute metrics using AnalyzerDashboard ---
         metrics_df = AnalyzerDashboard.calculate_strategy_metrics(trades_df)
         if metrics_df is not None and not metrics_df.empty:
             backtest_summary = metrics_df.to_dict(orient='records')[0]
         else:
+            print("[Warning] No trades or metrics could be computed for this config.")
             backtest_summary = {
                 'num_trades': 0,
                 'win_rate': 0.0,
@@ -299,22 +302,7 @@ class RegressionPredictorAgent:
             regression_backtest_tracker["current"] = 0
         strategy_matrix_llm = []  # Ensure always defined
         llm_context = {}         # Ensure always defined
-        # --- Memory diagnostics setup ---
-        try:
-            import psutil
-            process = psutil.Process()
-            baseline_mem = process.memory_info().rss / 1024 / 1024
-            print(f"[Memory] Baseline before grid search: {baseline_mem:.1f} MB")
-        except ImportError:
-            psutil = None
-            process = None
-            baseline_mem = None
-
         for i, (long_t, short_t, min_vol, bar_color) in enumerate(threshold_grid):
-            # Memory usage logging every 5 iterations
-            if psutil and i % 5 == 0:
-                mem_mb = process.memory_info().rss / 1024 / 1024
-                print(f"[Memory] Config {i+1} — long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}: {mem_mb:.1f} MB used")
             if regression_backtest_tracker is not None:
                 if regression_backtest_tracker.get("cancel_requested"):
                     regression_backtest_tracker["status"] = "cancelled"
@@ -372,6 +360,35 @@ class RegressionPredictorAgent:
                 # Save config to intra_algo/research_agent/uploaded_csvs/tmp_last_config.csv
                 save_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'uploaded_csvs', 'tmp_last_config.csv'))
                 pd.DataFrame([params_copy]).to_csv(save_path, index=False)
+                # --- Extract trades from strategy if present ---
+                trades = sim.get('trades', [])
+                if hasattr(strategy, 'trades'):
+                    trades = strategy.trades
+                df_trades = pd.DataFrame(trades) if trades else pd.DataFrame()
+                # --- Compute metrics ---
+                if not df_trades.empty:
+                    metrics = {
+                        "num_trades": len(df_trades),
+                        "total_pnl": df_trades["pnl"].sum(),
+                        "avg_pnl": df_trades["pnl"].mean(),
+                        "max_pnl": df_trades["pnl"].max(),
+                        "min_pnl": df_trades["pnl"].min(),
+                        "win_rate": (df_trades["pnl"] > 0).mean(),
+                    }
+                    # Compute profit_factor and max_drawdown inline if not present
+                    gross_profit = df_trades[df_trades["pnl"] > 0]["pnl"].sum()
+                    gross_loss = abs(df_trades[df_trades["pnl"] < 0]["pnl"].sum())
+                    metrics["profit_factor"] = (gross_profit / gross_loss) if gross_loss > 0 else None
+                    metrics["max_drawdown"] = (df_trades["pnl"].cumsum().cummax() - df_trades["pnl"].cumsum()).max() if not df_trades.empty else None
+                else:
+                    metrics = {}
+                    metrics["profit_factor"] = None
+                    metrics["max_drawdown"] = None
+                print(f"[Debug] Trades simulated: {len(trades)}")
+                if not df_trades.empty:
+                    print(f"[Debug] First 3 trades: {df_trades.head(3).to_dict(orient='records')}")
+                    print(f"[Debug] Sample PnLs: {df_trades['pnl'].head(3).tolist()}")
+                print(f"[Debug] Computed metrics: {metrics}")
             except Exception as e:
                 import traceback
                 tb = traceback.format_exc()
@@ -384,6 +401,8 @@ class RegressionPredictorAgent:
                        'traceback': tb}
             self.user_params = old_params
             backtest_summary = sim.get('backtest_summary', {})
+            # --- Debug: Print computed metrics ---
+            print(f"[Debug] Computed metrics: {backtest_summary}")
             trades = sim.get('trades', [])
             # --- Direction tag logic ---
             direction_tag = 'none'
@@ -431,28 +450,29 @@ class RegressionPredictorAgent:
             max_risk = float((user_params or self.user_params).get('max_risk_per_trade', 15.0))
             stop_loss_dollars = stop_ticks * tick_value
             suggested_contracts = int(max(1, max_risk // stop_loss_dollars)) if stop_loss_dollars > 0 else 1
+            # --- Append config and metrics to results ---
             results.append({
                 'long_threshold': long_t,
                 'short_threshold': short_t,
                 'min_volume_pct_change': min_vol,
                 'bar_color_filter': bar_color,
-                'profit_factor': pf,
-                'win_rate': win,
-                'avg_return': avg_return,
-                'max_drawdown': max_drawdown,
-                'num_trades': num_trades,
-                'risk_violations': risk_violations,
-                'daily_loss_violations': daily_loss_viol,
-                'direction_tag': direction_tag,
                 'suggested_contracts': suggested_contracts,
                 'stop_ticks': stop_ticks,
                 'stop_loss_dollars': stop_loss_dollars,
+                **metrics,
                 'sim': sim_serializable
             })
         # --- Rule-based filtering ---
         filtered_results = []
         filtered_out_configs = []
         for r in results:
+            required_keys = ['profit_factor', 'num_trades', 'max_drawdown']
+            missing_keys = [k for k in required_keys if k not in r]
+            if missing_keys:
+                print(f"[DEBUG] Skipping config due to missing keys: {missing_keys}. Available keys: {list(r.keys())}")
+                r['error'] = f"Missing keys: {missing_keys}"
+                filtered_out_configs.append(r)
+                continue
             pf = r['profit_factor']
             nt = r['num_trades']
             drawdown = r['max_drawdown']
@@ -468,29 +488,29 @@ class RegressionPredictorAgent:
             else:
                 filtered_results.append(r)
         # Sort by profit factor, fallback win rate
-        results_sorted = sorted(filtered_results, key=lambda x: (x['profit_factor'], x['win_rate']), reverse=True)
+        results_sorted = sorted(filtered_results, key=lambda x: (x.get('profit_factor', 0.0), x.get('win_rate', 0.0)), reverse=True)
         # Filter for risk-respecting configs
-        risk_ok = [r for r in results_sorted if r['risk_violations'] == 0 and r['daily_loss_violations'] == 0]
+        risk_ok = [r for r in results_sorted if r.get('risk_violations', 1) == 0 and r.get('daily_loss_violations', 1) == 0]
         top_strategies = (risk_ok if risk_ok else results_sorted)[:3]
         # Pick best
         best = top_strategies[0] if top_strategies else None
-        best_result = best['sim'] if best else None
+        best_result = best['sim'] if best and 'sim' in best else None
         # Compose explanation
         if best:
             explanation = (
-                f"Best thresholds: long_delta={best['long_threshold']}, short_delta={best['short_threshold']}. "
-                f"Profit factor: {best['profit_factor']:.2f}, "
-                f"Win rate: {best['win_rate']:.1f}%. "
-                f"Risk violations: {best['risk_violations']}, "
-                f"Daily loss violations: {best['daily_loss_violations']}."
+                f"Best thresholds: long_delta={best.get('long_threshold')}, short_delta={best.get('short_threshold')}. "
+                f"Profit factor: {best.get('profit_factor', 0.0):.2f}, "
+                f"Win rate: {best.get('win_rate', 0.0):.1f}%. "
+                f"Risk violations: {best.get('risk_violations', 0)}, "
+                f"Daily loss violations: {best.get('daily_loss_violations', 0)}."
             )
             if best_result:
                 best_result['threshold_search'] = {
-                    'chosen_long_threshold': best['long_threshold'],
-                    'chosen_short_threshold': best['short_threshold'],
+                    'chosen_long_threshold': best.get('long_threshold'),
+                    'chosen_short_threshold': best.get('short_threshold'),
                     'risk_meta': {
-                        'risk_violations': best['risk_violations'],
-                        'daily_loss_violations': best['daily_loss_violations']
+                        'risk_violations': best.get('risk_violations', 0),
+                        'daily_loss_violations': best.get('daily_loss_violations', 0)
                     },
                     'explanation': explanation
                 }
@@ -513,8 +533,8 @@ class RegressionPredictorAgent:
                     } for r in top_strategies
                 ]
                 best_result['recommended_strategy_summary'] = (
-                    f"Strategy with long threshold {best['long_threshold']} and short threshold {best['short_threshold']} "
-                    f"yielded the highest profit factor ({best['profit_factor']:.2f}) and stayed within risk limits."
+                    f"Strategy with long threshold {best.get('long_threshold')} and short threshold {best.get('short_threshold')} "
+                    f"yielded the highest profit factor ({best.get('profit_factor', 0.0):.2f}) and stayed within risk limits."
                 )
                 best_result['filtered_out_configs'] = filtered_out_configs
                 best_result['filter_meta'] = {
@@ -692,13 +712,30 @@ class RegressionPredictorAgent:
                 for k, v in sim.items():
                     base[f'sim_{k}'] = v
             expanded_results.append(base)
-        # Save the expanded results matrix to intra_algo/research_agent/uploaded_csvs/strategy_grid_results.csv
+        # Only keep relevant columns for EDA/LLM
+        cleaned_results = []
+        for row in expanded_results:
+            cleaned_row = {
+                'long_threshold': row.get('long_threshold'),
+                'short_threshold': row.get('short_threshold'),
+                'min_volume_pct_change': row.get('min_volume_pct_change'),
+                'bar_color_filter': row.get('bar_color_filter'),
+                'profit_factor': row.get('profit_factor'),
+                'win_rate': row.get('win_rate'),
+                'avg_return': row.get('avg_return'),
+                'max_drawdown': row.get('max_drawdown'),
+                'num_trades': row.get('num_trades'),
+                'risk_violations': row.get('risk_violations'),
+                'daily_loss_violations': row.get('daily_loss_violations'),
+                'direction_tag': row.get('direction_tag'),
+                'suggested_contracts': row.get('suggested_contracts'),
+                'stop_ticks': row.get('stop_ticks'),
+                'stop_loss_dollars': row.get('stop_loss_dollars'),
+                'error': row.get('sim_error', '')
+            }
+            cleaned_results.append(cleaned_row)
         save_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'uploaded_csvs', 'strategy_grid_results.csv'))
-        pd.DataFrame(expanded_results).to_csv(save_path, index=False)
-        # Print memory usage at the end
-        if psutil:
-            end_mem = process.memory_info().rss / 1024 / 1024
-            print(f"[Memory] After grid search: {end_mem:.1f} MB")
+        pd.DataFrame(cleaned_results).to_csv(save_path, index=False)
         return best_result
 
     @staticmethod

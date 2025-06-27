@@ -686,12 +686,14 @@ class AnalyzerDashboard:
 
         fig.show()
 
-    def build_trade_dataframe_from_orders(self, order_list: list) -> pd.DataFrame:
+    def build_trade_dataframe_from_orders(self, order_list: list, tick_value=1.25, contract_size=1) -> pd.DataFrame:
         """
         Construct a clean trade DataFrame from filled BUY and SELL orders after strategy run.
 
         Args:
             order_list (List[bt.Order]): List of all broker orders.
+            tick_value (float): Conversion factor from points to dollars.
+            contract_size (float): Number of points per contract.
 
         Returns:
             pd.DataFrame: Clean trade log with entry/exit times, prices, PnL, duration.
@@ -725,12 +727,14 @@ class AnalyzerDashboard:
                 sell = row
                 entry_time = buy['executed_dt']
                 exit_time = sell['executed_dt']
+                pnl_points = sell['filled_price'] - buy['filled_price']
+                pnl_dollars = pnl_points * tick_value * contract_size
                 trades.append({
                     'entry_time': entry_time,
                     'entry_price': buy['filled_price'],
                     'exit_time': exit_time,
                     'exit_price': sell['filled_price'],
-                    'pnl': sell['filled_price'] - buy['filled_price'],
+                    'pnl': pnl_dollars,
                     'duration_min': (exit_time - entry_time).total_seconds() / 60
                 })
 

@@ -312,8 +312,9 @@ class Long5min1minStrategy(bt.Strategy):
 
     def notify_trade(self, trade):
         if trade.isclosed:
-            self.daily_pnl += trade.pnl
-            # print(f"💵 Trade PnL: ${trade.pnl:.2f}, Daily PnL: ${self.daily_pnl:.2f}")
+            # Convert PnL from points to dollars for consistency
+            pnl_dollars = trade.pnl / self.p.tick_size * self.p.tick_value
+            self.daily_pnl += pnl_dollars
             entry_time = bt.num2date(trade.dtopen, tz=pytz.UTC)
             exit_time = bt.num2date(trade.dtclose, tz=pytz.UTC)
             self.trades.append({
@@ -321,7 +322,7 @@ class Long5min1minStrategy(bt.Strategy):
                 "exit_time": exit_time,
                 "entry_price": self.last_entry_price,
                 "exit_price": trade.price,
-                "pnl": trade.pnl
+                "pnl": pnl_dollars
             })
             self.last_exit_price = trade.price
             self.order = None
@@ -492,8 +493,9 @@ class RegressionScalpingStrategy(bt.Strategy):
 
     def notify_trade(self, trade):
         if trade.isclosed:
-            self.daily_pnl += trade.pnl
-            # print(f"💵 Trade PnL: ${trade.pnl:.2f}, Daily PnL: ${self.daily_pnl:.2f}")
+            # Convert PnL from points to dollars for consistency
+            pnl_dollars = trade.pnl / self.p.tick_size * self.p.tick_value
+            self.daily_pnl += pnl_dollars
             entry_time = bt.num2date(trade.dtopen, tz=pytz.UTC)
             exit_time = bt.num2date(trade.dtclose, tz=pytz.UTC)
             self.trades.append({
@@ -502,7 +504,7 @@ class RegressionScalpingStrategy(bt.Strategy):
                 "entry_price": self.last_entry_price,
                 "exit_price": trade.price,
                 "side": self.entry_side,
-                "pnl": trade.pnl
+                "pnl": pnl_dollars
             })
             self.last_exit_price = trade.price
             self.order = None
