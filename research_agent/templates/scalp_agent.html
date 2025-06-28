@@ -808,69 +808,74 @@ document.addEventListener('DOMContentLoaded', function() {
                         const formData = new FormData();
                         Array.from(files).forEach(file => formData.append('csv_files', file));
                         console.log('Calling /run_regression_predictor with files:', Array.from(files).map(f => f.name));
+                        polling = true;
+                        pollProgress();
                         fetch('/run_regression_predictor', {
-                            method: 'POST',
-                            body: formData
+                          method: 'POST',
+                          body: formData
                         })
                         .then(resp => resp.json())
                         .then(result => {
-                            regBtn.disabled = false;
-                            regBtn.innerHTML = '💡 Run Regression Predictor Strategy';
-                            let out = '';
-                            if (result.feedback) {
-                                out += `<div class='alert alert-warning'>${result.feedback}</div>`;
+                          regBtn.disabled = false;
+                          regBtn.innerHTML = '💡 Run Regression Predictor Strategy';
+                          let out = '';
+                          if (result.feedback) {
+                            out += `<div class='alert alert-warning'>${result.feedback}</div>`;
+                          }
+                          if (result.strategy_name) {
+                            out += `<div class='card border-success mb-2'><div class='card-header bg-success text-white'><b>${result.strategy_name}</b></div><div class='card-body'>`;
+                            out += `<div class='mb-2'><b>Entry Conditions:</b> min_high_delta=${result.entry_conditions?.min_high_delta}, min_low_delta=${result.entry_conditions?.min_low_delta}</div>`;
+                            out += `<ul class='mb-2'>`;
+                            const s = result.backtest_summary || {};
+                            out += `<li><b>Num trades:</b> ${s.num_trades ?? '-'}</li>`;
+                            out += `<li><b>Win rate:</b> ${(s.win_rate*100).toFixed(1) ?? '-'}%</li>`;
+                            out += `<li><b>Avg return:</b> ${s.avg_return?.toFixed(2) ?? '-'}</li>`;
+                            out += `<li><b>Avg duration:</b> ${s.avg_duration?.toFixed(1) ?? '-'}</li>`;
+                            out += `<li><b>Max drawdown:</b> ${s.max_drawdown?.toFixed(2) ?? '-'}</li>`;
+                            out += `<li><b>Profit factor:</b> ${s.profit_factor?.toFixed(2) ?? '-'}</li>`;
+                            out += `</ul>`;
+                            if (result.llm_summary) {
+                              out += `<div class='mb-2'><b>Summary:</b> ${result.llm_summary}</div>`;
                             }
-                            if (result.strategy_name) {
-                                out += `<div class='card border-success mb-2'><div class='card-header bg-success text-white'><b>${result.strategy_name}</b></div><div class='card-body'>`;
-                                out += `<div class='mb-2'><b>Entry Conditions:</b> min_high_delta=${result.entry_conditions?.min_high_delta}, min_low_delta=${result.entry_conditions?.min_low_delta}</div>`;
-                                out += `<ul class='mb-2'>`;
-                                const s = result.backtest_summary || {};
-                                out += `<li><b>Num trades:</b> ${s.num_trades ?? '-'}</li>`;
-                                out += `<li><b>Win rate:</b> ${(s.win_rate*100).toFixed(1) ?? '-'}%</li>`;
-                                out += `<li><b>Avg return:</b> ${s.avg_return?.toFixed(2) ?? '-'}</li>`;
-                                out += `<li><b>Avg duration:</b> ${s.avg_duration?.toFixed(1) ?? '-'}</li>`;
-                                out += `<li><b>Max drawdown:</b> ${s.max_drawdown?.toFixed(2) ?? '-'}</li>`;
-                                out += `<li><b>Profit factor:</b> ${s.profit_factor?.toFixed(2) ?? '-'}</li>`;
-                                out += `</ul>`;
-                                if (result.llm_summary) {
-                                    out += `<div class='mb-2'><b>Summary:</b> ${result.llm_summary}</div>`;
-                                }
-                                if (result.model_scores) {
-                                    out += `<div class='mb-2'><b>Model R²:</b> high=${result.model_scores.high_r2?.toFixed(3)}, low=${result.model_scores.low_r2?.toFixed(3)}</div>`;
-                                }
-                                if (result.cost_metadata) {
-                                    out += `<div class='small text-muted'>Tokens: ${result.cost_metadata.prompt_tokens || '-'} + ${result.cost_metadata.output_tokens || '-'}, Cost: $${result.cost_metadata.total_cost_usd?.toFixed(4) || '0.0000'}</div>`;
-                                }
-                                if (Array.isArray(result.top_strategies) && result.top_strategies.length > 0) {
-                                    out += `<div class='card border-info mb-2'><div class='card-header bg-info text-white'><b>Top 3 Strategy Configurations</b></div><div class='card-body p-2'>`;
-                                    out += `<div class='table-responsive'><table class='table table-sm table-bordered mb-2'><thead class='table-light'><tr>`;
-                                    out += `<th>Long Threshold</th><th>Short Threshold</th><th>Win Rate</th><th>Avg Return</th><th>Profit Factor</th><th>Drawdown</th><th>Trades</th>`;
-                                    out += `</tr></thead><tbody>`;
-                                    result.top_strategies.forEach((cfg) => {
-                                        out += `<tr>`;
-                                        out += `<td>${cfg.long_threshold}</td>`;
-                                        out += `<td>${cfg.short_threshold}</td>`;
-                                        out += `<td>${(cfg.win_rate*100).toFixed(1)}%</td>`;
-                                        out += `<td>${cfg.avg_return?.toFixed(2) ?? '-'}</td>`;
-                                        out += `<td>${cfg.profit_factor?.toFixed(2) ?? '-'}</td>`;
-                                        out += `<td>${cfg.max_drawdown?.toFixed(2) ?? '-'}</td>`;
-                                        out += `<td>${cfg.num_trades ?? '-'}</td>`;
-                                        out += `</tr>`;
-                                    });
-                                    out += `</tbody></table></div>`;
-                                    out += `</div></div>`;
-                                }
-                                if (result.recommended_strategy_summary) {
-                                    out += `<div class='alert alert-success mt-2 mb-2'><b>Recommended Strategy:</b> ${result.recommended_strategy_summary}</div>`;
-                                }
-                                out += `</div></div>`;
+                            if (result.model_scores) {
+                              out += `<div class='mb-2'><b>Model R²:</b> high=${result.model_scores.high_r2?.toFixed(3)}, low=${result.model_scores.low_r2?.toFixed(3)}</div>`;
                             }
-                            regResultDiv.innerHTML = out;
+                            if (result.cost_metadata) {
+                              out += `<div class='small text-muted'>Tokens: ${result.cost_metadata.prompt_tokens || '-'} + ${result.cost_metadata.output_tokens || '-'}, Cost: $${result.cost_metadata.total_cost_usd?.toFixed(4) || '0.0000'}</div>`;
+                            }
+                            if (Array.isArray(result.top_strategies) && result.top_strategies.length > 0) {
+                              out += `<div class='card border-info mb-2'><div class='card-header bg-info text-white'><b>Top 3 Strategy Configurations</b></div><div class='card-body p-2'>`;
+                              out += `<div class='table-responsive'><table class='table table-sm table-bordered mb-2'><thead class='table-light'><tr>`;
+                              out += `<th>Long Threshold</th><th>Short Threshold</th><th>Win Rate</th><th>Avg Return</th><th>Profit Factor</th><th>Drawdown</th><th>Trades</th>`;
+                              out += `</tr></thead><tbody>`;
+                              result.top_strategies.forEach((cfg) => {
+                                out += `<tr>`;
+                                out += `<td>${cfg.long_threshold}</td>`;
+                                out += `<td>${cfg.short_threshold}</td>`;
+                                out += `<td>${(cfg.win_rate*100).toFixed(1)}%</td>`;
+                                out += `<td>${cfg.avg_return?.toFixed(2) ?? '-'}</td>`;
+                                out += `<td>${cfg.profit_factor?.toFixed(2) ?? '-'}</td>`;
+                                out += `<td>${cfg.max_drawdown?.toFixed(2) ?? '-'}</td>`;
+                                out += `<td>${cfg.num_trades ?? '-'}</td>`;
+                                out += `</tr>`;
+                              });
+                              out += `</tbody></table></div>`;
+                              out += `</div></div>`;
+                            }
+                            if (result.recommended_strategy_summary) {
+                              out += `<div class='alert alert-success mt-2 mb-2'><b>Recommended Strategy:</b> ${result.recommended_strategy_summary}</div>`;
+                            }
+                            out += `</div></div>`;
+                          }
+                          regResultDiv.innerHTML = out;
+                          // Show heatmap inline after regression results
+                          const heatmapHtml = `<div class="mt-3"><h5>Heatmap</h5><img src="/heatmap?t=${Date.now()}" alt="Heatmap" style="max-width:100%;border:1px solid #ccc;border-radius:8px;" /></div>`;
+                          regResultDiv.innerHTML += heatmapHtml;
                         })
                         .catch(err => {
-                            regBtn.disabled = false;
-                            regBtn.innerHTML = '💡 Run Regression Predictor Strategy';
-                            regResultDiv.innerHTML = `<div class='alert alert-danger'>Error: ${err}</div>`;
+                          regBtn.disabled = false;
+                          regBtn.innerHTML = '💡 Run Regression Predictor Strategy';
+                          regResultDiv.innerHTML = `<div class='alert alert-danger'>Error: ${err}</div>`;
                         });
                     };
                 }
@@ -1246,6 +1251,9 @@ document.addEventListener('DOMContentLoaded', function() {
             out += `</div></div>`;
           }
           regResultDiv.innerHTML = out;
+          // Show heatmap inline after regression results
+          const heatmapHtml = `<div class="mt-3"><h5>Heatmap</h5><img src="/heatmap?t=${Date.now()}" alt="Heatmap" style="max-width:100%;border:1px solid #ccc;border-radius:8px;" /></div>`;
+          regResultDiv.innerHTML += heatmapHtml;
         })
         .catch(err => {
           regBtn.disabled = false;

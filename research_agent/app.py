@@ -1,6 +1,6 @@
 # Import the numpy patch to fix NaN issue
 
-from flask import Flask, request, render_template_string, redirect, url_for,jsonify, render_template, session
+from flask import Flask, request, render_template_string, redirect, url_for,jsonify, render_template, session, send_from_directory
 from datetime import datetime
 import plotly.graph_objects as go
 import pandas_ta as ta
@@ -1467,6 +1467,15 @@ def to_serializable(val):
         return val.tolist()
     else:
         return val
+
+@app.route('/heatmap')
+def serve_heatmap():
+    # Serve from the absolute path to uploaded_csvs
+    img_dir = os.path.join(os.path.dirname(__file__), 'uploaded_csvs')
+    filename = 'heatmap_debug.png'
+    # Debug print to verify path
+    print(f"[DEBUG] Serving heatmap from: {img_dir}, file: {filename}")
+    return send_from_directory(img_dir, filename)
 
 if __name__ == "__main__":
     import os

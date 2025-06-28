@@ -9,6 +9,7 @@ import requests, os, json
 from research_agent.config import CONFIG
 import traceback
 import time
+import math  # Ensure math is imported for isinf/isnan
 try:
     from research_agent.app import regression_backtest_tracker
 except ImportError:
@@ -303,6 +304,10 @@ class RegressionPredictorAgent:
         strategy_matrix_llm = []  # Ensure always defined
         llm_context = {}         # Ensure always defined
         for i, (long_t, short_t, min_vol, bar_color) in enumerate(threshold_grid):
+            # TEMP DEV MODE: Early-stop after 5 strategy simulations for faster development. Remove or increase for full runs.
+            if i >= 5:
+                print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
+                break
             if regression_backtest_tracker is not None:
                 if regression_backtest_tracker.get("cancel_requested"):
                     regression_backtest_tracker["status"] = "cancelled"
@@ -375,15 +380,51 @@ class RegressionPredictorAgent:
                         "min_pnl": df_trades["pnl"].min(),
                         "win_rate": (df_trades["pnl"] > 0).mean(),
                     }
-                    # Compute profit_factor and max_drawdown inline if not present
                     gross_profit = df_trades[df_trades["pnl"] > 0]["pnl"].sum()
                     gross_loss = abs(df_trades[df_trades["pnl"] < 0]["pnl"].sum())
                     metrics["profit_factor"] = (gross_profit / gross_loss) if gross_loss > 0 else None
                     metrics["max_drawdown"] = (df_trades["pnl"].cumsum().cummax() - df_trades["pnl"].cumsum()).max() if not df_trades.empty else None
+                    # avg_return (alias for avg_pnl)
+                    metrics["avg_return"] = metrics["avg_pnl"]
+                    # direction_tag
+                    directions = set()
+                    for t in trades:
+                        side = t.get('side') or t.get('direction')
+                        if side:
+                            directions.add(str(side).lower())
+                        else:
+                            pnl = t.get('pnl', 0)
+                            if pnl > 0:
+                                directions.add('long')
+                            elif pnl < 0:
+                                directions.add('short')
+                    if directions == {'long'}:
+                        metrics['direction_tag'] = 'long_only'
+                    elif directions == {'short'}:
+                        metrics['direction_tag'] = 'short_only'
+                    elif 'long' in directions and 'short' in directions:
+                        metrics['direction_tag'] = 'both'
+                    else:
+                        metrics['direction_tag'] = 'none'
+                    # risk_violations and daily_loss_violations
+                    max_risk_per_trade = params_copy.get('max_risk_per_trade', 15.0)
+                    max_daily_risk = params_copy.get('max_daily_risk', 100.0)
+                    trade_returns = [t.get('pnl', 0) for t in trades]
+                    metrics['risk_violations'] = sum(abs(r) > max_risk_per_trade for r in trade_returns)
+                    daily_pnl = []
+                    if trades:
+                        df_trades['date'] = pd.to_datetime(df_trades['entry_time']).dt.date
+                        daily_pnl = df_trades.groupby('date')['pnl'].sum().values
+                    metrics['daily_loss_violations'] = sum(abs(x) > max_daily_risk for x in daily_pnl)
                 else:
                     metrics = {}
                     metrics["profit_factor"] = None
                     metrics["max_drawdown"] = None
+                    metrics["avg_pnl"] = None
+                    metrics["avg_return"] = None
+                    metrics["direction_tag"] = None
+                    metrics["risk_violations"] = None
+                    metrics["daily_loss_violations"] = None
                 print(f"[Debug] Trades simulated: {len(trades)}")
                 if not df_trades.empty:
                     print(f"[Debug] First 3 trades: {df_trades.head(3).to_dict(orient='records')}")
@@ -404,63 +445,17 @@ class RegressionPredictorAgent:
             # --- Debug: Print computed metrics ---
             print(f"[Debug] Computed metrics: {backtest_summary}")
             trades = sim.get('trades', [])
-            # --- Direction tag logic ---
-            direction_tag = 'none'
-            if trades:
-                directions = set()
-                for t in trades:
-                    side = t.get('side') or t.get('direction')
-                    if side:
-                        directions.add(str(side).lower())
-                    else:
-                        pnl = t.get('pnl', 0)
-                        if pnl > 0:
-                            directions.add('long')
-                        elif pnl < 0:
-                            directions.add('short')
-                if directions == {'long'}:
-                    direction_tag = 'long_only'
-                elif directions == {'short'}:
-                    direction_tag = 'short_only'
-                elif 'long' in directions and 'short' in directions:
-                    direction_tag = 'both'
-                else:
-                    direction_tag = 'none'
-            # Risk checks
-            trade_returns = [t.get('pnl', 0) for t in trades]
-            risk_violations = sum(abs(r) > max_risk_per_trade for r in trade_returns)
-            daily_pnl = []
-            if trades:
-                df_trades = pd.DataFrame(trades)
-                if not df_trades.empty and 'entry_time' in df_trades:
-                    df_trades['date'] = pd.to_datetime(df_trades['entry_time']).dt.date
-                    daily_pnl = df_trades.groupby('date')['pnl'].sum().values
-            daily_loss_viol = sum(abs(x) > max_daily_risk for x in daily_pnl)
-            pf = backtest_summary.get('💰 Overall Performance | Profit Factor', 0)
-            win = backtest_summary.get('🎯 Trade Quality Metrics | Win Rate (%)', 0)
-            avg_return = backtest_summary.get('💰 Overall Performance | Total Net PnL ($)', 0)
-            max_drawdown = backtest_summary.get('⚠️ Risk / Drawdown Metrics | Max Drawdown ($)', 0)
-            num_trades = backtest_summary.get('num_trades', len(trades))
-            # Only keep serializable keys from sim
-            serializable_keys = ['trades', 'backtest_summary', 'error', 'config', 'traceback', 'threshold_search', 'llm_summary', 'top_strategies', 'recommended_strategy_summary', 'filtered_out_configs', 'filter_meta', 'strategy_matrix_llm', 'llm_context', 'llm_strategy_recommendation']
-            sim_serializable = {k: v for k, v in sim.items() if k in serializable_keys} if isinstance(sim, dict) else sim
-            # Calculate suggested_contracts, stop_ticks, stop_loss_dollars for each config
-            stop_ticks = int((user_params or self.user_params).get('stop_ticks', 10))
-            tick_value = float((user_params or self.user_params).get('tick_value', 1.25))
-            max_risk = float((user_params or self.user_params).get('max_risk_per_trade', 15.0))
-            stop_loss_dollars = stop_ticks * tick_value
-            suggested_contracts = int(max(1, max_risk // stop_loss_dollars)) if stop_loss_dollars > 0 else 1
             # --- Append config and metrics to results ---
             results.append({
                 'long_threshold': long_t,
                 'short_threshold': short_t,
                 'min_volume_pct_change': min_vol,
                 'bar_color_filter': bar_color,
-                'suggested_contracts': suggested_contracts,
-                'stop_ticks': stop_ticks,
-                'stop_loss_dollars': stop_loss_dollars,
+                'suggested_contracts': sim.get('suggested_contracts', 1),
+                'stop_ticks': sim.get('stop_ticks', 10),
+                'stop_loss_dollars': sim.get('stop_loss_dollars', 0),
                 **metrics,
-                'sim': sim_serializable
+                'sim': sim
             })
         # --- Rule-based filtering ---
         filtered_results = []
@@ -708,9 +703,17 @@ class RegressionPredictorAgent:
         for row in results:
             base = row.copy()
             sim = base.pop('sim', {})
+            # Remove unserializable 'results' key from sim if present
+            if isinstance(sim, dict) and 'results' in sim:
+                sim = sim.copy()
+                sim.pop('results', None)
+            # Flatten sim into base, but keep trades (for later export)
             if isinstance(sim, dict):
                 for k, v in sim.items():
-                    base[f'sim_{k}'] = v
+                    if k == 'trades':
+                        base['sim_trades'] = v  # keep for later
+                    else:
+                        base[f'sim_{k}'] = v
             expanded_results.append(base)
         # Only keep relevant columns for EDA/LLM
         cleaned_results = []
@@ -723,6 +726,7 @@ class RegressionPredictorAgent:
                 'profit_factor': row.get('profit_factor'),
                 'win_rate': row.get('win_rate'),
                 'avg_return': row.get('avg_return'),
+                'avg_pnl': row.get('avg_pnl'),
                 'max_drawdown': row.get('max_drawdown'),
                 'num_trades': row.get('num_trades'),
                 'risk_violations': row.get('risk_violations'),
@@ -731,12 +735,100 @@ class RegressionPredictorAgent:
                 'suggested_contracts': row.get('suggested_contracts'),
                 'stop_ticks': row.get('stop_ticks'),
                 'stop_loss_dollars': row.get('stop_loss_dollars'),
-                'error': row.get('sim_error', '')
+                'error': row.get('sim_error', ''),
+                'sim_trades': row.get('sim_trades', [])
             }
             cleaned_results.append(cleaned_row)
+        # Build DataFrame
+        df_results = pd.DataFrame(cleaned_results)
+        print(f"[SUMMARY] Total rows: {len(df_results)}")
+        print(f"[SUMMARY] Columns: {df_results.columns.tolist()}")
+        # Find best/worst by total_pnl if present, else by avg_return
+        best_idx, worst_idx = None, None
+        if 'avg_return' in df_results.columns and df_results['avg_return'].notnull().any():
+            best_idx = df_results['avg_return'].idxmax()
+            worst_idx = df_results['avg_return'].idxmin()
+        # Print best/worst summaries
+        for label, idx in [('best', best_idx), ('worst', worst_idx)]:
+            if idx is not None and idx in df_results.index:
+                row = df_results.loc[idx]
+                print(f"[SUMMARY] {label.title()} row:")
+                print(row.drop('sim_trades'))
+                trades = row['sim_trades']
+                if not isinstance(trades, list) or len(trades) == 0:
+                    print(f"[WARNING] {label.title()} strategy trades list is empty or malformed.")
+            else:
+                print(f"[WARNING] No {label} row found.")
+        # Save cleaned results (excluding sim_trades) to CSV
         save_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'uploaded_csvs', 'strategy_grid_results.csv'))
-        pd.DataFrame(cleaned_results).to_csv(save_path, index=False)
-        return best_result
+        df_results.drop(columns=['sim_trades'], errors='ignore').to_csv(save_path, index=False)
+        # Save trades for best/worst
+        for label, idx in [('best', best_idx), ('worst', worst_idx)]:
+            if idx is not None and idx in df_results.index:
+                trades = df_results.loc[idx, 'sim_trades']
+                if isinstance(trades, list) and len(trades) > 0:
+                    trades_df = pd.DataFrame(trades)
+                    trades_path = os.path.join(os.path.dirname(save_path), f'{label}_strategy_trades.csv')
+                    trades_df.to_csv(trades_path, index=False)
+                    print(f"[INFO] Saved {label} strategy trades to {trades_path}")
+                else:
+                    print(f"[WARNING] No trades found for {label} strategy.")
+        # --- Multi-Heatmap Visualization ---
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        import numpy as np
+        df = pd.DataFrame(cleaned_results)
+        print(f"[DEBUG] Heatmap DataFrame columns: {df.columns.tolist()} shape: {df.shape}")
+        required_cols = ['long_threshold', 'short_threshold', 'min_volume_pct_change', 'bar_color_filter', 'win_rate', 'avg_pnl']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            print(f"[WARNING] Cannot plot heatmaps, missing columns: {missing_cols}")
+        else:
+            min_vols = [0.0, 0.025, 0.05]
+            bar_colors = [False, True]
+            fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+            for i, min_vol in enumerate(min_vols):
+                for j, bar_color in enumerate(bar_colors):
+                    ax = axes[j, i]
+                    sub = df[(df['min_volume_pct_change'] == min_vol) & (df['bar_color_filter'] == bar_color)]
+                    if sub.empty:
+                        ax.set_title(f"min_vol={min_vol}, bar_color={bar_color}\n(No data)")
+                        ax.axis('off')
+                        continue
+                    pivot = sub.pivot_table(index='long_threshold', columns='short_threshold', values='win_rate', aggfunc='mean')
+                    if pivot.isnull().all().all():
+                        # fallback to avg_pnl
+                        pivot = sub.pivot_table(index='long_threshold', columns='short_threshold', values='avg_pnl', aggfunc='mean')
+                        value_label = 'avg_pnl'
+                    else:
+                        value_label = 'win_rate'
+                    sns.heatmap(pivot, annot=True, fmt='.2f', cmap='viridis', cbar=True, ax=ax)
+                    ax.set_title(f"min_vol={min_vol}, bar_color={bar_color}\n({value_label})")
+                    ax.set_xlabel('short_threshold')
+                    ax.set_ylabel('long_threshold')
+            plt.tight_layout()
+            # Save to intra_algo/research_agent/uploaded_csvs/heatmap_debug.png using project-relative path
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # .../research_agent
+            heatmap_path = os.path.join(project_root, 'uploaded_csvs', 'heatmap_debug.png')
+            plt.savefig(heatmap_path)
+            plt.close()
+            print(f"[INFO] Heatmap saved to {heatmap_path}")
+        # --- Ensure result is serializable before returning ---
+        def to_serializable(obj):
+            basic_types = (str, int, float, bool, type(None))
+            if isinstance(obj, dict):
+                return {k: to_serializable(v) for k, v in obj.items() if k not in ['strategy', 'cerebro'] and (isinstance(v, basic_types) or isinstance(v, (dict, list)))}
+            elif isinstance(obj, list):
+                return [to_serializable(v) for v in obj]
+            elif isinstance(obj, basic_types):
+                if isinstance(obj, float):
+                    if math.isinf(obj) or math.isnan(obj):
+                        return None  # or 0.0 if you prefer
+                return obj
+            else:
+                return str(obj)
+        best_result_serializable = to_serializable(best_result)
+        return best_result_serializable
 
     @staticmethod
     def _rsi(series, period=7):
