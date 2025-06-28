@@ -35,6 +35,8 @@ class RegressionPredictorAgent:
         self.feature_names = None
         self.metadata = {}
         self.last_feedback = None
+        self.all_strategy_sims = []  # Store all sim dicts for later use
+        self.all_strategy_results = []  # Store all results for later use
 
     def _compute_group_1_features(self, df):
         # Ensure all column names are lowercase
@@ -152,98 +154,50 @@ class RegressionPredictorAgent:
         }
         return result
 
-    def simulate_trades(self, df, df_1min=None, long_threshold=None, short_threshold=None, min_volume_pct_change=None, bar_color_filter=None):
+    def simulate_trades(self, config_idx=None, config_dict=None, label=None):
         """
-        Simulate trades using Backtrader RegressionScalpingStrategy and CerebroStrategyEngine.
-        Returns a dict with strategy_name, entry_conditions, trades, backtest_summary, llm_summary, model_scores, etc.
+        Export trades and metrics for a given config (by index or config dict) using stored results.
+        Never re-runs the simulation or calls Backtrader/Cerebro.
+        Continues with all post-processing: metrics, CSV export, summary, etc.
+        If label is provided (e.g., 'best', 'worst'), saves to research_agent/uploaded_csvs/{label}_strategy_trades.csv
         """
-        if self.last_feedback:
-            return {'feedback': self.last_feedback}
-        # --- Feature engineering (same as fit) ---
-        df = df.copy()
-        df = self._compute_group_1_features(df)
-        features = self.feature_names or ['fastavg', 'close_vs_ema_10', 'high_15min', 'macd', 'high_vs_ema_5_high', 'atr']
-        X = df[features]
-        X_scaled = self.scaler.transform(X.values)
-        # --- Predict for all rows ---
-        pred_high = self.model_high.predict(X_scaled)
-        pred_low = self.model_low.predict(X_scaled)
-        df_5min_enriched = df.copy()
-        df_5min_enriched['predicted_high'] = pred_high
-        df_5min_enriched['predicted_low'] = pred_low
-        self.df_5min_predicted = df_5min_enriched
-        # --- Ensure 'Date' and 'Time' columns exist with correct casing ---
-        if 'Date' not in df_5min_enriched.columns and 'date' in df_5min_enriched.columns:
-            df_5min_enriched['Date'] = df_5min_enriched['date']
-        if 'Time' not in df_5min_enriched.columns and 'time' in df_5min_enriched.columns:
-            df_5min_enriched['Time'] = df_5min_enriched['time']
-        # --- Use self.df_1min for 1-min bars ---
-        if df_1min is not None:
-            self.df_1min = df_1min
-        if getattr(self, 'df_1min', None) is None:
-            return {'feedback': 'No 1-minute data (self.df_1min) available for intrabar simulation.'}
-        # --- Prepare params dict ---
-        params = self.user_params.copy()
-        if long_threshold is not None:
-            params['long_threshold'] = long_threshold
-        if short_threshold is not None:
-            params['short_threshold'] = short_threshold
-        if min_volume_pct_change is not None:
-            params['min_volume_pct_change'] = min_volume_pct_change
-        if bar_color_filter is not None:
-            params['bar_color_filter'] = bar_color_filter
-        # --- Run backtest ---
-        try:
-            # Build engine instance with required params
-            engine = CerebroStrategyEngine(
-                df_strategy=df_5min_enriched,
-                df_classifiers=pd.DataFrame(),  # No classifiers for regression scalping
-                initial_cash=params.get('initial_cash', 10000),
-                tick_size=params.get('tick_size', 0.25),
-                tick_value=params.get('tick_value', 1.25),
-                contract_size=params.get('contract_size', 1),
-                target_ticks=params.get('target_ticks', 10),
-                stop_ticks=params.get('stop_ticks', 10),
-                min_dist=params.get('min_dist', 3.0),
-                max_dist=params.get('max_dist', 20.0),
-                min_classifier_signals=params.get('min_classifier_signals', 0),
-                session_start=params.get('session_start', '10:00'),
-                session_end=params.get('session_end', '23:00'),
-                max_daily_profit=params.get('max_daily_profit', 36.0),
-                max_daily_loss=params.get('max_daily_loss', -36.0)
-            )
-            results, strategy, cerebro = engine.run_backtest_RegressionScalpingStrategy(
-                df_5min_enriched, self.df_1min, params
-            )
-        except Exception as e:
-            tb = traceback.format_exc()
-            return {'feedback': f'Backtest failed: {type(e).__name__}: {e}\nTraceback:\n{tb}'}
-        # --- Extract trades using AnalyzerDashboard ---
-        tick_value = params.get('tick_value', 1.25)
-        contract_size = params.get('contract_size', 1)
-        trades_df = AnalyzerDashboard.build_trade_dataframe_from_orders(list(cerebro.broker.orders), tick_value=tick_value, contract_size=contract_size)
-        trades_list = trades_df.to_dict(orient='records') if not trades_df.empty else []
-        # --- Compute metrics using AnalyzerDashboard ---
-        metrics_df = AnalyzerDashboard.calculate_strategy_metrics(trades_df)
+        if config_idx is not None:
+            result = self.all_strategy_results[config_idx]
+        elif config_dict is not None:
+            # Find the result matching the config_dict
+            result = next((r for r in self.all_strategy_results if r['config'] == config_dict), None)
+            if result is None:
+                print("[simulate_trades] No result found for given config.")
+                return None
+        else:
+            print("[simulate_trades] Must provide config_idx or config_dict.")
+            return None
+        trades = result['trades']
+        metrics = result['metrics']
+        trades_df = pd.DataFrame(trades)
+        # Save to CSV in uploaded_csvs with clear name if label is provided
+        out_dir = os.path.join(os.path.dirname(__file__), '..', 'uploaded_csvs')
+        os.makedirs(out_dir, exist_ok=True)
+        if label:
+            trades_path = os.path.abspath(os.path.join(out_dir, f"{label}_strategy_trades.csv"))
+        else:
+            trades_path = os.path.abspath(os.path.join(out_dir, f"exported_trades_config_{config_idx if config_idx is not None else 'custom'}.csv"))
+        trades_df.to_csv(trades_path, index=False)
+        print(f"[simulate_trades] Saved trades to {trades_path}")
+        # Instantiate AnalyzerDashboard to call instance method
+        dashboard = AnalyzerDashboard(pd.DataFrame(), pd.DataFrame())
+        metrics_df = dashboard.calculate_strategy_metrics(trades_df)
         if metrics_df is not None and not metrics_df.empty:
             backtest_summary = metrics_df.to_dict(orient='records')[0]
         else:
-            print("[Warning] No trades or metrics could be computed for this config.")
-            backtest_summary = {
-                'num_trades': 0,
-                'win_rate': 0.0,
-                'avg_return': 0.0,
-                'avg_duration': 0.0,
-                'max_drawdown': 0.0,
-                'profit_factor': 0.0
-            }
-        num_trades = backtest_summary.get('💰 Overall Performance | Total Net PnL ($)', 0)  # fallback for legacy keys
-        win_rate = backtest_summary.get('🎯 Trade Quality Metrics | Win Rate (%)', 0.0)
-        avg_return = backtest_summary.get('💰 Overall Performance | Total Net PnL ($)', 0.0)
-        avg_duration = backtest_summary.get('📅 Time-Based Metrics | Avg Trade Duration (min)', 0.0)
-        max_drawdown = backtest_summary.get('⚠️ Risk / Drawdown Metrics | Max Drawdown ($)', 0.0)
-        profit_factor = backtest_summary.get('💰 Overall Performance | Profit Factor', 0.0)
-        # --- LLM summary ---
+            backtest_summary = metrics or {}
+        # LLM summary (optional, keep if used downstream)
+        num_trades = backtest_summary.get('num_trades', 0)
+        win_rate = backtest_summary.get('win_rate', 0.0)
+        avg_return = backtest_summary.get('avg_return', 0.0)
+        avg_duration = backtest_summary.get('avg_duration', 0.0)
+        max_drawdown = backtest_summary.get('max_drawdown', 0.0)
+        profit_factor = backtest_summary.get('profit_factor', 0.0)
         llm_summary = self._summarize_trades(
             num_trades if isinstance(num_trades, (int, float)) else 0,
             win_rate if isinstance(win_rate, (int, float)) else 0.0,
@@ -252,23 +206,17 @@ class RegressionPredictorAgent:
             max_drawdown if isinstance(max_drawdown, (int, float)) else 0.0,
             profit_factor if isinstance(profit_factor, (int, float)) else 0.0
         )
-        # --- Result dict ---
-        result = {
+        # Return full result dict for downstream use
+        return {
             "strategy_name": "Regression Predictor (Backtrader)",
-            "entry_conditions": {
-                "min_high_delta": params.get('long_threshold'),
-                "min_low_delta": params.get('short_threshold')
-            },
-            "trades": trades_list,
+            "entry_conditions": result['config'],
+            "trades": trades_df.to_dict(orient='records') if not trades_df.empty else [],
+            "trades_df": trades_df,
             "backtest_summary": backtest_summary,
             "llm_summary": llm_summary,
-            "model_scores": {
-                "high_r2": self.metadata.get('model_high_score'),
-                "low_r2": self.metadata.get('model_low_score')
-            },
+            "model_scores": {},  # Optionally fill if available
             "n_train": self.metadata.get('n_train'),
         }
-        return result
 
     def find_best_threshold_strategy(self, df, df_1min=None, user_params=None):
         """
@@ -303,7 +251,23 @@ class RegressionPredictorAgent:
             regression_backtest_tracker["current"] = 0
         strategy_matrix_llm = []  # Ensure always defined
         llm_context = {}         # Ensure always defined
+        self.all_strategy_sims = []  # Store all sim dicts for later use
         for i, (long_t, short_t, min_vol, bar_color) in enumerate(threshold_grid):
+            # Fallback metrics always defined at the start of each iteration
+            metrics = {
+                'profit_factor': None,
+                'avg_pnl': None,
+                'avg_return': None,
+                'direction_tag': None,
+                'risk_violations': None,
+                'daily_loss_violations': None,
+                'num_trades': 0,
+                'total_pnl': None,
+                'max_pnl': None,
+                'min_pnl': None,
+                'win_rate': None,
+                'max_drawdown': None
+            }
             # TEMP DEV MODE: Early-stop after 5 strategy simulations for faster development. Remove or increase for full runs.
             if i >= 5:
                 print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
@@ -362,9 +326,8 @@ class RegressionPredictorAgent:
                     min_vol=min_vol,
                     bar_color=bar_color
                 )
-                # Save config to intra_algo/research_agent/uploaded_csvs/tmp_last_config.csv
-                save_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'uploaded_csvs', 'tmp_last_config.csv'))
-                pd.DataFrame([params_copy]).to_csv(save_path, index=False)
+                # Store the sim dict for this config
+                self.all_strategy_sims.append(sim)
                 # --- Extract trades from strategy if present ---
                 trades = sim.get('trades', [])
                 if hasattr(strategy, 'trades'):
@@ -384,7 +347,6 @@ class RegressionPredictorAgent:
                     gross_loss = abs(df_trades[df_trades["pnl"] < 0]["pnl"].sum())
                     metrics["profit_factor"] = (gross_profit / gross_loss) if gross_loss > 0 else None
                     metrics["max_drawdown"] = (df_trades["pnl"].cumsum().cummax() - df_trades["pnl"].cumsum()).max() if not df_trades.empty else None
-                    # avg_return (alias for avg_pnl)
                     metrics["avg_return"] = metrics["avg_pnl"]
                     # direction_tag
                     directions = set()
@@ -417,26 +379,24 @@ class RegressionPredictorAgent:
                         daily_pnl = df_trades.groupby('date')['pnl'].sum().values
                     metrics['daily_loss_violations'] = sum(abs(x) > max_daily_risk for x in daily_pnl)
                 else:
-                    metrics = {}
-                    metrics["profit_factor"] = None
-                    metrics["max_drawdown"] = None
-                    metrics["avg_pnl"] = None
-                    metrics["avg_return"] = None
-                    metrics["direction_tag"] = None
-                    metrics["risk_violations"] = None
-                    metrics["daily_loss_violations"] = None
+                    print(f"[WARNING] No trades or no trade signals for config: long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}")
+                    # metrics fallback already defined at top of loop
                 print(f"[Debug] Trades simulated: {len(trades)}")
                 if not df_trades.empty:
                     print(f"[Debug] First 3 trades: {df_trades.head(3).to_dict(orient='records')}")
                     print(f"[Debug] Sample PnLs: {df_trades['pnl'].head(3).tolist()}")
                 print(f"[Debug] Computed metrics: {metrics}")
+                # Store all results for this config
+                self.all_strategy_results.append({
+                    'config': params_copy.copy(),
+                    'trades': trades,
+                    'metrics': metrics,
+                    'sim': sim
+                })
             except Exception as e:
                 import traceback
                 tb = traceback.format_exc()
                 print(f"\n❌ Backtest failed at config #{i+1} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color})\n{tb}")
-                # Save failed config to intra_algo/research_agent/uploaded_csvs/tmp_last_config.csv
-                save_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'uploaded_csvs', 'tmp_last_config.csv'))
-                pd.DataFrame([params_copy]).to_csv(save_path, index=False)
                 sim = {'error': f'Backtest failed at config #{i+1} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color})\n{tb}',
                        'config': {'long_threshold': long_t, 'short_threshold': short_t, 'min_volume_pct_change': min_vol, 'bar_color_filter': bar_color},
                        'traceback': tb}
@@ -483,7 +443,22 @@ class RegressionPredictorAgent:
             else:
                 filtered_results.append(r)
         # Sort by profit factor, fallback win rate
-        results_sorted = sorted(filtered_results, key=lambda x: (x.get('profit_factor', 0.0), x.get('win_rate', 0.0)), reverse=True)
+        def safe_float(val):
+            try:
+                return float(val) if val is not None else 0.0
+            except Exception:
+                return 0.0
+        # Filter out configs with None for profit_factor or win_rate, print warning
+        filtered_results_clean = []
+        for r in filtered_results:
+            pf = r.get('profit_factor', 0.0)
+            wr = r.get('win_rate', 0.0)
+            if pf is None or wr is None:
+                print(f"[WARNING] Skipping config due to NoneType in metrics: profit_factor={pf}, win_rate={wr}, config={r}")
+                filtered_out_configs.append(r)
+            else:
+                filtered_results_clean.append(r)
+        results_sorted = sorted(filtered_results_clean, key=lambda x: (safe_float(x.get('profit_factor')), safe_float(x.get('win_rate'))), reverse=True)
         # Filter for risk-respecting configs
         risk_ok = [r for r in results_sorted if r.get('risk_violations', 1) == 0 and r.get('daily_loss_violations', 1) == 0]
         top_strategies = (risk_ok if risk_ok else results_sorted)[:3]
@@ -762,17 +737,15 @@ class RegressionPredictorAgent:
         # Save cleaned results (excluding sim_trades) to CSV
         save_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'uploaded_csvs', 'strategy_grid_results.csv'))
         df_results.drop(columns=['sim_trades'], errors='ignore').to_csv(save_path, index=False)
-        # Save trades for best/worst
-        for label, idx in [('best', best_idx), ('worst', worst_idx)]:
-            if idx is not None and idx in df_results.index:
-                trades = df_results.loc[idx, 'sim_trades']
-                if isinstance(trades, list) and len(trades) > 0:
-                    trades_df = pd.DataFrame(trades)
-                    trades_path = os.path.join(os.path.dirname(save_path), f'{label}_strategy_trades.csv')
-                    trades_df.to_csv(trades_path, index=False)
-                    print(f"[INFO] Saved {label} strategy trades to {trades_path}")
-                else:
-                    print(f"[WARNING] No trades found for {label} strategy.")
+        # Save trades for best/worst using simulate_trades (ensures consistent formatting)
+        if best_idx is not None:
+            self.simulate_trades(config_idx=best_idx, label='best')
+        if worst_idx is not None:
+            # If only one strategy, best and worst are the same
+            if best_idx == worst_idx:
+                self.simulate_trades(config_idx=best_idx, label='worst')
+            else:
+                self.simulate_trades(config_idx=worst_idx, label='worst')
         # --- Multi-Heatmap Visualization ---
         import matplotlib.pyplot as plt
         import seaborn as sns

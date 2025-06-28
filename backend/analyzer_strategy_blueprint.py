@@ -317,15 +317,26 @@ class Long5min1minStrategy(bt.Strategy):
             self.daily_pnl += pnl_dollars
             entry_time = bt.num2date(trade.dtopen, tz=pytz.UTC)
             exit_time = bt.num2date(trade.dtclose, tz=pytz.UTC)
+            try:
+                print(f"\n🔻 DEBUG EXIT CHECK @ {exit_time}")
+                print(f"Entry Time: {entry_time}, Exit Time: {exit_time}")
+                print(f"Entry Price: {self.last_entry_price}, Exit Price: {trade.price}")
+                print(f"Side: {self.entry_side}, PnL: {pnl_dollars:.2f}")
+                print(f"---")
+            except Exception as e:
+                print(f"[DEBUG] Could not print exit signal values: {e}")
             self.trades.append({
                 "entry_time": entry_time,
                 "exit_time": exit_time,
                 "entry_price": self.last_entry_price,
                 "exit_price": trade.price,
+                "side": self.entry_side,
                 "pnl": pnl_dollars
             })
             self.last_exit_price = trade.price
             self.order = None
+            self.entry_side = None
+            self.entry_dt = None
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -413,10 +424,8 @@ class RegressionScalpingStrategy(bt.Strategy):
 
         # Risk control
         if self.daily_pnl >= self.p.max_daily_profit:
-            # print(f"💰 Max daily profit reached (${self.daily_pnl:.2f}). No new trades.")
             return
         if self.daily_pnl <= self.p.max_daily_loss:
-            # print(f"⚠️ Max daily loss reached (${self.daily_pnl:.2f}). No new trades.")
             return
 
         # Only act on new 5m bar
@@ -429,36 +438,48 @@ class RegressionScalpingStrategy(bt.Strategy):
             return
 
         # --- ENTRY LOGIC ---
+        try:
+            pred_high = self.datas[0].predicted_high[0]
+            pred_low = self.datas[0].predicted_low[0]
+        except AttributeError:
+            print("[ERROR] Data feed is missing 'predicted_high' or 'predicted_low' columns. Ensure your PandasData feed includes these as custom lines.")
+            return
         close5 = self.datas[0].close[0]
-        pred_high = self.datas[0].predicted_high[0]
-        pred_low = self.datas[0].predicted_low[0]
+        # Debug print for entry check
+        try:
+            print(f"Close: {close5}, PredHigh: {pred_high}, PredLow: {pred_low}")
+        except Exception as e:
+            print(f"[DEBUG] Could not print entry check values: {e}")
         long_signal = (pred_high - close5) > self.p.long_threshold
         short_signal = (close5 - pred_low) > self.p.short_threshold
 
-        if not (long_signal or short_signal):
-            return
-
-        # --- min_volume_pct_change filter ---
+        # Always assign vol_change_pct, close, open_ for debug prints
+        vol_change_pct = None
+        close = None
+        open_ = None
         if self.p.min_volume_pct_change > 0:
             vol_now = self.datas[1].volume[0]
             vol_prev = self.datas[1].volume[-1]
             if vol_prev == 0:
+                print(f"[ENTRY DEBUG] Skipping — Previous volume is zero, cannot compute volume change.")
                 return
             vol_change_pct = abs((vol_now - vol_prev) / vol_prev) * 100
             if vol_change_pct < self.p.min_volume_pct_change:
-                # print(f"📉 Skipping — Volume change ({vol_change_pct:.2f}%) below threshold ({self.p.min_volume_pct_change}%)")
+                print(f"[ENTRY DEBUG] Skipping — Volume change ({vol_change_pct:.2f}%) below threshold ({self.p.min_volume_pct_change}%)")
                 return
-
-        # --- bar_color_filter logic ---
         if self.p.bar_color_filter:
             close = self.datas[1].close[0]
             open_ = self.datas[1].open[0]
             if long_signal and close <= open_:
-                # print("❌ Long signal but candle not green. Skipping.")
+                print("[ENTRY DEBUG] Skipping — Long signal but candle not green.")
                 return
             if short_signal and close >= open_:
-                # print("❌ Short signal but candle not red. Skipping.")
+                print("[ENTRY DEBUG] Skipping — Short signal but candle not red.")
                 return
+
+        if not (long_signal or short_signal):
+            print(f"[ENTRY DEBUG] No entry signal at {dt5}.")
+            return
 
         # Use 1m data for execution
         open1 = self.datas[1].open[0]
@@ -466,8 +487,25 @@ class RegressionScalpingStrategy(bt.Strategy):
         tp = entry_price + self.p.target_ticks * self.p.tick_size if long_signal else entry_price - self.p.target_ticks * self.p.tick_size
         sl = entry_price - self.p.stop_ticks * self.p.tick_size if long_signal else entry_price + self.p.stop_ticks * self.p.tick_size
 
+        # Print debug info safely
+
+        if vol_change_pct is not None:
+            print(f"[ENTRY DEBUG] Volume % Change: {vol_change_pct:.2f}%")
+        if close is not None and open_ is not None:
+            print(f"[ENTRY DEBUG] Candle Color Valid: {close > open_ if long_signal else close < open_}")
+        print(f"[ORDER] Entry: {entry_price:.2f}, TP: {tp:.2f}, SL: {sl:.2f}, Side: {self.entry_side}")
+
         if long_signal:
-            # print(f"🟢 LONG SIGNAL at {dt5} | Entry: {entry_price:.2f}, TP: {tp:.2f}, SL: {sl:.2f}")
+            try:
+                print(f"\n🧠 DEBUG ENTRY CHECK @ {self.datas[0].datetime.datetime(0)}")
+                print(f"Close: {self.datas[0].close[0]}, PredHigh: {self.datas[0].predicted_high[0]}, PredLow: {self.datas[0].predicted_low[0]}")
+                print(f"Signal: Long={long_signal}, Short={short_signal}, Side: {self.entry_side}")
+                print(f"Candle Color OK: {close > open_ if long_signal else close < open_}")
+                print(f"Entry: {entry_price}, TP: {tp:.2f}, SL: {sl:.2f}")
+                print(f"---")
+            except Exception as e:
+                print(f"[DEBUG] Could not print signal values: {e}")
+
             self.order = self.buy_bracket(
                 data=self.datas[1],
                 price=entry_price,
@@ -479,7 +517,9 @@ class RegressionScalpingStrategy(bt.Strategy):
             self.entry_dt = dt1
             self.last_entry_price = entry_price
         elif short_signal:
-            # print(f"🔴 SHORT SIGNAL at {dt5} | Entry: {entry_price:.2f}, TP: {tp:.2f}, SL: {sl:.2f}")
+            print(f"[ENTRY DEBUG] {self.p.session_start}–{self.p.session_end}, current: {current_time}")
+            print(f"[ENTRY DEBUG] Close5: {close5:.2f}, PredHigh: {pred_high:.2f}, PredLow: {pred_low:.2f}")
+            print(f"[ENTRY DEBUG]  ShortSignal: {short_signal}")
             self.order = self.sell_bracket(
                 data=self.datas[1],
                 price=entry_price,
@@ -498,6 +538,14 @@ class RegressionScalpingStrategy(bt.Strategy):
             self.daily_pnl += pnl_dollars
             entry_time = bt.num2date(trade.dtopen, tz=pytz.UTC)
             exit_time = bt.num2date(trade.dtclose, tz=pytz.UTC)
+            try:
+                print(f"\n🔻 DEBUG EXIT CHECK @ {exit_time}")
+                print(f"Entry Time: {entry_time}, Exit Time: {exit_time}")
+                print(f"Entry Price: {self.last_entry_price}, Exit Price: {trade.price}")
+                print(f"Side: {self.entry_side}, PnL: {pnl_dollars:.2f}")
+                print(f"---")
+            except Exception as e:
+                print(f"[DEBUG] Could not print exit signal values: {e}")
             self.trades.append({
                 "entry_time": entry_time,
                 "exit_time": exit_time,

@@ -715,29 +715,54 @@ class AnalyzerDashboard:
         # Filter only completed and sort
         orders_df = orders_df[orders_df['status'] == 'Completed'].copy()
         orders_df.sort_values(by='executed_dt', inplace=True)
+        print("[DEBUG] Orders DataFrame after filtering:")
+        print(orders_df[['ref', 'type', 'filled_price', 'executed_dt']])
 
         trades = []
-        buy_stack = []
-
+        open_long = None
+        open_short = None
         for _, row in orders_df.iterrows():
             if row['type'] == 'BUY':
-                buy_stack.append(row)
-            elif row['type'] == 'SELL' and buy_stack:
-                buy = buy_stack.pop(0)
-                sell = row
-                entry_time = buy['executed_dt']
-                exit_time = sell['executed_dt']
-                pnl_points = sell['filled_price'] - buy['filled_price']
-                pnl_dollars = pnl_points * tick_value * contract_size
-                trades.append({
-                    'entry_time': entry_time,
-                    'entry_price': buy['filled_price'],
-                    'exit_time': exit_time,
-                    'exit_price': sell['filled_price'],
-                    'pnl': pnl_dollars,
-                    'duration_min': (exit_time - entry_time).total_seconds() / 60
-                })
-
+                if open_short is not None:
+                    # Close short trade
+                    entry_time = open_short['executed_dt']
+                    exit_time = row['executed_dt']
+                    entry_price = open_short['filled_price']
+                    exit_price = row['filled_price']
+                    pnl = (entry_price - exit_price) * tick_value * contract_size
+                    print(f"[DEBUG] SHORT trade: entry={entry_price}, exit={exit_price}, pnl={pnl}")
+                    trades.append({
+                        'entry_time': entry_time,
+                        'exit_time': exit_time,
+                        'entry_price': entry_price,
+                        'exit_price': exit_price,
+                        'side': 'short',
+                        'pnl': pnl
+                    })
+                    open_short = None
+                else:
+                    open_long = row
+            elif row['type'] == 'SELL':
+                if open_long is not None:
+                    # Close long trade
+                    entry_time = open_long['executed_dt']
+                    exit_time = row['executed_dt']
+                    entry_price = open_long['filled_price']
+                    exit_price = row['filled_price']
+                    pnl = (exit_price - entry_price) * tick_value * contract_size
+                    print(f"[DEBUG] LONG trade: entry={entry_price}, exit={exit_price}, pnl={pnl}")
+                    trades.append({
+                        'entry_time': entry_time,
+                        'exit_time': exit_time,
+                        'entry_price': entry_price,
+                        'exit_price': exit_price,
+                        'side': 'long',
+                        'pnl': pnl
+                    })
+                    open_long = None
+                else:
+                    open_short = row
+        print(f"[DEBUG] Total trades built: {len(trades)}")
         return pd.DataFrame(trades)
 
 
