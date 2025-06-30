@@ -186,7 +186,7 @@ class RegressionPredictorAgent:
         print(f"[simulate_trades] Saved trades to {trades_path}")
         # Instantiate AnalyzerDashboard to call instance method
         dashboard = AnalyzerDashboard(pd.DataFrame(), pd.DataFrame())
-        metrics_df = dashboard.calculate_strategy_metrics(trades_df)
+        metrics_df = dashboard.calculate_strategy_metrics_for_ui(trades_df)
         if metrics_df is not None and not metrics_df.empty:
             backtest_summary = metrics_df.to_dict(orient='records')[0]
         else:
@@ -272,9 +272,9 @@ class RegressionPredictorAgent:
                 'max_drawdown': None
             }
             # TEMP DEV MODE: Early-stop after 5 strategy simulations for faster development. Remove or increase for full runs.
-            if i >= 5:
-                print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
-                break
+            # if i >= 5:
+            #     print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
+            #     break
             if regression_backtest_tracker is not None:
                 if regression_backtest_tracker.get("cancel_requested"):
                     regression_backtest_tracker["status"] = "cancelled"
@@ -423,6 +423,56 @@ class RegressionPredictorAgent:
                 **metrics,
                 'sim': sim
             })
+            # After simulating trades for this config, calculate extra metrics
+            dashboard = AnalyzerDashboard(df_with_preds, pd.DataFrame(trades))
+            df_trades = pd.DataFrame(trades) if trades else pd.DataFrame()
+            # Compute metrics from per-trade DataFrame
+            if not df_trades.empty:
+                df_trades['date'] = pd.to_datetime(df_trades['entry_time']).dt.date
+                # avg_daily_pnl
+                daily_pnl = df_trades.groupby('date')['pnl'].sum()
+                avg_daily_pnl = daily_pnl.mean()
+                # avg_trades_per_day
+                avg_trades_per_day = df_trades.groupby('date').size().mean()
+                # max_consec_losses
+                loss_streaks = "".join(['L' if p < 0 else 'W' for p in df_trades['pnl']])
+                max_consec_losses = max(map(len, loss_streaks.split('W')), default=0)
+                # outlier_count_3sigma
+                mean_pnl = df_trades['pnl'].mean()
+                std_pnl = df_trades['pnl'].std()
+                outliers = df_trades[np.abs(df_trades['pnl'] - mean_pnl) > 3 * std_pnl]
+                outlier_count_3sigma = len(outliers)
+            else:
+                avg_daily_pnl = 0
+                avg_trades_per_day = 0
+                max_consec_losses = 0
+                outlier_count_3sigma = 0
+            metrics_llm = dashboard.calculate_strategy_metrics_for_llm(df_trades).iloc[0]
+            num_trades = metrics_llm.get('num_trades', len(trades))
+            total_pnl = metrics_llm.get('total_pnl', 0)
+            win_rate = metrics_llm.get('win_rate', 0)
+            win_rate_pct = win_rate if win_rate > 1 else win_rate * 100
+            # Add new metrics to the result dict for this config
+            result_row = {
+                'long_threshold': long_t,
+                'short_threshold': short_t,
+                'min_volume_pct_change': min_vol,
+                'bar_color_filter': bar_color,
+                'pnl': metrics_llm['total_pnl'],
+                'profit_factor': metrics_llm['profit_factor'],
+                'win_rate': metrics_llm['win_rate'],
+                'win_rate_%': win_rate_pct,
+                'drawdown_$': metrics_llm['max_drawdown'],
+                'avg_daily_pnl': avg_daily_pnl,
+                'avg_trades_per_day': avg_trades_per_day,
+                'max_consec_losses': max_consec_losses,
+                'outlier_count_3sigma': outlier_count_3sigma,
+                'num_trades': num_trades,
+                'suggested_contracts': sim.get('suggested_contracts', 1),
+                'stop_ticks': sim.get('stop_ticks', 10),
+                'stop_loss_dollars': sim.get('stop_loss_dollars', 0),
+            }
+            results[-1].update(result_row)
         # --- Rule-based filtering ---
         filtered_results = []
         filtered_out_configs = []
@@ -717,7 +767,15 @@ class RegressionPredictorAgent:
                 'stop_ticks': row.get('stop_ticks'),
                 'stop_loss_dollars': row.get('stop_loss_dollars'),
                 'error': row.get('sim_error', ''),
-                'sim_trades': row.get('sim_trades', [])
+                'sim_trades': row.get('sim_trades', []),
+                'pnl': row.get('total_pnl', None),
+                'win_rate_%': row.get('win_rate', None),
+                'profit_factor': row.get('profit_factor', None),
+                'drawdown_$': row.get('max_drawdown', None),
+                'avg_daily_pnl': row.get('avg_pnl', None),
+                'avg_trades_per_day': row.get('avg_trades_per_day', None),
+                'max_consec_losses': row.get('max_consec_losses', None),
+                'outlier_count_3sigma': row.get('outlier_count_3sigma', None),
             }
             cleaned_results.append(cleaned_row)
         # Build DataFrame
@@ -755,7 +813,7 @@ class RegressionPredictorAgent:
         # --- Multi-Heatmap Visualization ---
         import matplotlib.pyplot as plt
         import seaborn as sns
-        import numpy as np
+
         df = pd.DataFrame(cleaned_results)
         print(f"[DEBUG] Heatmap DataFrame columns: {df.columns.tolist()} shape: {df.shape}")
         required_cols = ['long_threshold', 'short_threshold', 'min_volume_pct_change', 'bar_color_filter', 'win_rate', 'avg_pnl']
@@ -792,9 +850,8 @@ class RegressionPredictorAgent:
             plt.savefig(heatmap_path)
             plt.close()
             print(f"[INFO] Heatmap saved to {heatmap_path}")
-        # After saving the heatmap, add regression agent plot for best config
+        # After saving the trades plot for the best config, also show the metrics/params table in a Plotly window
         if best_result and 'trades' in best_result and best_result['trades']:
-            from backend.analyzer_dashboard import AnalyzerDashboard
             regression_plot_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'uploaded_csvs', 'regression_trades_plot.html'))
             dashboard = AnalyzerDashboard(df_with_preds, pd.DataFrame())
             dashboard.plot_trades_and_predictions_regression_agent(
@@ -803,6 +860,19 @@ class RegressionPredictorAgent:
                 save_path=regression_plot_path
             )
             best_result['regression_trades_plot_path'] = '/uploaded_csvs/regression_trades_plot.html'
+            # Show metrics/params table immediately after trades plot
+            # Use the best available metrics and params
+            metrics_df = None
+            params_dict = None
+            if 'top_strategies' in best_result and best_result['top_strategies']:
+                params_dict = best_result['top_strategies'][0]
+            if 'trades' in best_result and best_result['trades']:
+                trades_df = pd.DataFrame(best_result['trades'])
+                dashboard_metrics = dashboard.calculate_strategy_metrics_for_ui(trades_df)
+                if dashboard_metrics is not None and not dashboard_metrics.empty:
+                    metrics_df = dashboard_metrics
+            if metrics_df is not None and params_dict is not None:
+                dashboard.display_strategy_and_metrics_side_by_side(metrics_df, params_dict)
         # --- Ensure result is serializable before returning ---
         def to_serializable(obj):
             basic_types = (str, int, float, bool, type(None))

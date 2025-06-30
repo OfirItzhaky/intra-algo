@@ -317,7 +317,7 @@ class AnalyzerDashboard:
         )
         fig.show()
 
-    def calculate_strategy_metrics(self, df_trades: pd.DataFrame) -> pd.DataFrame:
+    def calculate_strategy_metrics_for_ui(self, df_trades: pd.DataFrame) -> pd.DataFrame:
         """Calculate strategy metrics including daily statistics."""
         df = df_trades.copy()
         df['pnl'] = df['pnl'].astype(float)
@@ -388,6 +388,65 @@ class AnalyzerDashboard:
                 final_rows[f"{section} | {k}"] = v
 
         return pd.DataFrame([final_rows])
+
+    def calculate_strategy_metrics_for_llm(self, df_trades: pd.DataFrame) -> pd.DataFrame:
+        """Calculate strategy metrics with simple column names for LLM/csv use."""
+        df = df_trades.copy()
+        df['pnl'] = df['pnl'].astype(float)
+        df['date'] = pd.to_datetime(df['entry_time']).dt.date
+        df['duration_min'] = (pd.to_datetime(df['exit_time']) - pd.to_datetime(df['entry_time'])).dt.total_seconds() / 60
+
+        wins = df[df['pnl'] > 0]
+        losses = df[df['pnl'] < 0]
+        net_pnl = df['pnl'].sum()
+        profit_factor = wins['pnl'].sum() / abs(losses['pnl'].sum()) if not losses.empty else np.nan
+        win_rate = len(wins) / len(df) * 100 if len(df) > 0 else np.nan
+
+        max_consec_losses = max(
+            (list(map(len, "".join(['L' if p < 0 else 'W' for p in df['pnl']]).split('W')))), default=0
+        )
+
+        outlier_thresh = df['pnl'].std() * 3
+        outliers = df[np.abs(df['pnl'] - df['pnl'].mean()) > outlier_thresh]
+
+        # Add daily statistics
+        daily_pnl = df.groupby('date')['pnl'].sum()
+        total_trading_days = len(daily_pnl)
+        num_winning_days = (daily_pnl > 0).sum()
+        num_losing_days = (daily_pnl <= 0).sum()
+
+        # New metrics
+        avg_win = wins['pnl'].mean() if not wins.empty else np.nan
+        avg_loss = losses['pnl'].mean() if not losses.empty else np.nan
+        win_loss_ratio = avg_win / abs(avg_loss) if not np.isnan(avg_win) and not np.isnan(avg_loss) and avg_loss != 0 else np.nan
+        largest_win = wins['pnl'].max() if not wins.empty else np.nan
+        largest_loss = losses['pnl'].min() if not losses.empty else np.nan
+        # Drawdown %
+        equity_curve = df['pnl'].cumsum()
+        running_max = equity_curve.cummax()
+        drawdown = equity_curve - running_max
+        drawdown_pct = (drawdown / running_max.replace(0, np.nan)).min() * 100 if not running_max.empty else np.nan
+
+        metrics = {
+            'total_pnl': net_pnl,
+            'profit_factor': profit_factor,
+            'win_rate': win_rate,
+            'max_drawdown': drawdown.min() if not drawdown.empty else np.nan,
+            'drawdown_pct': drawdown_pct,
+            'avg_daily_pnl': daily_pnl.mean(),
+            'avg_trades_per_day': df.groupby('date').size().mean(),
+            'max_consec_losses': max_consec_losses,
+            'outlier_count_3sigma': len(outliers),
+            'total_net_pnl': net_pnl,
+            'avg_win': avg_win,
+            'avg_loss': avg_loss,
+            'win_loss_ratio': win_loss_ratio,
+            'largest_win': largest_win,
+            'largest_loss': largest_loss,
+            'num_winning_days': num_winning_days,
+            'num_losing_days': num_losing_days
+        }
+        return pd.DataFrame([metrics])
 
     import plotly.graph_objects as go
 

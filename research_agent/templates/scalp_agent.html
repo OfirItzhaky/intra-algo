@@ -1016,38 +1016,6 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     }
 
-    // --- Regression Predictor Button Logic ---
-    function has1minAnd5min(files) {
-      let has1 = false, has5 = false;
-      Array.from(files).forEach(f => {
-        const name = f.name.toLowerCase();
-        if (name.includes('1min')) has1 = true;
-        if (name.includes('5min')) has5 = true;
-      });
-      return has1 && has5;
-    }
-    function updateRegressionPredictorButtonState() {
-      const regBtn = document.getElementById('run-regression-strategy-btn');
-      if (!regBtn) return;
-      const csvFileInput = document.getElementById('csv_file');
-      let files = csvFileInput && csvFileInput.files ? csvFileInput.files : [];
-      if (has1minAnd5min(files)) {
-        regBtn.disabled = false;
-        regBtn.style.display = '';
-        regBtn.title = '';
-      } else {
-        regBtn.disabled = true;
-        regBtn.style.display = '';
-        regBtn.title = 'Please upload both 1-minute and 5-minute CSVs to enable regression prediction.';
-      }
-    }
-    // Listen for CSV file changes
-    if (csvFileInput) {
-      csvFileInput.addEventListener('change', updateRegressionPredictorButtonState);
-    }
-    // Also call on page load in case files are prefilled
-    document.addEventListener('DOMContentLoaded', updateRegressionPredictorButtonState);
-
     // Instinct Agent chat
     document.getElementById('send_instinct_query').addEventListener('click', function() {
         const input = document.getElementById('instinct_query_input');

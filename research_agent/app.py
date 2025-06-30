@@ -25,6 +25,7 @@ from scalp_agent.csv_utils import validate_csv_against_indicators
 from scalp_agent.regression_prediction_agent import RegressionPredictorAgent
 import numpy as np
 import time
+from backend.analyzer_dashboard import AnalyzerDashboard
 
 # === Runtime Constants ===
 today = datetime.today().strftime("%Y-%m-%d")
@@ -1385,7 +1386,6 @@ def run_regression_predictor():
         print(f"[interval_detect] {filename}: Detected interval: {mode_diff}m")
         return f'{mode_diff}m'
     file_5m = None
-    file_1m = None
     for f in files:
         try:
             df = pd.read_csv(f)
@@ -1401,18 +1401,13 @@ def run_regression_predictor():
             print(f"[run_regression_predictor] {f.filename} interval detected: {interval}")
             if interval == '5m' and file_5m is None:
                 file_5m = (f, df)
-            elif interval == '1m' and file_1m is None:
-                file_1m = (f, df)
         except Exception as e:
             print(f"[run_regression_predictor] Failed to read {f.filename}: {e}")
-    if not file_5m or not file_1m:
-        return jsonify({'feedback': 'Both 1-minute and 5-minute CSVs are required for regression simulation. Please upload both intervals.'})
+    if not file_5m:
+        return jsonify({'feedback': 'A 5-minute CSV is required for regression simulation. Please upload a 5-minute interval CSV.'})
     f_5m, df_5m = file_5m
-    f_1m, df_1m = file_1m
     df_5m.columns = [col.lower() for col in df_5m.columns]
-    df_1m.columns = [col.lower() for col in df_1m.columns]
     print(f"[run_regression_predictor] Using 5m file: {f_5m.filename}, shape: {df_5m.shape}")
-    print(f"[run_regression_predictor] Using 1m file: {f_1m.filename}, shape: {df_1m.shape}")
     # Optionally, get user_params from form
     user_params = {}
     for k in ['max_risk_per_trade', 'max_daily_risk', 'long_threshold', 'short_threshold']:
@@ -1431,7 +1426,7 @@ def run_regression_predictor():
         "status": "running",
         "cancel_requested": False
     })
-    result = agent.find_best_threshold_strategy(df_5m, df_1min=df_1m, user_params=user_params)
+    result = agent.find_best_threshold_strategy(df_5m, user_params=user_params)
     regression_backtest_tracker["status"] = "done"
     print(f"[run_regression_predictor] agent.find_best_threshold_strategy() returned keys: {list(result.keys())}")
     print(f"[run_regression_predictor] Returning result to client.")

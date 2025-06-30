@@ -338,7 +338,7 @@ if __name__ == "__main__":
     )
 
     show(df_trades_intrabar)
-    df_metrics = dashboard_intrabar.calculate_strategy_metrics(df_trades_intrabar)
+    df_metrics = dashboard_intrabar.calculate_strategy_metrics_for_ui(df_trades_intrabar)
 
     strategy_params = {
         "Strategy Class": type(results_5min1min).__name__,
