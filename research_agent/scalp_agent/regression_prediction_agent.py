@@ -10,6 +10,7 @@ from research_agent.config import CONFIG
 import traceback
 import time
 import math  # Ensure math is imported for isinf/isnan
+import re
 try:
     from research_agent.app import regression_backtest_tracker
 except ImportError:
@@ -423,6 +424,8 @@ class RegressionPredictorAgent:
             else:
                 return str(obj)
         best_result_serializable = to_serializable(best_result)
+        if 'llm_top_strategies' in best_result_serializable:
+            best_result_serializable['llm_top_strategies'] = _strip_json_markdown_fence(best_result_serializable['llm_top_strategies'])
         return best_result_serializable
 
     def _save_and_visualize_results(self, best_result, df_with_preds, results):
@@ -1080,3 +1083,8 @@ BIAS SUMMARY:
         except Exception as e:
             print(f'[LLM] Exception: {e}')
             return {"error": f"LLM call failed: {e}"}
+
+def _strip_json_markdown_fence(text):
+    if not isinstance(text, str):
+        return text
+    return re.sub(r'^```json\s*|\s*```$', '', text.strip(), flags=re.IGNORECASE | re.MULTILINE)
