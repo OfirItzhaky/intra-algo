@@ -79,6 +79,13 @@ class AnalyzerDashboard:
 
         self.plot_df = plot_df  # store for possible reuse
 
+        # Debug: print columns before plotting
+        print('[DEBUG] plot_df columns before plotting:', list(plot_df.columns))
+        # Check for predicted_high and predicted_low
+        if 'predicted_high' not in plot_df.columns:
+            print('[WARNING] plot_df is missing predicted_high column!')
+        if 'predicted_low' not in plot_df.columns:
+            print('[WARNING] plot_df is missing predicted_low column!')
         # Step 4: Start chart
         fig = go.Figure()
 
@@ -93,14 +100,25 @@ class AnalyzerDashboard:
             opacity=1.0
         ))
 
-        fig.add_trace(go.Scatter(
-            x=plot_df.index,
-            y=plot_df["Predicted"],
-            mode='lines+markers',
-            name="Predicted High",
-            line=dict(color="orange"),
-            marker=dict(symbol='x', size=8)
-        ))
+        if 'predicted_high' in plot_df.columns:
+            fig.add_trace(go.Scatter(
+                x=plot_df.index,
+                y=plot_df["predicted_high"],
+                mode='lines+markers',
+                name="Predicted High",
+                line=dict(color="orange"),
+                marker=dict(symbol='x', size=8)
+            ))
+
+        if 'predicted_low' in plot_df.columns:
+            fig.add_trace(go.Scatter(
+                x=plot_df.index,
+                y=plot_df["predicted_low"],
+                mode='lines+markers',
+                name="Predicted Low",
+                line=dict(color="cyan"),
+                marker=dict(symbol='x', size=8)
+            ))
 
         fig.add_trace(go.Scatter(
             x=plot_df.index,
@@ -764,6 +782,115 @@ class AnalyzerDashboard:
                     open_short = row
         print(f"[DEBUG] Total trades built: {len(trades)}")
         return pd.DataFrame(trades)
+
+    def plot_trades_and_predictions_regression_agent(self, trade_df: pd.DataFrame, max_trades: int = 50, save_path: str = None) -> None:
+        """
+        Visualize strategy trades, predicted highs, actual highs using Plotly (no classifier markers).
+        Args:
+            trade_df (pd.DataFrame): DataFrame with 'entry_time', 'exit_time', 'entry_price', 'exit_price'.
+            max_trades (int): Number of most recent trades to plot (default=50).
+            save_path (str): If provided, save the chart as HTML to this path.
+        Returns:
+            None – displays an interactive chart or saves to file.
+        """
+        import numpy as np
+        # Step 1: Build core DataFrame with actual and predicted values
+        plot_df = self.df_strategy.copy()
+        # Standardize all columns to lowercase
+        plot_df.columns = [c.lower() for c in plot_df.columns]
+        # Use only lowercase column names from here on
+        date_col = 'date' if 'date' in plot_df.columns else None
+        time_col = 'time' if 'time' in plot_df.columns else None
+        datetime_col = 'datetime' if 'datetime' in plot_df.columns else None
+        if date_col and time_col:
+            plot_df["timestamp"] = pd.to_datetime(plot_df[date_col].astype(str) + " " + plot_df[time_col].astype(str))
+        elif datetime_col:
+            plot_df["timestamp"] = pd.to_datetime(plot_df[datetime_col])
+        else:
+            raise ValueError("Could not find suitable date/time columns for plotting. Columns found: " + str(list(plot_df.columns)))
+        plot_df["actual_high"] = plot_df["high"].shift(-1)
+        plot_df = plot_df.dropna(subset=["actual_high"])
+        plot_df.set_index("timestamp", inplace=True)
+        self.plot_df = plot_df  # store for possible reuse
+        # Step 2: Start chart
+        fig = go.Figure()
+        fig.add_trace(go.Candlestick(
+            x=plot_df.index,
+            open=plot_df["open"],
+            high=plot_df["high"],
+            low=plot_df["low"],
+            close=plot_df["close"],
+            name="Candlestick",
+            line=dict(width=1),
+            opacity=1.0
+        ))
+        fig.add_trace(go.Scatter(
+            x=plot_df.index,
+            y=plot_df["predicted_high"],
+            mode='lines+markers',
+            name="Predicted High",
+            line=dict(color="orange"),
+            marker=dict(symbol='x', size=8)
+        ))
+        fig.add_trace(go.Scatter(
+            x=plot_df.index,
+            y=plot_df["actual_high"],
+            mode='lines+markers',
+            name="Actual High",
+            line=dict(color="blue"),
+            marker=dict(symbol='circle', size=6)
+        ))
+        # Step 3: Plot trade markers (limit to last N trades)
+        if max_trades is not None and len(trade_df) > max_trades:
+            trade_df = trade_df.iloc[-max_trades:]
+        visible_trades = 0
+        for _, trade in trade_df.iterrows():
+            entry, exit_, eprice, xprice = trade["entry_time"], trade["exit_time"], trade["entry_price"], trade["exit_price"]
+            if entry in plot_df.index and exit_ in plot_df.index:
+                visible_trades += 1
+                fig.add_trace(go.Scatter(
+                    x=[entry],
+                    y=[eprice],
+                    mode='markers+text',
+                    text=[f'Buy @ {eprice:.2f}'],
+                    textposition='bottom center',
+                    marker=dict(symbol='triangle-up', size=12, color='lime'),
+                    showlegend=False
+                ))
+                fig.add_trace(go.Scatter(
+                    x=[exit_],
+                    y=[xprice],
+                    mode='markers+text',
+                    text=[f'Sell @ {xprice:.2f}'],
+                    textposition='top center',
+                    marker=dict(symbol='triangle-down', size=12, color='red'),
+                    showlegend=False
+                ))
+                color = 'limegreen' if trade["pnl"] >= 0 else 'red'
+                fig.add_trace(go.Scatter(
+                    x=[entry, exit_],
+                    y=[eprice, xprice],
+                    mode='lines',
+                    line=dict(color=color, width=3),
+                    showlegend=False
+                ))
+        print(f"🧮 Trades visible in Plotly chart: {visible_trades} / {len(trade_df)}")
+        # Step 4: Layout styling
+        fig.update_layout(
+            title="📈 Trades + Predictions (Regression Agent)",
+            xaxis_title="Time",
+            yaxis_title="Price",
+            template="plotly_dark",
+            xaxis_rangeslider_visible=False,
+            height=700,
+            margin=dict(l=30, r=30, t=40, b=30),
+            legend=dict(font=dict(color="white"), bgcolor="black")
+        )
+        # Save or show the plot
+        pio.renderers.default = "browser"
+        fig.show()
+        # If you want to save for debugging, you can keep this commented out:
+        # fig.write_html(save_path)
 
 
 

@@ -227,6 +227,8 @@ class RegressionPredictorAgent:
         """
         if self.last_feedback:
             return {'feedback': self.last_feedback}
+        # Save the original 5m OHLCV DataFrame for plotting
+        raw_ohlcv_df = df.copy()
         thresholds = [0.5, 1.0, 1.5, 2.0, 2.5, 3, 3.5, 4]
         results = []
         max_risk_per_trade = float((user_params or self.user_params).get('max_risk_per_trade', 15.0))
@@ -252,6 +254,7 @@ class RegressionPredictorAgent:
         strategy_matrix_llm = []  # Ensure always defined
         llm_context = {}         # Ensure always defined
         self.all_strategy_sims = []  # Store all sim dicts for later use
+        df_with_preds = None  # Will hold the DataFrame with predictions for plotting
         for i, (long_t, short_t, min_vol, bar_color) in enumerate(threshold_grid):
             # Fallback metrics always defined at the start of each iteration
             metrics = {
@@ -268,10 +271,10 @@ class RegressionPredictorAgent:
                 'win_rate': None,
                 'max_drawdown': None
             }
-            # # TEMP DEV MODE: Early-stop after 5 strategy simulations for faster development. Remove or increase for full runs.
-            # if i >= 5:
-            #     print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
-            #     break
+            # TEMP DEV MODE: Early-stop after 5 strategy simulations for faster development. Remove or increase for full runs.
+            if i >= 5:
+                print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
+                break
             if regression_backtest_tracker is not None:
                 if regression_backtest_tracker.get("cancel_requested"):
                     regression_backtest_tracker["status"] = "cancelled"
@@ -296,6 +299,9 @@ class RegressionPredictorAgent:
                 X_scaled = self.scaler.transform(X.values)
                 df['predicted_high'] = self.model_high.predict(X_scaled)
                 df['predicted_low'] = self.model_low.predict(X_scaled)
+            if df_with_preds is None:
+                # Save the first version of df with predictions for plotting
+                df_with_preds = df.copy()
             # --- Enhanced: pass config info to engine for better print ---
             sim = None
             try:
@@ -786,6 +792,17 @@ class RegressionPredictorAgent:
             plt.savefig(heatmap_path)
             plt.close()
             print(f"[INFO] Heatmap saved to {heatmap_path}")
+        # After saving the heatmap, add regression agent plot for best config
+        if best_result and 'trades' in best_result and best_result['trades']:
+            from backend.analyzer_dashboard import AnalyzerDashboard
+            regression_plot_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'uploaded_csvs', 'regression_trades_plot.html'))
+            dashboard = AnalyzerDashboard(df_with_preds, pd.DataFrame())
+            dashboard.plot_trades_and_predictions_regression_agent(
+                trade_df=pd.DataFrame(best_result['trades']),
+                max_trades=50,
+                save_path=regression_plot_path
+            )
+            best_result['regression_trades_plot_path'] = '/uploaded_csvs/regression_trades_plot.html'
         # --- Ensure result is serializable before returning ---
         def to_serializable(obj):
             basic_types = (str, int, float, bool, type(None))

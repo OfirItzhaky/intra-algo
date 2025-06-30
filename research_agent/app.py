@@ -1443,6 +1443,9 @@ def run_regression_predictor():
     result["total_cost_usd"] = 0.0
     # Ensure all numpy types are converted to native Python types
     result = to_serializable(result)
+    # Pass through regression_trades_plot_path if present in best_result
+    if 'regression_trades_plot_path' in result:
+        result['regression_trades_plot_path'] = result['regression_trades_plot_path']
     return jsonify(result)
 
 @app.route("/regression_backtest_progress", methods=["GET"])
@@ -1476,6 +1479,13 @@ def serve_heatmap():
     # Debug print to verify path
     print(f"[DEBUG] Serving heatmap from: {img_dir}, file: {filename}")
     return send_from_directory(img_dir, filename)
+
+@app.route('/uploaded_csvs/<path:filename>')
+def serve_uploaded_csvs(filename):
+    import os
+    from flask import send_from_directory
+    dir_path = os.path.join(os.path.dirname(__file__), 'uploaded_csvs')
+    return send_from_directory(dir_path, filename)
 
 if __name__ == "__main__":
     import os

@@ -871,6 +871,12 @@ document.addEventListener('DOMContentLoaded', function() {
                           // Show heatmap inline after regression results
                           const heatmapHtml = `<div class="mt-3"><h5>Heatmap</h5><img src="/heatmap?t=${Date.now()}" alt="Heatmap" style="max-width:100%;border:1px solid #ccc;border-radius:8px;" /></div>`;
                           regResultDiv.innerHTML += heatmapHtml;
+                          if (result.regression_trades_plot_path) {
+                            // Automatically open the plot in a new tab
+                            window.open(result.regression_trades_plot_path, '_blank');
+                            // Optionally, you can still show a message below the heatmap
+                            regResultDiv.innerHTML += `<div class="mt-3"><h5>Trades & Predictions Visualization opened in a new tab.</h5></div>`;
+                          }
                         })
                         .catch(err => {
                           regBtn.disabled = false;
@@ -1254,6 +1260,12 @@ document.addEventListener('DOMContentLoaded', function() {
           // Show heatmap inline after regression results
           const heatmapHtml = `<div class="mt-3"><h5>Heatmap</h5><img src="/heatmap?t=${Date.now()}" alt="Heatmap" style="max-width:100%;border:1px solid #ccc;border-radius:8px;" /></div>`;
           regResultDiv.innerHTML += heatmapHtml;
+          if (result.regression_trades_plot_path) {
+            // Automatically open the plot in a new tab
+            window.open(result.regression_trades_plot_path, '_blank');
+            // Optionally, you can still show a message below the heatmap
+            regResultDiv.innerHTML += `<div class="mt-3"><h5>Trades & Predictions Visualization opened in a new tab.</h5></div>`;
+          }
         })
         .catch(err => {
           regBtn.disabled = false;
