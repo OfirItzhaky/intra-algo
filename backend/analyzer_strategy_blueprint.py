@@ -326,8 +326,8 @@ class Long5min1minStrategy(bt.Strategy):
             pnl_dollars = (exit_price - entry_price) * direction_multiplier * self.p.tick_value / self.p.tick_size
             print(f"[DEBUG] Manual PnL: {pnl_dollars:.2f}")
             # Compute TP/SL for this trade
-            tp_offset_ticks = 30
-            sl_offset_ticks = 30
+            tp_offset_ticks = 10
+            sl_offset_ticks = 10
             if side == 'long':
                 tp_level = entry_price + tp_offset_ticks * self.p.tick_size
                 sl_level = entry_price - sl_offset_ticks * self.p.tick_size
@@ -494,8 +494,8 @@ class RegressionScalpingStrategy(bt.Strategy):
             return
 
         # Use 5m close for execution
-        tp_offset_ticks = 30
-        sl_offset_ticks = 30
+        tp_offset_ticks = 10
+        sl_offset_ticks = 10
         entry_price = self.datas[0].close[0] + self.p.slippage if long_signal else self.datas[0].close[0] - self.p.slippage
         tp = entry_price + tp_offset_ticks * self.p.tick_size if long_signal else entry_price - tp_offset_ticks * self.p.tick_size
         sl = entry_price - sl_offset_ticks * self.p.tick_size if long_signal else entry_price + sl_offset_ticks * self.p.tick_size
@@ -554,8 +554,8 @@ class RegressionScalpingStrategy(bt.Strategy):
             pnl_dollars = (exit_price - entry_price) * direction_multiplier * self.p.tick_value / self.p.tick_size
             print(f"[DEBUG] Manual PnL: {pnl_dollars:.2f}")
             # Compute TP/SL for this trade
-            tp_offset_ticks = 30
-            sl_offset_ticks = 30
+            tp_offset_ticks = 10
+            sl_offset_ticks = 10
             if side == 'long':
                 tp_level = entry_price + tp_offset_ticks * self.p.tick_size
                 sl_level = entry_price - sl_offset_ticks * self.p.tick_size
