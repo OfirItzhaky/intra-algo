@@ -3,9 +3,9 @@ import pandas as pd
 from sklearn.linear_model import ElasticNet
 from sklearn.preprocessing import StandardScaler
 from backend.analyzer_cerebro_strategy_engine import CerebroStrategyEngine
-from backend.analyzer_strategy_blueprint import Long5min1minStrategy
 from backend.analyzer_dashboard import AnalyzerDashboard
 import requests, os, json
+
 from research_agent.config import CONFIG
 import traceback
 import time
@@ -14,6 +14,7 @@ try:
     from research_agent.app import regression_backtest_tracker
 except ImportError:
     regression_backtest_tracker = None
+from research_agent.scalp_agent.scalp_base_agent import BaseAgent
 
 class RegressionPredictorAgent:
     """
@@ -229,24 +230,8 @@ class RegressionPredictorAgent:
             return {'feedback': self.last_feedback}
         # Save the original 5m OHLCV DataFrame for plotting
         raw_ohlcv_df = df.copy()
-        thresholds = [0.5, 1.0, 1.5, 2.0, 2.5, 3, 3.5, 4]
-        results = []
-        max_risk_per_trade = float((user_params or self.user_params).get('max_risk_per_trade', 15.0))
-        max_daily_risk = float((user_params or self.user_params).get('max_daily_risk', 100.0))
-        max_drawdown_limit = float((user_params or self.user_params).get('max_drawdown', 100.0))
-        # --- Configurable rule-based filter params ---
-        min_trades = int((user_params or self.user_params).get('min_trades', 0))
-        max_drawdown = float((user_params or self.user_params).get('max_drawdown', float('inf')))
-        min_profit_factor = float((user_params or self.user_params).get('min_profit_factor', 0.0))
-        min_volume_pct_change_values = [0.0, 0.05]
-        bar_color_filter_values = [True, False]
-        threshold_grid = [
-            (long_t, short_t, min_vol, bar_color)
-            for long_t in thresholds
-            for short_t in thresholds
-            for min_vol in min_volume_pct_change_values
-            for bar_color in bar_color_filter_values
-        ]
+        max_drawdown, min_profit_factor, min_trades, results, threshold_grid = self._generate_threshold_grid(
+            user_params)
         total_configs = len(threshold_grid)
         if regression_backtest_tracker is not None:
             regression_backtest_tracker["total"] = total_configs
@@ -255,6 +240,412 @@ class RegressionPredictorAgent:
         llm_context = {}         # Ensure always defined
         self.all_strategy_sims = []  # Store all sim dicts for later use
         df_with_preds = None  # Will hold the DataFrame with predictions for plotting
+        df_with_preds = self._simulate_all_configs(df, df_1min, df_with_preds, results, threshold_grid, total_configs,
+                                                   user_params)
+        # --- Rule-based filtering ---
+        filtered_out_configs, filtered_results, filtered_results_clean = self._filter_results_by_rules(max_drawdown,
+                                                                                                       min_profit_factor,
+                                                                                                       min_trades,
+                                                                                                       results)
+        best, top_strategies = self._rank_and_pick_best_strategies(filtered_results_clean)
+        best_result = best['sim'] if best and 'sim' in best else None
+        # Compose explanation
+        if best:
+            explanation = (
+                f"Best thresholds: long_delta={best.get('long_threshold')}, short_delta={best.get('short_threshold')}. "
+                f"Profit factor: {best.get('profit_factor', 0.0):.2f}, "
+                f"Win rate: {best.get('win_rate', 0.0):.1f}%. "
+                f"Risk violations: {best.get('risk_violations', 0)}, "
+                f"Daily loss violations: {best.get('daily_loss_violations', 0)}."
+            )
+            if best_result:
+                best_result['threshold_search'] = {
+                    'chosen_long_threshold': best.get('long_threshold'),
+                    'chosen_short_threshold': best.get('short_threshold'),
+                    'risk_meta': {
+                        'risk_violations': best.get('risk_violations', 0),
+                        'daily_loss_violations': best.get('daily_loss_violations', 0)
+                    },
+                    'explanation': explanation
+                }
+                best_result['llm_summary'] = best_result.get('llm_summary', '') + ' ' + explanation
+                # Add top_strategies and recommendation
+                best_result['top_strategies'] = [
+                    {
+                        'long_threshold': r['long_threshold'],
+                        'short_threshold': r['short_threshold'],
+                        'min_volume_pct_change': r['min_volume_pct_change'],
+                        'bar_color_filter': r['bar_color_filter'],
+                        'profit_factor': r['profit_factor'],
+                        'win_rate': r['win_rate'],
+                        'avg_return': r['avg_return'],
+                        'max_drawdown': r['max_drawdown'],
+                        'num_trades': r['num_trades'],
+                        'risk_violations': r['risk_violations'],
+                        'daily_loss_violations': r['daily_loss_violations'],
+                        'direction_tag': r['direction_tag']
+                    } for r in top_strategies
+                ]
+                best_result['recommended_strategy_summary'] = (
+                    f"Strategy with long threshold {best.get('long_threshold')} and short threshold {best.get('short_threshold')} "
+                    f"yielded the highest profit factor ({best.get('profit_factor', 0.0):.2f}) and stayed within risk limits."
+                )
+                best_result['filtered_out_configs'] = filtered_out_configs
+                best_result['filter_meta'] = {
+                    'min_trades': min_trades,
+                    'max_drawdown': max_drawdown,
+                    'min_profit_factor': min_profit_factor
+                }
+                # --- Build strategy_matrix_llm for LLM use ---
+                llm_context, strategy_matrix_llm = self._build_llm_context_and_matrix(best_result, filtered_results,
+                                                                                      llm_context, strategy_matrix_llm,
+                                                                                      user_params)
+                # --- Real LLM output for recommended strategy ---
+                model_name = CONFIG.get("image_analysis_model", "gpt-4o")
+                provider = CONFIG.get("model_provider", "openai")
+                api_key = CONFIG.get("openai_api_key") if provider == "openai" else CONFIG.get("gemini_api_key")
+                bias_summary = llm_context.get('bias_summary')
+                if not bias_summary or not isinstance(bias_summary, str) or not bias_summary.strip():
+                    best_result['llm_strategy_recommendation'] = {
+                        'selected_strategy': None,
+                        'alternative_strategies': [],
+                        'llm_rationale': "Bias context is missing. Please run the Multi-Timeframe Agent first.",
+                        'model_used': model_name,
+                        'tokens_used': 0,
+                        'cost_usd': 0.0,
+                        'llm_error': True
+                    }
+                    return best_result
+                # --- Build prompt ---
+                top_strats = strategy_matrix_llm[:10]
+                user_risk = llm_context['user_risk_settings']
+                llm_prompt = """
+                    You are a trading strategist assistant. Your task is to select the best strategies from a 256-strategy grid and an optional market bias summary.
+                    
+                    🎯 Your Goal:
+                    Return exactly **three trading strategies**, selected based on the data, and output them in a **fixed JSON format**. This format must always be followed **exactly as shown below** to ensure consistency.
+                    
+                    🧠 Inputs:
+                    - A strategy grid containing 256 rows, each with metrics like: win rate, profit factor, max drawdown, avg daily PnL, etc.
+                    - An optional market bias text summary that may include sector flow, macro bias, symbol news, or support/resistance levels.
+                    
+                    📋 Selection Criteria:
+                    - Choose based on meaningful metrics (not only PnL) — including stability, risk, win rate, and drawdown.
+                    - You may weight metrics differently if market bias suggests strong long/short skew or risk-aversion.
+                    - Use judgment to combine multiple signals into effective strategy logic.
+                    
+                    📤 **Output Format – This must be strictly followed**:
+                    Return your response as a JSON with the following structure:
+                    
+                    ```json
+                    {
+                      "top_strategies": [
+                        {
+                          "name": "Volatile Shorts",
+                          "logic": "Trade when predicted short > 0.6 and candle color is red. Use only if volume spike > 5%.",
+                          "direction": "short",
+                          "stop_loss_ticks": 10,
+                          "take_profit_ticks": 10,
+                          "key_metrics": {
+                            "profit_factor": 1.25,
+                            "win_rate": 52.3,
+                            "avg_daily_pnl": 5.2,
+                            "max_drawdown": 90.0
+                          },
+                          "rationale": "This strategy favors short trades in high-volume environments. It has stable win rate and low drawdown, making it ideal in bearish or volatile conditions."
+                        },
+                        {
+                          "name": "Balanced Intraday",
+                          "logic": "Trade when either long/short predicted > 0.5 and candle matches direction. No volume filter.",
+                          "direction": "both",
+                          "stop_loss_ticks": 10,
+                          "take_profit_ticks": 10,
+                          "key_metrics": {
+                            "profit_factor": 1.18,
+                            "win_rate": 48.7,
+                            "avg_daily_pnl": 6.9,
+                            "max_drawdown": 100.0
+                          },
+                          "rationale": "This is a general-purpose strategy that performs well on both sides with decent stability. Recommended for trend-neutral sessions."
+                        },
+                        {
+                          "name": "Momentum Longs",
+                          "logic": "Trade when predicted long > 0.7 and min_volume_pct_change > 3%. Only on green candles.",
+                          "direction": "long",
+                          "stop_loss_ticks": 10,
+                          "take_profit_ticks": 10,
+                          "key_metrics": {
+                            "profit_factor": 1.32,
+                            "win_rate": 56.2,
+                            "avg_daily_pnl": 7.5,
+                            "max_drawdown": 70.0
+                          },
+                          "rationale": "Best performing long-biased strategy with high win rate and consistent daily returns. Ideal for strong bullish sessions."
+                        }
+                      ]
+                    }
+                    ```
+                    📌 Rules:
+                    
+                    Do not return anything outside the JSON block.
+                    
+                    Always include exactly 3 strategies unless instructed otherwise.
+                    
+                    Ensure keys and structure are identical in casing and order.
+                    
+                    If market bias is empty, ignore it. If present, use it to prioritize strategy alignment.
+                    
+                    Below is the strategy grid and bias summary:
+                    
+                    STRATEGY GRID:
+                    {grid_json}
+                    
+                    BIAS SUMMARY:
+                    {bias_str}
+                    """
+        df_results = self._save_and_visualize_results(best_result, df_with_preds, results)
+        # Now call LLM selector
+        print('[LLM] Calling LLM for top strategy selection...')
+        self._call_llm_and_attach(best_result, df_results, user_params)
+
+        # --- Ensure result is serializable before returning ---
+        def to_serializable(obj):
+            basic_types = (str, int, float, bool, type(None))
+            if isinstance(obj, dict):
+                return {k: to_serializable(v) for k, v in obj.items() if k not in ['strategy', 'cerebro'] and (isinstance(v, basic_types) or isinstance(v, (dict, list)))}
+            elif isinstance(obj, list):
+                return [to_serializable(v) for v in obj]
+            elif isinstance(obj, basic_types):
+                if isinstance(obj, float):
+                    if math.isinf(obj) or math.isnan(obj):
+                        return None  # or 0.0 if you prefer
+                return obj
+            else:
+                return str(obj)
+        best_result_serializable = to_serializable(best_result)
+        return best_result_serializable
+
+    def _save_and_visualize_results(self, best_result, df_with_preds, results):
+        df_results = pd.DataFrame(results)
+        print(f"[SUMMARY] Total rows: {len(df_results)}")
+        print(f"[SUMMARY] Columns: {df_results.columns.tolist()}")
+        # Find best/worst by total_pnl if present, else by avg_return
+        best_idx, worst_idx = None, None
+        if 'avg_return' in df_results.columns and df_results['avg_return'].notnull().any():
+            best_idx = df_results['avg_return'].idxmax()
+            worst_idx = df_results['avg_return'].idxmin()
+
+        # Save cleaned results (excluding sim_trades) to CSV
+        save_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), '..', 'uploaded_csvs', 'strategy_grid_results.csv'))
+        df_results.to_csv(save_path, index=False)
+        # Save trades for best/worst using simulate_trades (ensures consistent formatting)
+        if best_idx is not None:
+            self.simulate_trades(config_idx=best_idx, label='best')
+        if worst_idx is not None:
+            # If only one strategy, best and worst are the same
+            if best_idx == worst_idx:
+                self.simulate_trades(config_idx=best_idx, label='worst')
+            else:
+                self.simulate_trades(config_idx=worst_idx, label='worst')
+        # --- Multi-Heatmap Visualization ---
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        df = pd.DataFrame(results)
+        print(f"[DEBUG] Heatmap DataFrame columns: {df.columns.tolist()} shape: {df.shape}")
+        required_cols = ['long_threshold', 'short_threshold', 'min_volume_pct_change', 'bar_color_filter', 'win_rate',
+                         'avg_pnl']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            print(f"[WARNING] Cannot plot heatmaps, missing columns: {missing_cols}")
+        else:
+            min_vols = [0.0, 0.025, 0.05]
+            bar_colors = [False, True]
+            fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+            for i, min_vol in enumerate(min_vols):
+                for j, bar_color in enumerate(bar_colors):
+                    ax = axes[j, i]
+                    sub = df[(df['min_volume_pct_change'] == min_vol) & (df['bar_color_filter'] == bar_color)]
+                    if sub.empty:
+                        ax.set_title(f"min_vol={min_vol}, bar_color={bar_color}\n(No data)")
+                        ax.axis('off')
+                        continue
+                    pivot = sub.pivot_table(index='long_threshold', columns='short_threshold', values='win_rate',
+                                            aggfunc='mean')
+                    if pivot.isnull().all().all():
+                        # fallback to avg_pnl
+                        pivot = sub.pivot_table(index='long_threshold', columns='short_threshold', values='avg_pnl',
+                                                aggfunc='mean')
+                        value_label = 'avg_pnl'
+                    else:
+                        value_label = 'win_rate'
+                    sns.heatmap(pivot, annot=True, fmt='.2f', cmap='viridis', cbar=True, ax=ax)
+                    ax.set_title(f"min_vol={min_vol}, bar_color={bar_color}\n({value_label})")
+                    ax.set_xlabel('short_threshold')
+                    ax.set_ylabel('long_threshold')
+            plt.tight_layout()
+            # Save to intra_algo/research_agent/uploaded_csvs/heatmap_debug.png using project-relative path
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # .../research_agent
+            heatmap_path = os.path.join(project_root, 'uploaded_csvs', 'heatmap_debug.png')
+            plt.savefig(heatmap_path)
+            plt.close()
+            print(f"[INFO] Heatmap saved to {heatmap_path}")
+        # After saving the heatmap, show trades and metrics visuals, then call LLM selector
+        if best_result and 'trades' in best_result and best_result['trades']:
+            regression_plot_path = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), '..', 'uploaded_csvs', 'regression_trades_plot.html'))
+            dashboard = AnalyzerDashboard(df_with_preds, pd.DataFrame())
+            dashboard.plot_trades_and_predictions_regression_agent(
+                trade_df=pd.DataFrame(best_result['trades']),
+                max_trades=50,
+                save_path=regression_plot_path
+            )
+            # Show metrics/params table
+            metrics_df = None
+            params_dict = None
+            if 'top_strategies' in best_result and best_result['top_strategies']:
+                params_dict = best_result['top_strategies'][0]
+            if 'trades' in best_result and best_result['trades']:
+                trades_df = pd.DataFrame(best_result['trades'])
+                dashboard_metrics = dashboard.calculate_strategy_metrics_for_ui(trades_df)
+                if dashboard_metrics is not None and not dashboard_metrics.empty:
+                    metrics_df = dashboard_metrics
+            if metrics_df is not None and params_dict is not None:
+                dashboard.display_strategy_and_metrics_side_by_side(metrics_df, params_dict)
+        return df_results
+
+    def _call_llm_and_attach(self, best_result, df_results, user_params):
+        bias_summary = (user_params or self.user_params).get('bias_summary', None)
+        llm_result = self.llm_select_top_strategies_from_grid(df_results, bias_summary=bias_summary)
+        best_result['llm_top_strategies'] = llm_result
+        # Add cost/token info if available
+        cost = None
+        tokens = None
+        if isinstance(llm_result, dict):
+            cost = llm_result.get('cost_usd') or llm_result.get('cost') or 0.0
+            tokens = llm_result.get('tokens_used') or llm_result.get('token_usage') or 0
+        best_result['llm_top_strategies_cost'] = {'cost_usd': cost, 'tokens': tokens}
+
+    def _build_llm_context_and_matrix(self, best_result, filtered_results, llm_context, strategy_matrix_llm,
+                                      user_params):
+        strategy_matrix_llm = []
+        for r in filtered_results:
+            entry = {
+                'long_threshold': r.get('long_threshold'),
+                'short_threshold': r.get('short_threshold'),
+                'min_volume_pct_change': r.get('min_volume_pct_change'),
+                'bar_color_filter': r.get('bar_color_filter'),
+                'direction_tag': r.get('direction_tag'),
+                'profit_factor': r.get('profit_factor'),
+                'win_rate': r.get('win_rate'),
+                'avg_return': r.get('avg_return'),
+                'num_trades': r.get('num_trades'),
+                'max_drawdown': r.get('max_drawdown'),
+                'risk_violations': r.get('risk_violations'),
+                'daily_loss_violations': r.get('daily_loss_violations'),
+            }
+            # Optionally add more contextually useful fields here
+            strategy_matrix_llm.append(entry)
+        # --- Prepare LLM context ---
+        # User risk settings
+        user_risk_settings = {
+            'max_risk_per_trade': float((user_params or self.user_params).get('max_risk_per_trade', 30)),
+            'max_daily_risk': float((user_params or self.user_params).get('max_daily_risk', 100)),
+            'tick_size': float((user_params or self.user_params).get('tick_size', 0.25)),
+            'tick_value': float((user_params or self.user_params).get('tick_value', 1.25)),
+        }
+        # Bias summary placeholder
+        bias_summary = (user_params or self.user_params).get('bias_summary',
+                                                             "Bullish bias detected on 15min and hourly. Volatility elevated.")
+        # Add suggested_contracts to each strategy
+        strategy_matrix_llm_with_contracts = []
+        for strat in strategy_matrix_llm:
+            stop_ticks = int((user_params or self.user_params).get('stop_ticks', 10))
+            tick_value = user_risk_settings['tick_value']
+            stop_loss_dollars = stop_ticks * tick_value
+            max_risk = user_risk_settings['max_risk_per_trade']
+            suggested_contracts = int(max(1, max_risk // stop_loss_dollars)) if stop_loss_dollars > 0 else 1
+            strat_with_contracts = dict(strat)
+            strat_with_contracts['suggested_contracts'] = suggested_contracts
+            strat_with_contracts['stop_ticks'] = stop_ticks
+            strat_with_contracts['stop_loss_dollars'] = stop_loss_dollars
+            strategy_matrix_llm_with_contracts.append(strat_with_contracts)
+        llm_context = {
+            'user_risk_settings': user_risk_settings,
+            'bias_summary': bias_summary,
+            'strategy_matrix': strategy_matrix_llm_with_contracts,
+            'auto_contract_calculation': True
+        }
+        best_result['strategy_matrix_llm'] = strategy_matrix_llm
+        best_result['llm_context'] = llm_context
+        return llm_context, strategy_matrix_llm
+
+    @staticmethod
+    def _safe_float(val):
+        try:
+            return float(val) if val is not None else 0.0
+        except Exception:
+            return 0.0
+
+    def _rank_and_pick_best_strategies(self, filtered_results_clean):
+        results_sorted = sorted(filtered_results_clean,
+                                key=lambda x: (self._safe_float(x.get('profit_factor')), self._safe_float(x.get('win_rate'))),
+                                reverse=True)
+        # Filter for risk-respecting configs
+        risk_ok = [r for r in results_sorted if
+                   r.get('risk_violations', 1) == 0 and r.get('daily_loss_violations', 1) == 0]
+        top_strategies = (risk_ok if risk_ok else results_sorted)[:3]
+        # Pick best
+        best = top_strategies[0] if top_strategies else None
+        return best, top_strategies
+
+    def _filter_results_by_rules(self, max_drawdown, min_profit_factor, min_trades, results):
+        filtered_results = []
+        filtered_out_configs = []
+        for r in results:
+            required_keys = ['profit_factor', 'num_trades', 'max_drawdown']
+            missing_keys = [k for k in required_keys if k not in r]
+            if missing_keys:
+                print(f"[DEBUG] Skipping config due to missing keys: {missing_keys}. Available keys: {list(r.keys())}")
+                r['error'] = f"Missing keys: {missing_keys}"
+                filtered_out_configs.append(r)
+                continue
+            pf = r['profit_factor']
+            nt = r['num_trades']
+            drawdown = r['max_drawdown']
+            discard = False
+            if (min_profit_factor > 0 and pf < min_profit_factor):
+                discard = True
+            if (min_trades > 0 and nt < min_trades):
+                discard = True
+            if (max_drawdown < float('inf') and drawdown > max_drawdown):
+                discard = True
+            if discard:
+                filtered_out_configs.append(r)
+            else:
+                filtered_results.append(r)
+
+        # Sort by profit factor, fallback win rate
+        def safe_float(val):
+            try:
+                return float(val) if val is not None else 0.0
+            except Exception:
+                return 0.0
+
+        # Filter out configs with None for profit_factor or win_rate, print warning
+        filtered_results_clean = []
+        for r in filtered_results:
+            pf = r.get('profit_factor', 0.0)
+            wr = r.get('win_rate', 0.0)
+            if pf is None or wr is None:
+                print(
+                    f"[WARNING] Skipping config due to NoneType in metrics: profit_factor={pf}, win_rate={wr}, config={r}")
+                filtered_out_configs.append(r)
+            else:
+                filtered_results_clean.append(r)
+        return filtered_out_configs, filtered_results, filtered_results_clean
+
+    def _simulate_all_configs(self, df, df_1min, df_with_preds, results, threshold_grid, total_configs, user_params):
         for i, (long_t, short_t, min_vol, bar_color) in enumerate(threshold_grid):
             # Fallback metrics always defined at the start of each iteration
             metrics = {
@@ -272,9 +663,9 @@ class RegressionPredictorAgent:
                 'max_drawdown': None
             }
             # TEMP DEV MODE: Early-stop after 5 strategy simulations for faster development. Remove or increase for full runs.
-            # if i >= 5:
-            #     print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
-            #     break
+            if i >= 5:
+                print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
+                break
             if regression_backtest_tracker is not None:
                 if regression_backtest_tracker.get("cancel_requested"):
                     regression_backtest_tracker["status"] = "cancelled"
@@ -294,7 +685,8 @@ class RegressionPredictorAgent:
             if 'predicted_high' not in df.columns or 'predicted_low' not in df.columns:
                 # Compute features if needed
                 df = self._compute_group_1_features(df)
-                features = self.feature_names or ['fastavg', 'close_vs_ema_10', 'high_15min', 'macd', 'high_vs_ema_5_high', 'atr']
+                features = self.feature_names or ['fastavg', 'close_vs_ema_10', 'high_15min', 'macd',
+                                                  'high_vs_ema_5_high', 'atr']
                 X = df[features]
                 X_scaled = self.scaler.transform(X.values)
                 df['predicted_high'] = self.model_high.predict(X_scaled)
@@ -352,7 +744,8 @@ class RegressionPredictorAgent:
                     gross_profit = df_trades[df_trades["pnl"] > 0]["pnl"].sum()
                     gross_loss = abs(df_trades[df_trades["pnl"] < 0]["pnl"].sum())
                     metrics["profit_factor"] = (gross_profit / gross_loss) if gross_loss > 0 else None
-                    metrics["max_drawdown"] = (df_trades["pnl"].cumsum().cummax() - df_trades["pnl"].cumsum()).max() if not df_trades.empty else None
+                    metrics["max_drawdown"] = (df_trades["pnl"].cumsum().cummax() - df_trades[
+                        "pnl"].cumsum()).max() if not df_trades.empty else None
                     metrics["avg_return"] = metrics["avg_pnl"]
                     # direction_tag
                     directions = set()
@@ -385,7 +778,8 @@ class RegressionPredictorAgent:
                         daily_pnl = df_trades.groupby('date')['pnl'].sum().values
                     metrics['daily_loss_violations'] = sum(abs(x) > max_daily_risk for x in daily_pnl)
                 else:
-                    print(f"[WARNING] No trades or no trade signals for config: long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}")
+                    print(
+                        f"[WARNING] No trades or no trade signals for config: long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}")
                     # metrics fallback already defined at top of loop
                 print(f"[Debug] Trades simulated: {len(trades)}")
                 if not df_trades.empty:
@@ -402,10 +796,13 @@ class RegressionPredictorAgent:
             except Exception as e:
                 import traceback
                 tb = traceback.format_exc()
-                print(f"\n❌ Backtest failed at config #{i+1} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color})\n{tb}")
-                sim = {'error': f'Backtest failed at config #{i+1} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color})\n{tb}',
-                       'config': {'long_threshold': long_t, 'short_threshold': short_t, 'min_volume_pct_change': min_vol, 'bar_color_filter': bar_color},
-                       'traceback': tb}
+                print(
+                    f"\n❌ Backtest failed at config #{i + 1} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color})\n{tb}")
+                sim = {
+                    'error': f'Backtest failed at config #{i + 1} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color})\n{tb}',
+                    'config': {'long_threshold': long_t, 'short_threshold': short_t, 'min_volume_pct_change': min_vol,
+                               'bar_color_filter': bar_color},
+                    'traceback': tb}
             self.user_params = old_params
             backtest_summary = sim.get('backtest_summary', {})
             # --- Debug: Print computed metrics ---
@@ -473,422 +870,28 @@ class RegressionPredictorAgent:
                 'stop_loss_dollars': sim.get('stop_loss_dollars', 0),
             }
             results[-1].update(result_row)
-        # --- Rule-based filtering ---
-        filtered_results = []
-        filtered_out_configs = []
-        for r in results:
-            required_keys = ['profit_factor', 'num_trades', 'max_drawdown']
-            missing_keys = [k for k in required_keys if k not in r]
-            if missing_keys:
-                print(f"[DEBUG] Skipping config due to missing keys: {missing_keys}. Available keys: {list(r.keys())}")
-                r['error'] = f"Missing keys: {missing_keys}"
-                filtered_out_configs.append(r)
-                continue
-            pf = r['profit_factor']
-            nt = r['num_trades']
-            drawdown = r['max_drawdown']
-            discard = False
-            if (min_profit_factor > 0 and pf < min_profit_factor):
-                discard = True
-            if (min_trades > 0 and nt < min_trades):
-                discard = True
-            if (max_drawdown < float('inf') and drawdown > max_drawdown):
-                discard = True
-            if discard:
-                filtered_out_configs.append(r)
-            else:
-                filtered_results.append(r)
-        # Sort by profit factor, fallback win rate
-        def safe_float(val):
-            try:
-                return float(val) if val is not None else 0.0
-            except Exception:
-                return 0.0
-        # Filter out configs with None for profit_factor or win_rate, print warning
-        filtered_results_clean = []
-        for r in filtered_results:
-            pf = r.get('profit_factor', 0.0)
-            wr = r.get('win_rate', 0.0)
-            if pf is None or wr is None:
-                print(f"[WARNING] Skipping config due to NoneType in metrics: profit_factor={pf}, win_rate={wr}, config={r}")
-                filtered_out_configs.append(r)
-            else:
-                filtered_results_clean.append(r)
-        results_sorted = sorted(filtered_results_clean, key=lambda x: (safe_float(x.get('profit_factor')), safe_float(x.get('win_rate'))), reverse=True)
-        # Filter for risk-respecting configs
-        risk_ok = [r for r in results_sorted if r.get('risk_violations', 1) == 0 and r.get('daily_loss_violations', 1) == 0]
-        top_strategies = (risk_ok if risk_ok else results_sorted)[:3]
-        # Pick best
-        best = top_strategies[0] if top_strategies else None
-        best_result = best['sim'] if best and 'sim' in best else None
-        # Compose explanation
-        if best:
-            explanation = (
-                f"Best thresholds: long_delta={best.get('long_threshold')}, short_delta={best.get('short_threshold')}. "
-                f"Profit factor: {best.get('profit_factor', 0.0):.2f}, "
-                f"Win rate: {best.get('win_rate', 0.0):.1f}%. "
-                f"Risk violations: {best.get('risk_violations', 0)}, "
-                f"Daily loss violations: {best.get('daily_loss_violations', 0)}."
-            )
-            if best_result:
-                best_result['threshold_search'] = {
-                    'chosen_long_threshold': best.get('long_threshold'),
-                    'chosen_short_threshold': best.get('short_threshold'),
-                    'risk_meta': {
-                        'risk_violations': best.get('risk_violations', 0),
-                        'daily_loss_violations': best.get('daily_loss_violations', 0)
-                    },
-                    'explanation': explanation
-                }
-                best_result['llm_summary'] = best_result.get('llm_summary', '') + ' ' + explanation
-                # Add top_strategies and recommendation
-                best_result['top_strategies'] = [
-                    {
-                        'long_threshold': r['long_threshold'],
-                        'short_threshold': r['short_threshold'],
-                        'min_volume_pct_change': r['min_volume_pct_change'],
-                        'bar_color_filter': r['bar_color_filter'],
-                        'profit_factor': r['profit_factor'],
-                        'win_rate': r['win_rate'],
-                        'avg_return': r['avg_return'],
-                        'max_drawdown': r['max_drawdown'],
-                        'num_trades': r['num_trades'],
-                        'risk_violations': r['risk_violations'],
-                        'daily_loss_violations': r['daily_loss_violations'],
-                        'direction_tag': r['direction_tag']
-                    } for r in top_strategies
-                ]
-                best_result['recommended_strategy_summary'] = (
-                    f"Strategy with long threshold {best.get('long_threshold')} and short threshold {best.get('short_threshold')} "
-                    f"yielded the highest profit factor ({best.get('profit_factor', 0.0):.2f}) and stayed within risk limits."
-                )
-                best_result['filtered_out_configs'] = filtered_out_configs
-                best_result['filter_meta'] = {
-                    'min_trades': min_trades,
-                    'max_drawdown': max_drawdown,
-                    'min_profit_factor': min_profit_factor
-                }
-                # --- Build strategy_matrix_llm for LLM use ---
-                strategy_matrix_llm = []
-                for r in filtered_results:
-                    entry = {
-                        'long_threshold': r.get('long_threshold'),
-                        'short_threshold': r.get('short_threshold'),
-                        'min_volume_pct_change': r.get('min_volume_pct_change'),
-                        'bar_color_filter': r.get('bar_color_filter'),
-                        'direction_tag': r.get('direction_tag'),
-                        'profit_factor': r.get('profit_factor'),
-                        'win_rate': r.get('win_rate'),
-                        'avg_return': r.get('avg_return'),
-                        'num_trades': r.get('num_trades'),
-                        'max_drawdown': r.get('max_drawdown'),
-                        'risk_violations': r.get('risk_violations'),
-                        'daily_loss_violations': r.get('daily_loss_violations'),
-                    }
-                    # Optionally add more contextually useful fields here
-                    strategy_matrix_llm.append(entry)
-                # --- Prepare LLM context ---
-                # User risk settings
-                user_risk_settings = {
-                    'max_risk_per_trade': float((user_params or self.user_params).get('max_risk_per_trade', 30)),
-                    'max_daily_risk': float((user_params or self.user_params).get('max_daily_risk', 100)),
-                    'tick_size': float((user_params or self.user_params).get('tick_size', 0.25)),
-                    'tick_value': float((user_params or self.user_params).get('tick_value', 1.25)),
-                }
-                # Bias summary placeholder
-                bias_summary = (user_params or self.user_params).get('bias_summary',
-                    "Bullish bias detected on 15min and hourly. Volatility elevated.")
-                # Add suggested_contracts to each strategy
-                strategy_matrix_llm_with_contracts = []
-                for strat in strategy_matrix_llm:
-                    stop_ticks = int((user_params or self.user_params).get('stop_ticks', 10))
-                    tick_value = user_risk_settings['tick_value']
-                    stop_loss_dollars = stop_ticks * tick_value
-                    max_risk = user_risk_settings['max_risk_per_trade']
-                    suggested_contracts = int(max(1, max_risk // stop_loss_dollars)) if stop_loss_dollars > 0 else 1
-                    strat_with_contracts = dict(strat)
-                    strat_with_contracts['suggested_contracts'] = suggested_contracts
-                    strat_with_contracts['stop_ticks'] = stop_ticks
-                    strat_with_contracts['stop_loss_dollars'] = stop_loss_dollars
-                    strategy_matrix_llm_with_contracts.append(strat_with_contracts)
-                llm_context = {
-                    'user_risk_settings': user_risk_settings,
-                    'bias_summary': bias_summary,
-                    'strategy_matrix': strategy_matrix_llm_with_contracts,
-                    'auto_contract_calculation': True
-                }
-                best_result['strategy_matrix_llm'] = strategy_matrix_llm
-                best_result['llm_context'] = llm_context
-                # --- Real LLM output for recommended strategy ---
-                model_name = CONFIG.get("image_analysis_model", "gpt-4o")
-                provider = CONFIG.get("model_provider", "openai")
-                api_key = CONFIG.get("openai_api_key") if provider == "openai" else CONFIG.get("gemini_api_key")
-                bias_summary = llm_context.get('bias_summary')
-                if not bias_summary or not isinstance(bias_summary, str) or not bias_summary.strip():
-                    best_result['llm_strategy_recommendation'] = {
-                        'selected_strategy': None,
-                        'alternative_strategies': [],
-                        'llm_rationale': "Bias context is missing. Please run the Multi-Timeframe Agent first.",
-                        'model_used': model_name,
-                        'tokens_used': 0,
-                        'cost_usd': 0.0,
-                        'llm_error': True
-                    }
-                    return best_result
-                # --- Build prompt ---
-                top_strats = strategy_matrix_llm[:10]
-                user_risk = llm_context['user_risk_settings']
-                prompt = (
-                    f"You are a trading strategy selection assistant.\n"
-                    f"\nBIAS SUMMARY:\n{bias_summary}\n"
-                    f"\nUSER RISK SETTINGS:\n"
-                    f"- Max risk per trade: ${user_risk['max_risk_per_trade']}\n"
-                    f"- Max daily risk: ${user_risk['max_daily_risk']}\n"
-                    f"- Tick size: {user_risk['tick_size']}\n"
-                    f"- Tick value: {user_risk['tick_value']}\n"
-                    f"\nSTRATEGY CONFIGURATIONS (Top 10):\n"
-                )
-                for i, strat in enumerate(top_strats):
-                    prompt += f"{i+1}. Long threshold: {strat['long_threshold']}, Short threshold: {strat['short_threshold']}, "
-                    prompt += f"Min volume % change: {strat['min_volume_pct_change']}, Bar color filter: {strat['bar_color_filter']}, "
-                    prompt += f"Profit factor: {strat['profit_factor']:.2f}, Win rate: {strat['win_rate']:.2f}, "
-                    prompt += f"Avg return: {strat['avg_return']:.2f}, Max drawdown: {strat['max_drawdown']:.2f}, Trades: {strat['num_trades']}\n"
-                prompt += (
-                    "\nPlease recommend the single best strategy for the current bias and risk settings, and suggest 1-2 alternatives. "
-                    "Explain your rationale clearly. Respond ONLY in valid JSON with the following fields:\n"
-                    "{\n  'selected_strategy': {...},\n  'alternative_strategies': [...],\n  'llm_rationale': '... explanation ...'\n}"
-                )
-                llm_response = None
-                tokens_used = 0
-                cost_usd = 0.0
-                try:
-                    if model_name.startswith("gemini-"):
-                        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-                        headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
-                        body = {"contents": [{"parts": [{"text": prompt}]}]}
-                        resp = requests.post(endpoint, headers=headers, json=body, timeout=60)
-                        resp.raise_for_status()
-                        data = resp.json()
-                        content = data["candidates"][0]["content"]["parts"][0]["text"]
-                        usage = data.get('usage', {})
-                        tokens_used = usage.get('totalTokenCount', 0)
-                        cost_usd = usage.get('totalCostUsd', 0.0)
-                    elif model_name.startswith("gpt-4") or model_name.startswith("gpt-3"):
-                        endpoint = "https://api.openai.com/v1/chat/completions"
-                        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-                        payload = {
-                            "model": model_name,
-                            "messages": [{"role": "user", "content": prompt}],
-                            "max_tokens": 1000
-                        }
-                        resp = requests.post(endpoint, headers=headers, json=payload, timeout=60)
-                        resp.raise_for_status()
-                        data = resp.json()
-                        content = data["choices"][0]["message"]["content"]
-                        usage = data.get('usage', {})
-                        tokens_used = usage.get('total_tokens', 0)
-                        # Estimate cost for gpt-4o: $5/1M tokens
-                        cost_usd = (tokens_used / 1_000_000) * 5
-                    else:
-                        raise Exception(f"Unknown or unsupported model_name '{model_name}'")
-                    # Parse JSON from LLM response
-                    cleaned = content.strip()
-                    if cleaned.startswith("```json"):
-                        cleaned = cleaned[7:]
-                    if cleaned.startswith("```"):
-                        cleaned = cleaned[3:]
-                    if cleaned.endswith("```"):
-                        cleaned = cleaned[:-3]
-                    llm_response = json.loads(cleaned)
-                    best_result['llm_strategy_recommendation'] = {
-                        'selected_strategy': llm_response.get('selected_strategy'),
-                        'alternative_strategies': llm_response.get('alternative_strategies', []),
-                        'llm_rationale': llm_response.get('llm_rationale', ''),
-                        'model_used': model_name,
-                        'tokens_used': tokens_used,
-                        'cost_usd': cost_usd
-                    }
-                except Exception as e:
-                    best_result['llm_strategy_recommendation'] = {
-                        'selected_strategy': strategy_matrix_llm[0] if strategy_matrix_llm else None,
-                        'alternative_strategies': strategy_matrix_llm[1:3] if len(strategy_matrix_llm) > 1 else [],
-                        'llm_rationale': f"LLM call failed: {e}. Falling back to rule-based recommendation.",
-                        'model_used': model_name,
-                        'tokens_used': tokens_used,
-                        'cost_usd': cost_usd,
-                        'llm_error': True
-                    }
-        else:
-            best_result = {'feedback': 'No valid strategy configuration found.', 'filtered_out_configs': filtered_out_configs, 'filter_meta': {
-                'min_trades': min_trades,
-                'max_drawdown': max_drawdown,
-                'min_profit_factor': min_profit_factor
-            }, 'strategy_matrix_llm': strategy_matrix_llm, 'llm_context': llm_context,
-            'llm_strategy_recommendation': {
-                'selected_strategy': None,
-                'alternative_strategies': [],
-                'llm_rationale': "No valid strategies to recommend."
-            }}
-        # Expand sim dict into separate columns for the CSV
-        expanded_results = []
-        for row in results:
-            base = row.copy()
-            sim = base.pop('sim', {})
-            # Remove unserializable 'results' key from sim if present
-            if isinstance(sim, dict) and 'results' in sim:
-                sim = sim.copy()
-                sim.pop('results', None)
-            # Flatten sim into base, but keep trades (for later export)
-            if isinstance(sim, dict):
-                for k, v in sim.items():
-                    if k == 'trades':
-                        base['sim_trades'] = v  # keep for later
-                    else:
-                        base[f'sim_{k}'] = v
-            expanded_results.append(base)
-        # Only keep relevant columns for EDA/LLM
-        cleaned_results = []
-        for row in expanded_results:
-            cleaned_row = {
-                'long_threshold': row.get('long_threshold'),
-                'short_threshold': row.get('short_threshold'),
-                'min_volume_pct_change': row.get('min_volume_pct_change'),
-                'bar_color_filter': row.get('bar_color_filter'),
-                'profit_factor': row.get('profit_factor'),
-                'win_rate': row.get('win_rate'),
-                'avg_return': row.get('avg_return'),
-                'avg_pnl': row.get('avg_pnl'),
-                'max_drawdown': row.get('max_drawdown'),
-                'num_trades': row.get('num_trades'),
-                'risk_violations': row.get('risk_violations'),
-                'daily_loss_violations': row.get('daily_loss_violations'),
-                'direction_tag': row.get('direction_tag'),
-                'suggested_contracts': row.get('suggested_contracts'),
-                'stop_ticks': row.get('stop_ticks'),
-                'stop_loss_dollars': row.get('stop_loss_dollars'),
-                'error': row.get('sim_error', ''),
-                'sim_trades': row.get('sim_trades', []),
-                'pnl': row.get('total_pnl', None),
-                'win_rate_%': row.get('win_rate', None),
-                'profit_factor': row.get('profit_factor', None),
-                'drawdown_$': row.get('max_drawdown', None),
-                'avg_daily_pnl': row.get('avg_pnl', None),
-                'avg_trades_per_day': row.get('avg_trades_per_day', None),
-                'max_consec_losses': row.get('max_consec_losses', None),
-                'outlier_count_3sigma': row.get('outlier_count_3sigma', None),
-            }
-            cleaned_results.append(cleaned_row)
-        # Build DataFrame
-        df_results = pd.DataFrame(cleaned_results)
-        print(f"[SUMMARY] Total rows: {len(df_results)}")
-        print(f"[SUMMARY] Columns: {df_results.columns.tolist()}")
-        # Find best/worst by total_pnl if present, else by avg_return
-        best_idx, worst_idx = None, None
-        if 'avg_return' in df_results.columns and df_results['avg_return'].notnull().any():
-            best_idx = df_results['avg_return'].idxmax()
-            worst_idx = df_results['avg_return'].idxmin()
-        # Print best/worst summaries
-        for label, idx in [('best', best_idx), ('worst', worst_idx)]:
-            if idx is not None and idx in df_results.index:
-                row = df_results.loc[idx]
-                print(f"[SUMMARY] {label.title()} row:")
-                print(row.drop('sim_trades'))
-                trades = row['sim_trades']
-                if not isinstance(trades, list) or len(trades) == 0:
-                    print(f"[WARNING] {label.title()} strategy trades list is empty or malformed.")
-            else:
-                print(f"[WARNING] No {label} row found.")
-        # Save cleaned results (excluding sim_trades) to CSV
-        save_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'uploaded_csvs', 'strategy_grid_results.csv'))
-        df_results.drop(columns=['sim_trades'], errors='ignore').to_csv(save_path, index=False)
-        # Save trades for best/worst using simulate_trades (ensures consistent formatting)
-        if best_idx is not None:
-            self.simulate_trades(config_idx=best_idx, label='best')
-        if worst_idx is not None:
-            # If only one strategy, best and worst are the same
-            if best_idx == worst_idx:
-                self.simulate_trades(config_idx=best_idx, label='worst')
-            else:
-                self.simulate_trades(config_idx=worst_idx, label='worst')
-        # --- Multi-Heatmap Visualization ---
-        import matplotlib.pyplot as plt
-        import seaborn as sns
+        return df_with_preds
 
-        df = pd.DataFrame(cleaned_results)
-        print(f"[DEBUG] Heatmap DataFrame columns: {df.columns.tolist()} shape: {df.shape}")
-        required_cols = ['long_threshold', 'short_threshold', 'min_volume_pct_change', 'bar_color_filter', 'win_rate', 'avg_pnl']
-        missing_cols = [col for col in required_cols if col not in df.columns]
-        if missing_cols:
-            print(f"[WARNING] Cannot plot heatmaps, missing columns: {missing_cols}")
-        else:
-            min_vols = [0.0, 0.025, 0.05]
-            bar_colors = [False, True]
-            fig, axes = plt.subplots(2, 3, figsize=(18, 10))
-            for i, min_vol in enumerate(min_vols):
-                for j, bar_color in enumerate(bar_colors):
-                    ax = axes[j, i]
-                    sub = df[(df['min_volume_pct_change'] == min_vol) & (df['bar_color_filter'] == bar_color)]
-                    if sub.empty:
-                        ax.set_title(f"min_vol={min_vol}, bar_color={bar_color}\n(No data)")
-                        ax.axis('off')
-                        continue
-                    pivot = sub.pivot_table(index='long_threshold', columns='short_threshold', values='win_rate', aggfunc='mean')
-                    if pivot.isnull().all().all():
-                        # fallback to avg_pnl
-                        pivot = sub.pivot_table(index='long_threshold', columns='short_threshold', values='avg_pnl', aggfunc='mean')
-                        value_label = 'avg_pnl'
-                    else:
-                        value_label = 'win_rate'
-                    sns.heatmap(pivot, annot=True, fmt='.2f', cmap='viridis', cbar=True, ax=ax)
-                    ax.set_title(f"min_vol={min_vol}, bar_color={bar_color}\n({value_label})")
-                    ax.set_xlabel('short_threshold')
-                    ax.set_ylabel('long_threshold')
-            plt.tight_layout()
-            # Save to intra_algo/research_agent/uploaded_csvs/heatmap_debug.png using project-relative path
-            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # .../research_agent
-            heatmap_path = os.path.join(project_root, 'uploaded_csvs', 'heatmap_debug.png')
-            plt.savefig(heatmap_path)
-            plt.close()
-            print(f"[INFO] Heatmap saved to {heatmap_path}")
-        # After saving the trades plot for the best config, also show the metrics/params table in a Plotly window
-        if best_result and 'trades' in best_result and best_result['trades']:
-            regression_plot_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'uploaded_csvs', 'regression_trades_plot.html'))
-            dashboard = AnalyzerDashboard(df_with_preds, pd.DataFrame())
-            dashboard.plot_trades_and_predictions_regression_agent(
-                trade_df=pd.DataFrame(best_result['trades']),
-                max_trades=50,
-                save_path=regression_plot_path
-            )
-            best_result['regression_trades_plot_path'] = '/uploaded_csvs/regression_trades_plot.html'
-            # Show metrics/params table immediately after trades plot
-            # Use the best available metrics and params
-            metrics_df = None
-            params_dict = None
-            if 'top_strategies' in best_result and best_result['top_strategies']:
-                params_dict = best_result['top_strategies'][0]
-            if 'trades' in best_result and best_result['trades']:
-                trades_df = pd.DataFrame(best_result['trades'])
-                dashboard_metrics = dashboard.calculate_strategy_metrics_for_ui(trades_df)
-                if dashboard_metrics is not None and not dashboard_metrics.empty:
-                    metrics_df = dashboard_metrics
-            if metrics_df is not None and params_dict is not None:
-                dashboard.display_strategy_and_metrics_side_by_side(metrics_df, params_dict)
-        # --- Ensure result is serializable before returning ---
-        def to_serializable(obj):
-            basic_types = (str, int, float, bool, type(None))
-            if isinstance(obj, dict):
-                return {k: to_serializable(v) for k, v in obj.items() if k not in ['strategy', 'cerebro'] and (isinstance(v, basic_types) or isinstance(v, (dict, list)))}
-            elif isinstance(obj, list):
-                return [to_serializable(v) for v in obj]
-            elif isinstance(obj, basic_types):
-                if isinstance(obj, float):
-                    if math.isinf(obj) or math.isnan(obj):
-                        return None  # or 0.0 if you prefer
-                return obj
-            else:
-                return str(obj)
-        best_result_serializable = to_serializable(best_result)
-        return best_result_serializable
+    def _generate_threshold_grid(self, user_params):
+        thresholds = [0.5, 1.0, 1.5, 2.0, 2.5, 3, 3.5, 4]
+        results = []
+        max_risk_per_trade = float((user_params or self.user_params).get('max_risk_per_trade', 15.0))
+        max_daily_risk = float((user_params or self.user_params).get('max_daily_risk', 100.0))
+        max_drawdown_limit = float((user_params or self.user_params).get('max_drawdown', 100.0))
+        # --- Configurable rule-based filter params ---
+        min_trades = int((user_params or self.user_params).get('min_trades', 0))
+        max_drawdown = float((user_params or self.user_params).get('max_drawdown', float('inf')))
+        min_profit_factor = float((user_params or self.user_params).get('min_profit_factor', 0.0))
+        min_volume_pct_change_values = [0.0, 0.05]
+        bar_color_filter_values = [True, False]
+        threshold_grid = [
+            (long_t, short_t, min_vol, bar_color)
+            for long_t in thresholds
+            for short_t in thresholds
+            for min_vol in min_volume_pct_change_values
+            for bar_color in bar_color_filter_values
+        ]
+        return max_drawdown, min_profit_factor, min_trades, results, threshold_grid
 
     @staticmethod
     def _rsi(series, period=7):
@@ -907,3 +910,173 @@ class RegressionPredictorAgent:
             f"avg return {avg_return:.2f}, avg duration {avg_duration:.1f} bars, "
             f"max drawdown {max_drawdown:.2f}, profit factor {profit_factor:.2f}."
         )
+
+    def llm_select_top_strategies_from_grid(self, strategy_grid_df, bias_summary=None):
+        """
+        Use an LLM to select the top 3 strategies from the grid, considering the bias summary.
+        Returns the raw JSON response from the LLM.
+        """
+        import json
+        import datetime
+        from research_agent.config import CONFIG
+        print('[LLM] llm_select_top_strategies_from_grid called')
+        print(f'[LLM] strategy_grid_df type: {type(strategy_grid_df)}, length: {len(strategy_grid_df) if hasattr(strategy_grid_df, "__len__") else "N/A"}')
+        # Defensive: handle None or unexpected types
+        if strategy_grid_df is None:
+            print('[LLM] strategy_grid_df is None!')
+            return {"error": "No strategy grid data provided to LLM selector."}
+        # Accept DataFrame or list of dicts
+        if hasattr(strategy_grid_df, 'to_dict'):
+            grid_list = strategy_grid_df.to_dict(orient='records')
+        elif isinstance(strategy_grid_df, list):
+            grid_list = strategy_grid_df
+        else:
+            try:
+                grid_list = list(strategy_grid_df)
+            except Exception as e:
+                print(f'[LLM] strategy_grid_df could not be converted to list: {e}')
+                return {"error": f"Strategy grid data is not a DataFrame or list: {e}"}
+        if len(grid_list) > 256:
+            grid_list = grid_list[:256]
+        grid_list_clean = BaseAgent.clean_for_json(grid_list)
+        # Debug: Check for non-serializable objects in grid_list_clean
+        for i, row in enumerate(grid_list_clean):
+            for k, v in row.items():
+                try:
+                    json.dumps(v)
+                except TypeError:
+                    print(f'[LLM][DEBUG] Non-serializable value at row {i}, key "{k}": type={type(v)}, repr={repr(v)}')
+        grid_list_clean = [{k: v for k, v in r.items() if k != 'sim'} for r in grid_list_clean]
+
+        grid_json = json.dumps(grid_list_clean, indent=2)[:6000]
+        # Prepare bias string
+        bias_str = bias_summary if bias_summary else "[No bias summary provided. Please indicate this in your reasoning.]"
+        # Define llm_prompt just before use
+        llm_prompt = """
+You are a trading strategist assistant. Your task is to select the best strategies from a 256-strategy grid and an optional market bias summary.
+
+🎯 Your Goal:
+Return exactly **three trading strategies**, selected based on the data, and output them in a **fixed JSON format**. This format must always be followed **exactly as shown below** to ensure consistency.
+
+🧠 Inputs:
+- A strategy grid containing 256 rows, each with metrics like: win rate, profit factor, max drawdown, avg daily PnL, etc.
+- An optional market bias text summary that may include sector flow, macro bias, symbol news, or support/resistance levels.
+
+📋 Selection Criteria:
+- Choose based on meaningful metrics (not only PnL) — including stability, risk, win rate, and drawdown.
+- You may weight metrics differently if market bias suggests strong long/short skew or risk-aversion.
+- Use judgment to combine multiple signals into effective strategy logic.
+
+📤 **Output Format – This must be strictly followed**:
+Return your response as a JSON with the following structure:
+
+```json
+{
+  "top_strategies": [
+    {
+      "name": "Volatile Shorts",
+      "logic": "Trade when predicted short > 0.6 and candle color is red. Use only if volume spike > 5%.",
+      "direction": "short",
+      "stop_loss_ticks": 10,
+      "take_profit_ticks": 10,
+      "key_metrics": {
+        "profit_factor": 1.25,
+        "win_rate": 52.3,
+        "avg_daily_pnl": 5.2,
+        "max_drawdown": 90.0
+      },
+      "rationale": "This strategy favors short trades in high-volume environments. It has stable win rate and low drawdown, making it ideal in bearish or volatile conditions."
+    },
+    {
+      "name": "Balanced Intraday",
+      "logic": "Trade when either long/short predicted > 0.5 and candle matches direction. No volume filter.",
+      "direction": "both",
+      "stop_loss_ticks": 10,
+      "take_profit_ticks": 10,
+      "key_metrics": {
+        "profit_factor": 1.18,
+        "win_rate": 48.7,
+        "avg_daily_pnl": 6.9,
+        "max_drawdown": 100.0
+      },
+      "rationale": "This is a general-purpose strategy that performs well on both sides with decent stability. Recommended for trend-neutral sessions."
+    },
+    {
+      "name": "Momentum Longs",
+      "logic": "Trade when predicted long > 0.7 and min_volume_pct_change > 3%. Only on green candles.",
+      "direction": "long",
+      "stop_loss_ticks": 10,
+      "take_profit_ticks": 10,
+      "key_metrics": {
+        "profit_factor": 1.32,
+        "win_rate": 56.2,
+        "avg_daily_pnl": 7.5,
+        "max_drawdown": 70.0
+      },
+      "rationale": "Best performing long-biased strategy with high win rate and consistent daily returns. Ideal for strong bullish sessions."
+    }
+  ]
+}
+```
+📌 Rules:
+
+Do not return anything outside the JSON block.
+
+Always include exactly 3 strategies unless instructed otherwise.
+
+Ensure keys and structure are identical in casing and order.
+
+If market bias is empty, ignore it. If present, use it to prioritize strategy alignment.
+
+Below is the strategy grid and bias summary:
+
+STRATEGY GRID:
+{grid_json}
+
+BIAS SUMMARY:
+{bias_str}
+"""
+        # Escape all literal curly braces except placeholders
+        llm_prompt = llm_prompt.replace('{', '{{').replace('}', '}}').replace('{{grid_json}}', '{grid_json}').replace('{{bias_str}}', '{bias_str}')
+        # Build prompt
+        prompt = llm_prompt.format(grid_json=grid_json, bias_str=bias_str)
+        print(f'[LLM] Prompt length: {len(prompt)} chars')
+        # LLM config
+        model_name = CONFIG.get("model_name", "gpt-4o")
+        provider = CONFIG.get("model_provider", "openai")
+        api_key = CONFIG.get("openai_api_key") if provider == "openai" else CONFIG.get("gemini_api_key")
+        print(f'[LLM] Provider: {provider}, Model: {model_name}')
+        # Call LLM
+        try:
+            if provider == "gemini":
+                import requests
+                endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+                headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
+                body = {"contents": [{"parts": [{"text": prompt}]}]}
+                resp = requests.post(endpoint, headers=headers, json=body, timeout=60)
+                resp.raise_for_status()
+                data = resp.json()
+                content = data["candidates"][0]["content"]["parts"][0]["text"]
+                print(f'[LLM] Raw Gemini response: {content[:500]}...')
+                return json.loads(content) if content.strip().startswith('{') else content
+            elif provider == "openai":
+                import requests
+                endpoint = "https://api.openai.com/v1/chat/completions"
+                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": model_name,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 1000
+                }
+                resp = requests.post(endpoint, headers=headers, json=payload, timeout=60)
+                resp.raise_for_status()
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"]
+                print(f'[LLM] Raw OpenAI response: {content[:500]}...')
+                return json.loads(content) if content.strip().startswith('{') else content
+            else:
+                print(f'[LLM] Unknown provider: {provider}')
+                return {"error": f"Unknown LLM provider: {provider}"}
+        except Exception as e:
+            print(f'[LLM] Exception: {e}')
+            return {"error": f"LLM call failed: {e}"}

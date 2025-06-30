@@ -1439,9 +1439,36 @@ def run_regression_predictor():
     # Ensure all numpy types are converted to native Python types
     result = to_serializable(result)
     # Pass through regression_trades_plot_path if present in best_result
+    # Define which keys to keep
+    keys_to_keep = [
+        "llm_summary",
+        "recommended_strategy_summary",
+        "llm_top_strategies",
+        "llm_model_name",
+        "llm_token_usage",
+        "llm_session_total_cost",
+        "llm_cost_usd",
+        "total_cost_usd",
+    ]
+
+    # Optional: include debug items like 'filter_meta' or 'strategy_matrix_llm' as needed
+    if "filter_meta" in result:
+        keys_to_keep.append("filter_meta")
+    if "strategy_matrix_llm" in result:
+        keys_to_keep.append("strategy_matrix_llm")
+
+    # Build filtered dictionary
+    cleaned_result = {k: result[k] for k in keys_to_keep if k in result}
+
+    # Optional: add regression_trades_plot_path if relevant
     if 'regression_trades_plot_path' in result:
-        result['regression_trades_plot_path'] = result['regression_trades_plot_path']
-    return jsonify(result)
+        cleaned_result['regression_trades_plot_path'] = result['regression_trades_plot_path']
+
+    # Final conversion and return
+    cleaned_result = to_serializable(cleaned_result)
+    print("debugggg", cleaned_result)
+    return jsonify(cleaned_result)
+
 
 @app.route("/regression_backtest_progress", methods=["GET"])
 def regression_backtest_progress():

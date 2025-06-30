@@ -71,7 +71,7 @@ class MultiTimeframe3StrategiesAgent(BaseAgent):
         # Step 2: LLM-powered bias detection
         try:
             prompt = self._build_bias_prompt(input_container)
-            model_name = CONFIG["image_analysis_model"]
+            model_name = CONFIG["model_name"]
             # --- Model/provider routing based on model_name only ---
             if model_name.startswith("gemini-"):
                 api_key = CONFIG.get("gemini_api_key") or os.getenv("GEMINI_API_KEY")

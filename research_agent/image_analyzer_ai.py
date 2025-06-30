@@ -166,7 +166,7 @@ class ImageAnalyzerAI:
         image_data = f"data:image/{mime_type};base64,{base64.b64encode(image_bytes).decode()}"
 
         payload = {
-            "model": CONFIG["image_analysis_model_openai"],
+            "model": CONFIG["model_name"],
             "messages": [
                 {"role": "user", "content": [
                     {"type": "text", "text": prompt},
@@ -193,7 +193,7 @@ class ImageAnalyzerAI:
         return {"raw_output": content}
 
     def _analyze_with_gemini(self, image_bytes, prompt):
-        model_name = CONFIG["image_analysis_model"]
+        model_name = CONFIG["model_name"]
         endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
         headers = {
             "Content-Type": "application/json",

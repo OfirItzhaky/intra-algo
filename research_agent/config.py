@@ -9,8 +9,7 @@ today = datetime.today().strftime("%Y-%m-%d")
 CONFIG = {
     "model_provider": "openai",
     "model_name": "gpt-4o",
-
-    "image_analysis_model": "gpt-4o",  # Vision Analysis Model for Scalping Agent
+    # Alternatives LLM
     # gemini-1.5-pro-latest
     # gpt-4o
     # gpt-4.1

@@ -30,3 +30,15 @@ class BaseAgent(ABC):
                 - summary (str): Human-readable summary of the agent's analysis and recommendations.
         """
         pass
+
+    @staticmethod
+    def clean_for_json(obj):
+        import datetime
+        if isinstance(obj, dict):
+            return {k: BaseAgent.clean_for_json(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [BaseAgent.clean_for_json(v) for v in obj]
+        elif isinstance(obj, (datetime.datetime, datetime.date)):
+            return obj.isoformat()
+        else:
+            return obj

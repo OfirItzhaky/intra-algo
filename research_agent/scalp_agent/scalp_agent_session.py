@@ -83,7 +83,7 @@ class ScalpAgentSession:
         import requests
         import os
         from dotenv import load_dotenv
-        model_name = CONFIG["image_analysis_model"]
+        model_name = CONFIG["model_name"]
         print(f"[ScalpAgentSession] Model: {model_name}")
         if model_name.startswith("gemini-"):
             # --- Gemini Vision API ---

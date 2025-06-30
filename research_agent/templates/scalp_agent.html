@@ -877,6 +877,112 @@ document.addEventListener('DOMContentLoaded', function() {
                             // Optionally, you can still show a message below the heatmap
                             regResultDiv.innerHTML += `<div class="mt-3"><h5>Trades & Predictions Visualization opened in a new tab.</h5></div>`;
                           }
+                          // After rendering the heatmap and metrics, add:
+                          if (result.llm_top_strategies) {
+                            console.log('[LLM DEBUG] llm_top_strategies:', result.llm_top_strategies, 'type:', typeof result.llm_top_strategies);
+                            let llmObj = result.llm_top_strategies;
+                            if (llmObj && typeof llmObj === 'object' && Array.isArray(llmObj.top_strategies)) {
+                              console.log('[LLM DEBUG] Rendering LLM table, top_strategies length:', llmObj.top_strategies.length);
+                              pretty = `<div class='mb-2'><b>Top Strategies (LLM Selected):</b></div>`;
+                              pretty += `<div class='table-responsive'><table class='table table-sm table-bordered mb-2'><thead class='table-light'><tr>`;
+                              pretty += `<th>Name</th><th>Logic</th><th>Direction</th><th>Stop Loss (ticks)</th><th>Take Profit (ticks)</th><th>Profit Factor</th><th>Win Rate</th><th>Avg Daily PnL</th><th>Max Drawdown</th><th>Rationale</th>`;
+                              pretty += `</tr></thead><tbody>`;
+                              llmObj.top_strategies.forEach((s) => {
+                                pretty += `<tr>`;
+                                pretty += `<td>${s.name ?? '-'}</td>`;
+                                pretty += `<td>${s.logic ?? '-'}</td>`;
+                                pretty += `<td>${s.direction ?? '-'}</td>`;
+                                pretty += `<td>${s.stop_loss_ticks ?? '-'}</td>`;
+                                pretty += `<td>${s.take_profit_ticks ?? '-'}</td>`;
+                                pretty += `<td>${s.key_metrics?.profit_factor ?? '-'}</td>`;
+                                pretty += `<td>${s.key_metrics?.win_rate ?? '-'}</td>`;
+                                pretty += `<td>${s.key_metrics?.avg_daily_pnl ?? '-'}</td>`;
+                                pretty += `<td>${s.key_metrics?.max_drawdown ?? '-'}</td>`;
+                                pretty += `<td>${s.rationale ?? '-'}</td>`;
+                                pretty += `</tr>`;
+                              });
+                              pretty += `</tbody></table></div>`;
+                              if (llmObj.explanation || llmObj.rationale) {
+                                pretty += `<div class='alert alert-info mt-2'><b>LLM Explanation:</b> ${llmObj.explanation ?? llmObj.rationale}</div>`;
+                              }
+                            } else {
+                              console.log('[LLM DEBUG] Fallback rendering for llm_top_strategies:', llmObj);
+                              // fallback: pretty print
+                              if (typeof result.llm_top_strategies === 'object') {
+                                pretty = `<pre>${JSON.stringify(result.llm_top_strategies, null, 2)}</pre>`;
+                              } else {
+                                pretty = `<pre>${result.llm_top_strategies}</pre>`;
+                              }
+                            }
+                            llmInsightsDiv = document.getElementById('llm-strategy-insights-block');
+                            if (!llmInsightsDiv) {
+                                llmInsightsDiv = document.createElement('div');
+                                llmInsightsDiv.id = 'llm-strategy-insights-block';
+                                regResultDiv.appendChild(llmInsightsDiv);
+                            }
+                            let llmInsightsHtml = `<div class='card mt-3'>
+                                <div class='card-header bg-primary text-white' style='cursor:pointer;' onclick='this.nextElementSibling.style.display = (this.nextElementSibling.style.display === "none" ? "block" : "none")'>
+                                    <b>📊 LLM Strategy Insights (Click to Expand/Collapse)</b>
+                                </div>
+                                <div class='card-body' style='display:block;'>`;
+                            // llm_summary
+                            if (result.llm_summary) {
+                                llmInsightsHtml += `<div class='mb-2'><b>LLM Summary:</b><br>${result.llm_summary}</div>`;
+                            }
+                            // recommended_strategy_summary
+                            if (result.recommended_strategy_summary) {
+                                llmInsightsHtml += `<div class='mb-2'><b>Recommended Strategy:</b><br>${result.recommended_strategy_summary}</div>`;
+                            }
+                            // llm_top_strategies
+                            if (result.llm_top_strategies) {
+                                let llmObj = result.llm_top_strategies;
+                                // If it's a string, try to parse as JSON
+                                if (typeof llmObj === 'string') {
+                                    try {
+                                        llmObj = JSON.parse(llmObj);
+                                    } catch (e) {
+                                        llmInsightsHtml += `<div class='alert alert-warning'>Could not parse llm_top_strategies JSON: ${e}</div>`;
+                                        llmObj = null;
+                                    }
+                                }
+                                if (llmObj && typeof llmObj === 'object' && Array.isArray(llmObj.top_strategies)) {
+                                    llmInsightsHtml += `<div class='mb-2'><b>Top Strategies (LLM Selected):</b></div>`;
+                                    llmInsightsHtml += `<div class='table-responsive'><table class='table table-sm table-bordered mb-2'><thead class='table-light'><tr>`;
+                                    llmInsightsHtml += `<th>Name</th><th>Logic</th><th>Direction</th><th>Stop Loss (ticks)</th><th>Take Profit (ticks)</th><th>Profit Factor</th><th>Win Rate</th><th>Avg Daily PnL</th><th>Max Drawdown</th><th>Rationale</th>`;
+                                    llmInsightsHtml += `</tr></thead><tbody>`;
+                                    llmObj.top_strategies.forEach((s) => {
+                                        llmInsightsHtml += `<tr>`;
+                                        llmInsightsHtml += `<td>${s.name ?? '-'}</td>`;
+                                        llmInsightsHtml += `<td>${s.logic ?? '-'}</td>`;
+                                        llmInsightsHtml += `<td>${s.direction ?? '-'}</td>`;
+                                        llmInsightsHtml += `<td>${s.stop_loss_ticks ?? '-'}</td>`;
+                                        llmInsightsHtml += `<td>${s.take_profit_ticks ?? '-'}</td>`;
+                                        llmInsightsHtml += `<td>${s.key_metrics?.profit_factor ?? '-'}</td>`;
+                                        llmInsightsHtml += `<td>${s.key_metrics?.win_rate ?? '-'}</td>`;
+                                        llmInsightsHtml += `<td>${s.key_metrics?.avg_daily_pnl ?? '-'}</td>`;
+                                        llmInsightsHtml += `<td>${s.key_metrics?.max_drawdown ?? '-'}</td>`;
+                                        llmInsightsHtml += `<td>${s.rationale ?? '-'}</td>`;
+                                        llmInsightsHtml += `</tr>`;
+                                    });
+                                    llmInsightsHtml += `</tbody></table></div>`;
+                                    if (llmObj.explanation || llmObj.rationale) {
+                                        llmInsightsHtml += `<div class='alert alert-info mt-2'><b>LLM Explanation:</b> ${llmObj.explanation ?? llmObj.rationale}</div>`;
+                                    }
+                                } else if (llmObj) {
+                                    llmInsightsHtml += `<pre>${JSON.stringify(llmObj, null, 2)}</pre>`;
+                                }
+                            }
+                            // Cost fields
+                            let costFields = [];
+                            if (result.llm_cost_usd !== undefined) costFields.push(`LLM Cost: $${result.llm_cost_usd}`);
+                            if (result.llm_model_name) costFields.push(`Model: ${result.llm_model_name}`);
+                            if (result.llm_token_usage !== undefined) costFields.push(`Tokens: ${result.llm_token_usage}`);
+                            if (costFields.length > 0) {
+                                llmInsightsHtml += `<div class='small text-muted mt-2'>${costFields.join(' | ')}</div>`;
+                            }
+                            llmInsightsHtml += `</div></div>`;
+                            llmInsightsDiv.innerHTML = llmInsightsHtml;
+                          }
                         })
                         .catch(err => {
                           regBtn.disabled = false;
@@ -1234,26 +1340,124 @@ document.addEventListener('DOMContentLoaded', function() {
             // Optionally, you can still show a message below the heatmap
             regResultDiv.innerHTML += `<div class="mt-3"><h5>Trades & Predictions Visualization opened in a new tab.</h5></div>`;
           }
+          // After rendering the heatmap and metrics, add:
+          if (result.llm_top_strategies) {
+            console.log('[LLM DEBUG] llm_top_strategies:', result.llm_top_strategies, 'type:', typeof result.llm_top_strategies);
+            let llmObj = result.llm_top_strategies;
+            if (llmObj && typeof llmObj === 'object' && Array.isArray(llmObj.top_strategies)) {
+              console.log('[LLM DEBUG] Rendering LLM table, top_strategies length:', llmObj.top_strategies.length);
+              pretty = `<div class='mb-2'><b>Top Strategies (LLM Selected):</b></div>`;
+              pretty += `<div class='table-responsive'><table class='table table-sm table-bordered mb-2'><thead class='table-light'><tr>`;
+              pretty += `<th>Name</th><th>Logic</th><th>Direction</th><th>Stop Loss (ticks)</th><th>Take Profit (ticks)</th><th>Profit Factor</th><th>Win Rate</th><th>Avg Daily PnL</th><th>Max Drawdown</th><th>Rationale</th>`;
+              pretty += `</tr></thead><tbody>`;
+              llmObj.top_strategies.forEach((s) => {
+                pretty += `<tr>`;
+                pretty += `<td>${s.name ?? '-'}</td>`;
+                pretty += `<td>${s.logic ?? '-'}</td>`;
+                pretty += `<td>${s.direction ?? '-'}</td>`;
+                pretty += `<td>${s.stop_loss_ticks ?? '-'}</td>`;
+                pretty += `<td>${s.take_profit_ticks ?? '-'}</td>`;
+                pretty += `<td>${s.key_metrics?.profit_factor ?? '-'}</td>`;
+                pretty += `<td>${s.key_metrics?.win_rate ?? '-'}</td>`;
+                pretty += `<td>${s.key_metrics?.avg_daily_pnl ?? '-'}</td>`;
+                pretty += `<td>${s.key_metrics?.max_drawdown ?? '-'}</td>`;
+                pretty += `<td>${s.rationale ?? '-'}</td>`;
+                pretty += `</tr>`;
+              });
+              pretty += `</tbody></table></div>`;
+              if (llmObj.explanation || llmObj.rationale) {
+                pretty += `<div class='alert alert-info mt-2'><b>LLM Explanation:</b> ${llmObj.explanation ?? llmObj.rationale}</div>`;
+              }
+            } else {
+              console.log('[LLM DEBUG] Fallback rendering for llm_top_strategies:', llmObj);
+              // fallback: pretty print
+              if (typeof result.llm_top_strategies === 'object') {
+                pretty = `<pre>${JSON.stringify(result.llm_top_strategies, null, 2)}</pre>`;
+              } else {
+                pretty = `<pre>${result.llm_top_strategies}</pre>`;
+              }
+            }
+            llmInsightsDiv = document.getElementById('llm-strategy-insights-block');
+            if (!llmInsightsDiv) {
+                llmInsightsDiv = document.createElement('div');
+                llmInsightsDiv.id = 'llm-strategy-insights-block';
+                regResultDiv.appendChild(llmInsightsDiv);
+            }
+            let llmInsightsHtml = `<div class='card mt-3'>
+                <div class='card-header bg-primary text-white' style='cursor:pointer;' onclick='this.nextElementSibling.style.display = (this.nextElementSibling.style.display === "none" ? "block" : "none")'>
+                    <b>📊 LLM Strategy Insights (Click to Expand/Collapse)</b>
+                </div>
+                <div class='card-body' style='display:block;'>`;
+            // llm_summary
+            if (result.llm_summary) {
+                llmInsightsHtml += `<div class='mb-2'><b>LLM Summary:</b><br>${result.llm_summary}</div>`;
+            }
+            // recommended_strategy_summary
+            if (result.recommended_strategy_summary) {
+                llmInsightsHtml += `<div class='mb-2'><b>Recommended Strategy:</b><br>${result.recommended_strategy_summary}</div>`;
+            }
+            // llm_top_strategies
+            if (result.llm_top_strategies) {
+                let llmObj = result.llm_top_strategies;
+                // If it's a string, try to parse as JSON
+                if (typeof llmObj === 'string') {
+                    try {
+                        llmObj = JSON.parse(llmObj);
+                    } catch (e) {
+                        llmInsightsHtml += `<div class='alert alert-warning'>Could not parse llm_top_strategies JSON: ${e}</div>`;
+                        llmObj = null;
+                    }
+                }
+                if (llmObj && typeof llmObj === 'object' && Array.isArray(llmObj.top_strategies)) {
+                    llmInsightsHtml += `<div class='mb-2'><b>Top Strategies (LLM Selected):</b></div>`;
+                    llmInsightsHtml += `<div class='table-responsive'><table class='table table-sm table-bordered mb-2'><thead class='table-light'><tr>`;
+                    llmInsightsHtml += `<th>Name</th><th>Logic</th><th>Direction</th><th>Stop Loss (ticks)</th><th>Take Profit (ticks)</th><th>Profit Factor</th><th>Win Rate</th><th>Avg Daily PnL</th><th>Max Drawdown</th><th>Rationale</th>`;
+                    llmInsightsHtml += `</tr></thead><tbody>`;
+                    llmObj.top_strategies.forEach((s) => {
+                        llmInsightsHtml += `<tr>`;
+                        llmInsightsHtml += `<td>${s.name ?? '-'}</td>`;
+                        llmInsightsHtml += `<td>${s.logic ?? '-'}</td>`;
+                        llmInsightsHtml += `<td>${s.direction ?? '-'}</td>`;
+                        llmInsightsHtml += `<td>${s.stop_loss_ticks ?? '-'}</td>`;
+                        llmInsightsHtml += `<td>${s.take_profit_ticks ?? '-'}</td>`;
+                        llmInsightsHtml += `<td>${s.key_metrics?.profit_factor ?? '-'}</td>`;
+                        llmInsightsHtml += `<td>${s.key_metrics?.win_rate ?? '-'}</td>`;
+                        llmInsightsHtml += `<td>${s.key_metrics?.avg_daily_pnl ?? '-'}</td>`;
+                        llmInsightsHtml += `<td>${s.key_metrics?.max_drawdown ?? '-'}</td>`;
+                        llmInsightsHtml += `<td>${s.rationale ?? '-'}</td>`;
+                        llmInsightsHtml += `</tr>`;
+                    });
+                    llmInsightsHtml += `</tbody></table></div>`;
+                    if (llmObj.explanation || llmObj.rationale) {
+                        llmInsightsHtml += `<div class='alert alert-info mt-2'><b>LLM Explanation:</b> ${llmObj.explanation ?? llmObj.rationale}</div>`;
+                    }
+                } else if (llmObj) {
+                    llmInsightsHtml += `<pre>${JSON.stringify(llmObj, null, 2)}</pre>`;
+                }
+            }
+            // Cost fields
+            let costFields = [];
+            if (result.llm_cost_usd !== undefined) costFields.push(`LLM Cost: $${result.llm_cost_usd}`);
+            if (result.llm_model_name) costFields.push(`Model: ${result.llm_model_name}`);
+            if (result.llm_token_usage !== undefined) costFields.push(`Tokens: ${result.llm_token_usage}`);
+            if (costFields.length > 0) {
+                llmInsightsHtml += `<div class='small text-muted mt-2'>${costFields.join(' | ')}</div>`;
+            }
+            llmInsightsHtml += `</div></div>`;
+            llmInsightsDiv.innerHTML = llmInsightsHtml;
+          }
         })
         .catch(err => {
           regBtn.disabled = false;
-          regBtn.innerHTML = originalBtnHTML;
-          polling = false;
-          clearInterval(regressionInterval);
+          regBtn.innerHTML = '💡 Run Regression Predictor Strategy';
           regResultDiv.innerHTML = `<div class='alert alert-danger'>Error: ${err}</div>`;
         });
       };
     }
-    // Attach after CSV upload and on DOMContentLoaded
-    if (csvFileInput) {
-      csvFileInput.addEventListener('change', function() {
-        setTimeout(attachRegressionPredictorHandler, 100);
-      });
-    }
-    document.addEventListener('DOMContentLoaded', function() {
-      setTimeout(attachRegressionPredictorHandler, 200);
-    });
+
+    // Attach regression predictor handler
+    attachRegressionPredictorHandler();
 });
 </script>
 </body>
-</html> 
+</html>
