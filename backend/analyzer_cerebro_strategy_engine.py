@@ -173,7 +173,7 @@ class CerebroStrategyEngine:
     def run_backtest_RegressionScalpingStrategy(
         self,
         df_5min: pd.DataFrame,
-        df_1min: pd.DataFrame,
+        df_1min: pd.DataFrame,  # keep for API compatibility, but do not use
         params: dict,
         config_index: int = None,
         total_configs: int = None,
@@ -183,7 +183,7 @@ class CerebroStrategyEngine:
         bar_color: bool = None
     ) -> tuple:
         """
-        Runs RegressionScalpingStrategy with CustomRegressionData (5m) and standard PandasData (1m).
+        Runs RegressionScalpingStrategy with CustomRegressionData (5m) only. 1-min feed is ignored.
         params: dict of strategy parameters to pass to RegressionScalpingStrategy.
         Returns (results, strategy_instance, cerebro)
         """
@@ -220,30 +220,8 @@ class CerebroStrategyEngine:
                 ('predicted_low', 'predicted_low'),
             )
         data_5min = CustomRegressionData(dataname=df_5min)
-        # Prepare 1min data feed
-        df_1min = df_1min.copy()
-        # 🔧 Normalize columns to lowercase
-        df_1min.columns = [col.lower() for col in df_1min.columns]
-        # Dynamically detect the volume column
-        if 'volume' in df_1min.columns:
-            vol_col = 'volume'
-        else:
-            vol_col = next((col for col in df_1min.columns if 'vol' in col), None)
-        if not vol_col:
-            raise ValueError("No volume column found in 1-min data. Tried to match 'volume' or any column containing 'vol'. Columns: " + str(list(df_1min.columns)))
-        vol_idx = df_1min.columns.get_loc(vol_col)
-        # Define custom 1-min data feed class with correct volume mapping by index
-        class CustomPandas1Min(bt.feeds.PandasData):
-            lines = (vol_col,)
-            params = ((vol_col, vol_idx),)
-        if 'datetime' not in df_1min.columns:
-            df_1min['datetime'] = pd.to_datetime(df_1min['date'] + ' ' + df_1min['time'])
-        df_1min.set_index('datetime', inplace=True)
-        df_1min.index = pd.to_datetime(df_1min.index)
-        data_1min = CustomPandas1Min(dataname=df_1min)
-        # Add feeds
+        # Add only the 5m feed
         cerebro.adddata(data_5min)  # data0: 5m
-        cerebro.adddata(data_1min)  # data1: 1m
         # Add strategy
         print(f"[DEBUG] Params sent to RegressionScalpingStrategy: {params}")
         cerebro.addstrategy(RegressionScalpingStrategy, **params)
@@ -264,7 +242,7 @@ class CerebroStrategyEngine:
         if config_index is not None and total_configs is not None:
             print(f"🚀 Running RegressionScalpingStrategy backtest {config_index+1}/{total_configs} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}) ...")
         else:
-            print("🚀 Running RegressionScalpingStrategy backtest (CustomRegressionData + PandasData)...")
+            print("🚀 Running RegressionScalpingStrategy backtest (CustomRegressionData)...")
         results = cerebro.run()
         # Memory usage after cerebro.run()
         if psutil:

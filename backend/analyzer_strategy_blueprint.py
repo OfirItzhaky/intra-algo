@@ -146,14 +146,15 @@ class ElasticNetStrategy(bt.Strategy):
         Tracks entry and exit execution, and records PnL for closed trades.
         """
         if order.status in [order.Submitted, order.Accepted]:
+            print(f"[ORDER DEBUG] Order submitted/accepted: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}")
             return
 
         if order.status in [order.Completed]:
+            print(f"[ORDER DEBUG] Order completed: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}, executed price={order.executed.price}")
             if order.isbuy():
                 self.log(f"✅ BUY EXECUTED @ {order.executed.price:.2f}")
                 self.entry_price = order.executed.price
                 self.open_trade_time = self.data.datetime.datetime(0)
-
             elif order.issell():
                 self.log(f"🏁 SELL EXECUTED @ {order.executed.price:.2f}")
                 tick_size = 0.25
@@ -312,43 +313,66 @@ class Long5min1minStrategy(bt.Strategy):
 
     def notify_trade(self, trade):
         if trade.isclosed:
-            # Convert PnL from points to dollars for consistency
-            pnl_dollars = trade.pnl / self.p.tick_size * self.p.tick_value
-            self.daily_pnl += pnl_dollars
             entry_time = bt.num2date(trade.dtopen, tz=pytz.UTC)
             exit_time = bt.num2date(trade.dtclose, tz=pytz.UTC)
-            try:
-                print(f"\n🔻 DEBUG EXIT CHECK @ {exit_time}")
-                print(f"Entry Time: {entry_time}, Exit Time: {exit_time}")
-                print(f"Entry Price: {self.last_entry_price}, Exit Price: {trade.price}")
-                print(f"Side: {self.entry_side}, PnL: {pnl_dollars:.2f}")
-                print(f"---")
-            except Exception as e:
-                print(f"[DEBUG] Could not print exit signal values: {e}")
+            entry_price = self.last_entry_price
+            exit_price = self.last_exit_price if self.last_exit_price is not None else trade.price
+            side = self.entry_side
+            # Debug: show raw trade entry/exit and stored entry
+            print(f"[DEBUG] Raw trade exit price from trade object: {getattr(trade, 'price', 'N/A')}, Stored last_entry_price: {entry_price}, Stored last_exit_price: {self.last_exit_price}")
+            print(f"[DEBUG] Calculated tick delta: {(exit_price - entry_price) / self.p.tick_size if entry_price is not None else 'N/A'}")
+            # Manual PnL calculation
+            direction_multiplier = 1 if side == 'long' else -1 if side == 'short' else 0
+            pnl_dollars = (exit_price - entry_price) * direction_multiplier * self.p.tick_value / self.p.tick_size
+            print(f"[DEBUG] Manual PnL: {pnl_dollars:.2f}")
+            # Compute TP/SL for this trade
+            tp_offset_ticks = 30
+            sl_offset_ticks = 30
+            if side == 'long':
+                tp_level = entry_price + tp_offset_ticks * self.p.tick_size
+                sl_level = entry_price - sl_offset_ticks * self.p.tick_size
+            elif side == 'short':
+                tp_level = entry_price - tp_offset_ticks * self.p.tick_size
+                sl_level = entry_price + sl_offset_ticks * self.p.tick_size
+            else:
+                tp_level = sl_level = None
+            self.daily_pnl += pnl_dollars
+            trade_duration = None
+            if hasattr(trade, 'dtopen') and hasattr(trade, 'dtclose'):
+                trade_duration = trade.dtclose - trade.dtopen
+            # Print trade summary
+            print(f"\n🔻 TRADE COMPLETED")
+            print(f"Entry: {entry_price:.2f}  14 Exit: {exit_price:.2f} | Side: {side} | PnL: {pnl_dollars:.2f}")
+            print(f"TP Level: {tp_level:.2f} | SL Level: {sl_level:.2f}")
+            print(f"Trade Duration: {trade_duration if trade_duration is not None else 'N/A'} bars")
+            print(f"Entry Time: {entry_time}, Exit Time: {exit_time}")
+            print(f"---")
             self.trades.append({
                 "entry_time": entry_time,
                 "exit_time": exit_time,
-                "entry_price": self.last_entry_price,
-                "exit_price": trade.price,
-                "side": self.entry_side,
-                "pnl": pnl_dollars
+                "entry_price": entry_price,
+                "exit_price": exit_price,
+                "side": side,
+                "pnl": pnl_dollars,
+                "tp_level": tp_level,
+                "sl_level": sl_level
             })
-            self.last_exit_price = trade.price
-            self.order = None
-            self.entry_side = None
             self.entry_dt = None
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
+            print(f"[ORDER DEBUG] Order submitted/accepted: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}")
             return
         if order.status in [order.Completed]:
-            # if order.isbuy():
-            #     print(f"✅ BUY EXECUTED @ {order.executed.price:.2f}")
-            # elif order.issell():
-            #     print(f"✅ SELL EXECUTED @ {order.executed.price:.2f}")
+            print(f"[ORDER DEBUG] Order completed: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}, executed price={order.executed.price}")
+            # If this is a closing order (not the entry order), update last_exit_price
+            if order.isbuy() or order.issell():
+                # Heuristic: if we already have an entry price and side, and this is not the entry order, treat as exit
+                if self.last_entry_price is not None and self.entry_side is not None:
+                    self.last_exit_price = order.executed.price
             self.order = None
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            # print(f"❌ Order Failed: {order.Status[order.status]}")
+            print(f"[ORDER DEBUG] Order failed: ref={order.ref}, status={order.getstatusname()}")
             self.order = None
 
     def log(self, txt: str) -> None:
@@ -403,8 +427,6 @@ class RegressionScalpingStrategy(bt.Strategy):
 
     def next(self):
         dt5 = self.datas[0].datetime.datetime(0)  # 5m bar datetime
-        dt1 = self.datas[1].datetime.datetime(0)  # 1m bar datetime (should be aligned)
-
         # Reset daily PnL at new day
         if self.current_trade_date != dt5.date():
             self.current_trade_date = dt5.date()
@@ -445,131 +467,140 @@ class RegressionScalpingStrategy(bt.Strategy):
             print("[ERROR] Data feed is missing 'predicted_high' or 'predicted_low' columns. Ensure your PandasData feed includes these as custom lines.")
             return
         close5 = self.datas[0].close[0]
-        # Debug print for entry check
-        try:
-            print(f"Close: {close5}, PredHigh: {pred_high}, PredLow: {pred_low}")
-        except Exception as e:
-            print(f"[DEBUG] Could not print entry check values: {e}")
         long_signal = (pred_high - close5) > self.p.long_threshold
         short_signal = (close5 - pred_low) > self.p.short_threshold
 
-        # Always assign vol_change_pct, close, open_ for debug prints
+        # Volume and bar color filters (unchanged, but suppress debug unless trade is placed)
         vol_change_pct = None
         close = None
         open_ = None
         if self.p.min_volume_pct_change > 0:
-            vol_now = self.datas[1].volume[0]
-            vol_prev = self.datas[1].volume[-1]
+            vol_now = self.datas[0].volume[0]
+            vol_prev = self.datas[0].volume[-1]
             if vol_prev == 0:
-                print(f"[ENTRY DEBUG] Skipping — Previous volume is zero, cannot compute volume change.")
                 return
             vol_change_pct = abs((vol_now - vol_prev) / vol_prev) * 100
             if vol_change_pct < self.p.min_volume_pct_change:
-                print(f"[ENTRY DEBUG] Skipping — Volume change ({vol_change_pct:.2f}%) below threshold ({self.p.min_volume_pct_change}%)")
                 return
         if self.p.bar_color_filter:
-            close = self.datas[1].close[0]
-            open_ = self.datas[1].open[0]
+            close = self.datas[0].close[0]
+            open_ = self.datas[0].open[0]
             if long_signal and close <= open_:
-                print("[ENTRY DEBUG] Skipping — Long signal but candle not green.")
                 return
             if short_signal and close >= open_:
-                print("[ENTRY DEBUG] Skipping — Short signal but candle not red.")
                 return
 
         if not (long_signal or short_signal):
-            print(f"[ENTRY DEBUG] No entry signal at {dt5}.")
             return
 
-        # Use 1m data for execution
-        open1 = self.datas[1].open[0]
-        entry_price = open1 + self.p.slippage if long_signal else open1 - self.p.slippage
-        tp = entry_price + self.p.target_ticks * self.p.tick_size if long_signal else entry_price - self.p.target_ticks * self.p.tick_size
-        sl = entry_price - self.p.stop_ticks * self.p.tick_size if long_signal else entry_price + self.p.stop_ticks * self.p.tick_size
+        # Use 5m close for execution
+        tp_offset_ticks = 30
+        sl_offset_ticks = 30
+        entry_price = self.datas[0].close[0] + self.p.slippage if long_signal else self.datas[0].close[0] - self.p.slippage
+        tp = entry_price + tp_offset_ticks * self.p.tick_size if long_signal else entry_price - tp_offset_ticks * self.p.tick_size
+        sl = entry_price - sl_offset_ticks * self.p.tick_size if long_signal else entry_price + sl_offset_ticks * self.p.tick_size
 
-        # Print debug info safely
+        # Only print entry debug when a trade is about to be placed
+        try:
+            print(f"\n🟢 ENTRY SIGNAL @ {self.datas[0].datetime.datetime(0)} | Side: {'LONG' if long_signal else 'SHORT'}")
+            print(f"Close: {close5}, PredHigh: {pred_high}, PredLow: {pred_low}")
+            if self.p.bar_color_filter:
+                print(f"Candle Color: {'Green' if close > open_ else 'Red' if close < open_ else 'Doji'}")
+            print(f"Entry: {entry_price:.2f}, TP: {tp:.2f}, SL: {sl:.2f}")
+            print(f"---")
+        except Exception as e:
+            print(f"[DEBUG] Could not print entry signal values: {e}")
 
-        if vol_change_pct is not None:
-            print(f"[ENTRY DEBUG] Volume % Change: {vol_change_pct:.2f}%")
-        if close is not None and open_ is not None:
-            print(f"[ENTRY DEBUG] Candle Color Valid: {close > open_ if long_signal else close < open_}")
-        print(f"[ORDER] Entry: {entry_price:.2f}, TP: {tp:.2f}, SL: {sl:.2f}, Side: {self.entry_side}")
+        # Clear any stale state before placing a new order
+        self.entry_side = None
+        self.last_entry_price = None
+        self.entry_dt = None
 
         if long_signal:
-            try:
-                print(f"\n🧠 DEBUG ENTRY CHECK @ {self.datas[0].datetime.datetime(0)}")
-                print(f"Close: {self.datas[0].close[0]}, PredHigh: {self.datas[0].predicted_high[0]}, PredLow: {self.datas[0].predicted_low[0]}")
-                print(f"Signal: Long={long_signal}, Short={short_signal}, Side: {self.entry_side}")
-                print(f"Candle Color OK: {close > open_ if long_signal else close < open_}")
-                print(f"Entry: {entry_price}, TP: {tp:.2f}, SL: {sl:.2f}")
-                print(f"---")
-            except Exception as e:
-                print(f"[DEBUG] Could not print signal values: {e}")
-
             self.order = self.buy_bracket(
-                data=self.datas[1],
+                data=self.datas[0],
                 price=entry_price,
                 size=1,
                 limitprice=tp,
                 stopprice=sl
             )
             self.entry_side = 'long'
-            self.entry_dt = dt1
             self.last_entry_price = entry_price
+            self.entry_dt = dt5
         elif short_signal:
-            print(f"[ENTRY DEBUG] {self.p.session_start}–{self.p.session_end}, current: {current_time}")
-            print(f"[ENTRY DEBUG] Close5: {close5:.2f}, PredHigh: {pred_high:.2f}, PredLow: {pred_low:.2f}")
-            print(f"[ENTRY DEBUG]  ShortSignal: {short_signal}")
             self.order = self.sell_bracket(
-                data=self.datas[1],
+                data=self.datas[0],
                 price=entry_price,
                 size=1,
                 limitprice=tp,
                 stopprice=sl
             )
             self.entry_side = 'short'
-            self.entry_dt = dt1
             self.last_entry_price = entry_price
+            self.entry_dt = dt5
 
     def notify_trade(self, trade):
         if trade.isclosed:
-            # Convert PnL from points to dollars for consistency
-            pnl_dollars = trade.pnl / self.p.tick_size * self.p.tick_value
-            self.daily_pnl += pnl_dollars
             entry_time = bt.num2date(trade.dtopen, tz=pytz.UTC)
             exit_time = bt.num2date(trade.dtclose, tz=pytz.UTC)
-            try:
-                print(f"\n🔻 DEBUG EXIT CHECK @ {exit_time}")
-                print(f"Entry Time: {entry_time}, Exit Time: {exit_time}")
-                print(f"Entry Price: {self.last_entry_price}, Exit Price: {trade.price}")
-                print(f"Side: {self.entry_side}, PnL: {pnl_dollars:.2f}")
-                print(f"---")
-            except Exception as e:
-                print(f"[DEBUG] Could not print exit signal values: {e}")
+            entry_price = self.last_entry_price
+            exit_price = self.last_exit_price if self.last_exit_price is not None else trade.price
+            side = self.entry_side
+            # Debug: show raw trade entry/exit and stored entry
+            print(f"[DEBUG] Raw trade exit price from trade object: {getattr(trade, 'price', 'N/A')}, Stored last_entry_price: {entry_price}, Stored last_exit_price: {self.last_exit_price}")
+            print(f"[DEBUG] Calculated tick delta: {(exit_price - entry_price) / self.p.tick_size if entry_price is not None else 'N/A'}")
+            # Manual PnL calculation
+            direction_multiplier = 1 if side == 'long' else -1 if side == 'short' else 0
+            pnl_dollars = (exit_price - entry_price) * direction_multiplier * self.p.tick_value / self.p.tick_size
+            print(f"[DEBUG] Manual PnL: {pnl_dollars:.2f}")
+            # Compute TP/SL for this trade
+            tp_offset_ticks = 30
+            sl_offset_ticks = 30
+            if side == 'long':
+                tp_level = entry_price + tp_offset_ticks * self.p.tick_size
+                sl_level = entry_price - sl_offset_ticks * self.p.tick_size
+            elif side == 'short':
+                tp_level = entry_price - tp_offset_ticks * self.p.tick_size
+                sl_level = entry_price + sl_offset_ticks * self.p.tick_size
+            else:
+                tp_level = sl_level = None
+            self.daily_pnl += pnl_dollars
+            trade_duration = None
+            if hasattr(trade, 'dtopen') and hasattr(trade, 'dtclose'):
+                trade_duration = trade.dtclose - trade.dtopen
+            # Print trade summary
+            print(f"\n🔻 TRADE COMPLETED")
+            print(f"Entry: {entry_price:.2f}  14 Exit: {exit_price:.2f} | Side: {side} | PnL: {pnl_dollars:.2f}")
+            print(f"TP Level: {tp_level:.2f} | SL Level: {sl_level:.2f}")
+            print(f"Trade Duration: {trade_duration if trade_duration is not None else 'N/A'} bars")
+            print(f"Entry Time: {entry_time}, Exit Time: {exit_time}")
+            print(f"---")
             self.trades.append({
                 "entry_time": entry_time,
                 "exit_time": exit_time,
-                "entry_price": self.last_entry_price,
-                "exit_price": trade.price,
-                "side": self.entry_side,
-                "pnl": pnl_dollars
+                "entry_price": entry_price,
+                "exit_price": exit_price,
+                "side": side,
+                "pnl": pnl_dollars,
+                "tp_level": tp_level,
+                "sl_level": sl_level
             })
-            self.last_exit_price = trade.price
-            self.order = None
-            self.entry_side = None
             self.entry_dt = None
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
+            print(f"[ORDER DEBUG] Order submitted/accepted: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}")
             return
         if order.status in [order.Completed]:
-            # if order.isbuy():
-            #     print(f"✅ BUY EXECUTED @ {order.executed.price:.2f}")
-            # elif order.issell():
-            #     print(f"✅ SELL EXECUTED @ {order.executed.price:.2f}")
+            print(f"[ORDER DEBUG] Order completed: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}, executed price={order.executed.price}")
+            # If this is a closing order (not the entry order), update last_exit_price
+            if order.isbuy() or order.issell():
+                # Heuristic: if we already have an entry price and side, and this is not the entry order, treat as exit
+                if self.last_entry_price is not None and self.entry_side is not None:
+                    self.last_exit_price = order.executed.price
             self.order = None
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            # print(f"❌ Order Failed: {order.Status[order.status]}")
+            print(f"[ORDER DEBUG] Order failed: ref={order.ref}, status={order.getstatusname()}")
             self.order = None
 
     def log(self, txt: str) -> None:
