@@ -501,15 +501,15 @@ class RegressionScalpingStrategy(bt.Strategy):
         sl = entry_price - sl_offset_ticks * self.p.tick_size if long_signal else entry_price + sl_offset_ticks * self.p.tick_size
 
         # Only print entry debug when a trade is about to be placed
-        try:
-            print(f"\n🟢 ENTRY SIGNAL @ {self.datas[0].datetime.datetime(0)} | Side: {'LONG' if long_signal else 'SHORT'}")
-            print(f"Close: {close5}, PredHigh: {pred_high}, PredLow: {pred_low}")
-            if self.p.bar_color_filter:
-                print(f"Candle Color: {'Green' if close > open_ else 'Red' if close < open_ else 'Doji'}")
-            print(f"Entry: {entry_price:.2f}, TP: {tp:.2f}, SL: {sl:.2f}")
-            print(f"---")
-        except Exception as e:
-            print(f"[DEBUG] Could not print entry signal values: {e}")
+        # try:
+        #     print(f"\n🟢 ENTRY SIGNAL @ {self.datas[0].datetime.datetime(0)} | Side: {'LONG' if long_signal else 'SHORT'}")
+        #     print(f"Close: {close5}, PredHigh: {pred_high}, PredLow: {pred_low}")
+        #     if self.p.bar_color_filter:
+        #         print(f"Candle Color: {'Green' if close > open_ else 'Red' if close < open_ else 'Doji'}")
+        #     print(f"Entry: {entry_price:.2f}, TP: {tp:.2f}, SL: {sl:.2f}")
+        #     print(f"---")
+        # except Exception as e:
+        #     print(f"[DEBUG] Could not print entry signal values: {e}")
 
         # Clear any stale state before placing a new order
         self.entry_side = None
@@ -547,12 +547,12 @@ class RegressionScalpingStrategy(bt.Strategy):
             exit_price = self.last_exit_price if self.last_exit_price is not None else trade.price
             side = self.entry_side
             # Debug: show raw trade entry/exit and stored entry
-            print(f"[DEBUG] Raw trade exit price from trade object: {getattr(trade, 'price', 'N/A')}, Stored last_entry_price: {entry_price}, Stored last_exit_price: {self.last_exit_price}")
-            print(f"[DEBUG] Calculated tick delta: {(exit_price - entry_price) / self.p.tick_size if entry_price is not None else 'N/A'}")
+            # print(f"[DEBUG] Raw trade exit price from trade object: {getattr(trade, 'price', 'N/A')}, Stored last_entry_price: {entry_price}, Stored last_exit_price: {self.last_exit_price}")
+            # print(f"[DEBUG] Calculated tick delta: {(exit_price - entry_price) / self.p.tick_size if entry_price is not None else 'N/A'}")
             # Manual PnL calculation
             direction_multiplier = 1 if side == 'long' else -1 if side == 'short' else 0
             pnl_dollars = (exit_price - entry_price) * direction_multiplier * self.p.tick_value / self.p.tick_size
-            print(f"[DEBUG] Manual PnL: {pnl_dollars:.2f}")
+            # print(f"[DEBUG] Manual PnL: {pnl_dollars:.2f}")
             # Compute TP/SL for this trade
             tp_offset_ticks = 10
             sl_offset_ticks = 10
@@ -569,12 +569,12 @@ class RegressionScalpingStrategy(bt.Strategy):
             if hasattr(trade, 'dtopen') and hasattr(trade, 'dtclose'):
                 trade_duration = trade.dtclose - trade.dtopen
             # Print trade summary
-            print(f"\n🔻 TRADE COMPLETED")
-            print(f"Entry: {entry_price:.2f}  14 Exit: {exit_price:.2f} | Side: {side} | PnL: {pnl_dollars:.2f}")
-            print(f"TP Level: {tp_level:.2f} | SL Level: {sl_level:.2f}")
-            print(f"Trade Duration: {trade_duration if trade_duration is not None else 'N/A'} bars")
-            print(f"Entry Time: {entry_time}, Exit Time: {exit_time}")
-            print(f"---")
+            # print(f"\n🔻 TRADE COMPLETED")
+            # print(f"Entry: {entry_price:.2f}  14 Exit: {exit_price:.2f} | Side: {side} | PnL: {pnl_dollars:.2f}")
+            # print(f"TP Level: {tp_level:.2f} | SL Level: {sl_level:.2f}")
+            # print(f"Trade Duration: {trade_duration if trade_duration is not None else 'N/A'} bars")
+            # print(f"Entry Time: {entry_time}, Exit Time: {exit_time}")
+            # print(f"---")
             self.trades.append({
                 "entry_time": entry_time,
                 "exit_time": exit_time,
@@ -589,10 +589,10 @@ class RegressionScalpingStrategy(bt.Strategy):
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
-            print(f"[ORDER DEBUG] Order submitted/accepted: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}")
+            # print(f"[ORDER DEBUG] Order submitted/accepted: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}")
             return
         if order.status in [order.Completed]:
-            print(f"[ORDER DEBUG] Order completed: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}, executed price={order.executed.price}")
+            # print(f"[ORDER DEBUG] Order completed: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}, executed price={order.executed.price}")
             # If this is a closing order (not the entry order), update last_exit_price
             if order.isbuy() or order.issell():
                 # Heuristic: if we already have an entry price and side, and this is not the entry order, treat as exit
@@ -600,7 +600,7 @@ class RegressionScalpingStrategy(bt.Strategy):
                     self.last_exit_price = order.executed.price
             self.order = None
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            print(f"[ORDER DEBUG] Order failed: ref={order.ref}, status={order.getstatusname()}")
+            # print(f"[ORDER DEBUG] Order failed: ref={order.ref}, status={order.getstatusname()}")
             self.order = None
 
     def log(self, txt: str) -> None:

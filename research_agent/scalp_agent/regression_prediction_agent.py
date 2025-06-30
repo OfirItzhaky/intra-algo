@@ -268,10 +268,10 @@ class RegressionPredictorAgent:
                 'win_rate': None,
                 'max_drawdown': None
             }
-            # TEMP DEV MODE: Early-stop after 5 strategy simulations for faster development. Remove or increase for full runs.
-            if i >= 5:
-                print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
-                break
+            # # TEMP DEV MODE: Early-stop after 5 strategy simulations for faster development. Remove or increase for full runs.
+            # if i >= 5:
+            #     print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
+            #     break
             if regression_backtest_tracker is not None:
                 if regression_backtest_tracker.get("cancel_requested"):
                     regression_backtest_tracker["status"] = "cancelled"
