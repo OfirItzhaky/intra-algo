@@ -132,36 +132,41 @@ class AnalyzerDashboard:
         # Step 5: Plot trade markers
         visible_trades = 0
         for _, trade in trade_df.iterrows():
-            entry, exit_, eprice, xprice = trade["entry_time"], trade["exit_time"], trade["entry_price"], trade[
-                "exit_price"]
-            if entry in plot_df.index and exit_ in plot_df.index:
-                visible_trades += 1
-                fig.add_trace(go.Scatter(
-                    x=[entry],
-                    y=[eprice],
-                    mode='markers+text',
-                    text=[f'Buy @ {eprice:.2f}'],
-                    textposition='bottom center',
-                    marker=dict(symbol='triangle-up', size=12, color='lime'),
-                    showlegend=False
-                ))
-                fig.add_trace(go.Scatter(
-                    x=[exit_],
-                    y=[xprice],
-                    mode='markers+text',
-                    text=[f'Sell @ {xprice:.2f}'],
-                    textposition='top center',
-                    marker=dict(symbol='triangle-down', size=12, color='red'),
-                    showlegend=False
-                ))
-                color = 'limegreen' if trade["pnl"] >= 0 else 'red'
-                fig.add_trace(go.Scatter(
-                    x=[entry, exit_],
-                    y=[eprice, xprice],
-                    mode='lines',
-                    line=dict(color=color, width=3),
-                    showlegend=False
-                ))
+            entry = trade["entry_time"]
+            exit_ = trade["exit_time"]
+            eprice = trade["entry_price"]
+            xprice = trade["exit_price"]
+            color = 'limegreen' if trade["pnl"] >= 0 else 'red'
+            # Buy marker (entry)
+            fig.add_trace(go.Scatter(
+                x=[entry],
+                y=[eprice],
+                mode='markers+text',
+                text=[f'Buy @ {eprice:.2f}'],
+                textposition='bottom center',
+                marker=dict(symbol='triangle-up', size=12, color='lime'),
+                textfont=dict(color=color, size=12),
+                showlegend=False
+            ))
+            # Sell marker (exit)
+            fig.add_trace(go.Scatter(
+                x=[exit_],
+                y=[xprice],
+                mode='markers+text',
+                text=[f'Sell @ {xprice:.2f}'],
+                textposition='top center',
+                marker=dict(symbol='triangle-down', size=12, color='red'),
+                textfont=dict(color=color, size=12),
+                showlegend=False
+            ))
+            fig.add_trace(go.Scatter(
+                x=[entry, exit_],
+                y=[eprice, xprice],
+                mode='lines',
+                line=dict(color=color, width=3),
+                showlegend=False
+            ))
+            visible_trades += 1
 
         # Step 6: Classifier signals (if exist)
         for clf, y_col, symbol in [
@@ -845,35 +850,41 @@ class AnalyzerDashboard:
             trade_df = trade_df.iloc[-max_trades:]
         visible_trades = 0
         for _, trade in trade_df.iterrows():
-            entry, exit_, eprice, xprice = trade["entry_time"], trade["exit_time"], trade["entry_price"], trade["exit_price"]
-            if entry in plot_df.index and exit_ in plot_df.index:
-                visible_trades += 1
-                fig.add_trace(go.Scatter(
-                    x=[entry],
-                    y=[eprice],
-                    mode='markers+text',
-                    text=[f'Buy @ {eprice:.2f}'],
-                    textposition='bottom center',
-                    marker=dict(symbol='triangle-up', size=12, color='lime'),
-                    showlegend=False
-                ))
-                fig.add_trace(go.Scatter(
-                    x=[exit_],
-                    y=[xprice],
-                    mode='markers+text',
-                    text=[f'Sell @ {xprice:.2f}'],
-                    textposition='top center',
-                    marker=dict(symbol='triangle-down', size=12, color='red'),
-                    showlegend=False
-                ))
-                color = 'limegreen' if trade["pnl"] >= 0 else 'red'
-                fig.add_trace(go.Scatter(
-                    x=[entry, exit_],
-                    y=[eprice, xprice],
-                    mode='lines',
-                    line=dict(color=color, width=3),
-                    showlegend=False
-                ))
+            entry = trade["entry_time"]
+            exit_ = trade["exit_time"]
+            eprice = trade["entry_price"]
+            xprice = trade["exit_price"]
+            color = 'limegreen' if trade["pnl"] >= 0 else 'red'
+            # Buy marker (entry)
+            fig.add_trace(go.Scatter(
+                x=[entry],
+                y=[eprice],
+                mode='markers+text',
+                text=[f'Buy @ {eprice:.2f}'],
+                textposition='bottom center',
+                marker=dict(symbol='triangle-up', size=12, color='lime'),
+                textfont=dict(color=color, size=12),
+                showlegend=False
+            ))
+            # Sell marker (exit)
+            fig.add_trace(go.Scatter(
+                x=[exit_],
+                y=[xprice],
+                mode='markers+text',
+                text=[f'Sell @ {xprice:.2f}'],
+                textposition='top center',
+                marker=dict(symbol='triangle-down', size=12, color='red'),
+                textfont=dict(color=color, size=12),
+                showlegend=False
+            ))
+            fig.add_trace(go.Scatter(
+                x=[entry, exit_],
+                y=[eprice, xprice],
+                mode='lines',
+                line=dict(color=color, width=3),
+                showlegend=False
+            ))
+            visible_trades += 1
         print(f"🧮 Trades visible in Plotly chart: {visible_trades} / {len(trade_df)}")
         # Step 4: Layout styling
         fig.update_layout(
