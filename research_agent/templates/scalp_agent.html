@@ -10,23 +10,6 @@
         background: #e7f1ff;
         outline: none;
     }
-    #llm-cost-overlay {
-        position: fixed;
-        top: 24px;
-        right: 32px;
-        z-index: 9999;
-        background: rgba(255,255,255,0.97);
-        border: 1px solid #b6b6b6;
-        border-radius: 10px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        padding: 14px 22px 10px 22px;
-        min-width: 180px;
-        font-size: 1rem;
-        color: #222;
-        text-align: left;
-        pointer-events: none;
-    }
-    #llm-cost-overlay strong { font-weight: 600; }
     .floating-rag-panel {
         position: fixed;
         top: 80px;
@@ -571,11 +554,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Try to extract token usage from response (if present)
     function extractTokenCount(data) {
-        // If backend includes a 'token_usage' or 'token_count' field, use it
-        if (data && typeof data === 'object') {
-            if (data.token_usage && data.token_usage.totalTokenCount) {
-                return parseInt(data.token_usage.totalTokenCount);
-            }
+        if (data) {
             if (data.totalTokenCount) {
                 return parseInt(data.totalTokenCount);
             }
@@ -583,27 +562,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 return parseInt(data.tokens_used);
             }
         }
-        // Otherwise, fallback to a default estimate (e.g., 800 tokens per call)
         return 800;
-    }
-
-    function updateCostPanel(data) {
-        // RAG
-        let ragTokens = data.rag_token_usage !== undefined ? data.rag_token_usage : "N/A";
-        let ragCost = data.rag_cost_usd !== undefined ? data.rag_cost_usd : "N/A";
-        document.getElementById('rag-tokens').textContent = ragTokens;
-        document.getElementById('rag-cost').textContent = (ragCost === "N/A" ? "$0.0000" : `$${parseFloat(ragCost).toFixed(4)}`);
-
-        // LLM - extract cost from llm_top_strategies if present
-        let llmCost = data.llm_top_strategies?.llm_cost_usd;
-        document.getElementById('llm-cost').textContent = llmCost !== undefined ? `$${parseFloat(llmCost).toFixed(4)}` : '-';
-        
-        // Model name
-        document.getElementById('llm-model-name').textContent = data.llm_model_name || 'N/A';
-
-        // Total cost - use llm_cost_usd directly
-        let totalCost = (llmCost !== undefined ? parseFloat(llmCost) : 0) + (ragCost !== "N/A" ? parseFloat(ragCost) : 0);
-        document.getElementById('total-cost').textContent = `$${totalCost.toFixed(4)}`;
     }
 
     function toggleRagPanel(agent) {
@@ -681,7 +640,6 @@ document.addEventListener('DOMContentLoaded', function() {
             setButtonLoading(runInstinctBtn, false);
             instinctOutput.innerHTML = renderInstinctAgentResult(data);
             addTokens(extractTokenCount(data));
-            updateCostPanel(data);
             if (data && data.rag_insights) {
                 document.getElementById('rag-instinct-content').innerHTML = renderRagMarkdown(data.rag_insights);
                 document.getElementById('rag-instinct-panel').style.display = 'block';
@@ -752,7 +710,6 @@ document.addEventListener('DOMContentLoaded', function() {
             // --- End Bias Summary block ---
             playbookOutput.innerHTML = renderPlaybookAgentResult(data);
             addTokens(extractTokenCount(data));
-            updateCostPanel(data);
             if (data && data.rag_insights) {
                 document.getElementById('rag-playbook-content').innerHTML = renderRagMarkdown(data.rag_insights);
                 document.getElementById('rag-playbook-panel').style.display = 'block';
@@ -974,7 +931,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             const costVal = result.llm_top_strategies?.llm_cost_usd !== undefined ? 
                                 `$${parseFloat(result.llm_top_strategies.llm_cost_usd).toFixed(4)}` : '-';
                             costFields.push(`LLM Cost: ${costVal}`);
-                            const modelVal = result.llm_model_name ? result.llm_model_name : '-';
+                            // Try to get model name from llm_top_strategies first
+                            const modelVal = result.llm_top_strategies?.model_name || result.llm_model_name || '-';
                             costFields.push(`Model: ${modelVal}`);
                             if (costFields.length > 0) {
                                 llmInsightsHtml += `<div class='small text-muted mt-2'>${costFields.join(' | ')}</div>`;
@@ -1209,7 +1167,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 output.innerHTML = '<div class="border border-info rounded p-2 mb-2 bg-light"><span class="badge bg-info text-dark">Enhanced Strategy Result</span></div>' + renderPlaybookAgentResult(data);
             }
             addTokens(extractTokenCount(data));
-            updateCostPanel(data);
             if (data && data.rag_insights) {
                 document.getElementById(`rag-${agent}-content`).innerHTML = renderRagMarkdown(data.rag_insights);
                 document.getElementById(`rag-${agent}-panel`).style.display = 'block';
@@ -1439,7 +1396,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const costVal = result.llm_top_strategies?.llm_cost_usd !== undefined ? 
                 `$${parseFloat(result.llm_top_strategies.llm_cost_usd).toFixed(4)}` : '-';
             costFields.push(`LLM Cost: ${costVal}`);
-            const modelVal = result.llm_model_name ? result.llm_model_name : '-';
+            // Try to get model name from llm_top_strategies first
+            const modelVal = result.llm_top_strategies?.model_name || result.llm_model_name || '-';
             costFields.push(`Model: ${modelVal}`);
             if (costFields.length > 0) {
                 llmInsightsHtml += `<div class='small text-muted mt-2'>${costFields.join(' | ')}</div>`;

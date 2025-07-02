@@ -941,13 +941,7 @@ class RegressionPredictorAgent:
         if len(grid_list) > 256:
             grid_list = grid_list[:256]
         grid_list_clean = BaseAgent.clean_for_json(grid_list)
-        # Debug: Check for non-serializable objects in grid_list_clean
-        for i, row in enumerate(grid_list_clean):
-            for k, v in row.items():
-                try:
-                    json.dumps(v)
-                except TypeError:
-                    print(f'[LLM][DEBUG] Non-serializable value at row {i}, key "{k}": type={type(v)}, repr={repr(v)}')
+        
         grid_list_clean = [{k: v for k, v in r.items() if k != 'sim'} for r in grid_list_clean]
 
         grid_json = json.dumps(grid_list_clean, indent=2)[:6000]
@@ -1071,6 +1065,7 @@ BIAS SUMMARY:
                 result_parsed = safe_parse_json(content)
                 if isinstance(result_parsed, dict):
                     result_parsed['llm_cost_usd'] = cost_usd
+                    result_parsed['model_name'] = model_name
                 return result_parsed
             elif provider == "openai":
                 endpoint = "https://api.openai.com/v1/chat/completions"
@@ -1095,6 +1090,7 @@ BIAS SUMMARY:
                 result_parsed = safe_parse_json(content)
                 if isinstance(result_parsed, dict):
                     result_parsed['llm_cost_usd'] = cost_usd
+                    result_parsed['model_name'] = model_name
                     return result_parsed
                 else:
                     print(f'[LLM] Unknown provider: {provider}')
