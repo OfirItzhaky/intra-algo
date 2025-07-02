@@ -7,8 +7,8 @@ load_dotenv()  # Load from .env
 today = datetime.today().strftime("%Y-%m-%d")
 
 CONFIG = {
-    "model_provider": "openai",
-    "model_name": "gpt-4o",
+    "model_provider": "google",
+    "model_name": "gemini-1.5-pro-latest",
     # Alternatives LLM
     # gemini-1.5-pro-latest
     # gpt-4o

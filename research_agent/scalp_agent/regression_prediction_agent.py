@@ -665,9 +665,9 @@ class RegressionPredictorAgent:
                 'max_drawdown': None
             }
             # TEMP DEV MODE: Early-stop after 5 strategy simulations for faster development. Remove or increase for full runs.
-            if i >= 5:
-                print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
-                break
+            # if i >= 5:
+            #     print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
+            #     break
             if regression_backtest_tracker is not None:
                 if regression_backtest_tracker.get("cancel_requested"):
                     regression_backtest_tracker["status"] = "cancelled"
@@ -1046,7 +1046,7 @@ BIAS SUMMARY:
         print(f'[LLM] Provider: {provider}, Model: {model_name}')
         # Call LLM
         try:
-            if provider == "gemini":
+            if provider == "google":
                 endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
                 headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
                 body = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -1054,8 +1054,11 @@ BIAS SUMMARY:
                 resp.raise_for_status()
                 data = resp.json()
                 content = data["candidates"][0]["content"]["parts"][0]["text"]
-                usage = data.get('usage', {})
-                total_tokens = usage.get('prompt_tokens', 0) + usage.get('completion_tokens', 0)
+                # Get model version from response
+                model_version = data.get('modelVersion', model_name)
+                # Get usage data
+                usage = data.get('usageMetadata')
+                total_tokens = usage.get('totalTokenCount')
                 cost_gemini = total_tokens * 0.0025 / 1000  # flat $0.0025 / 1K
                 cost_usd = round(float(cost_gemini), 4)
                 self.last_llm_cost_usd = cost_usd
@@ -1065,7 +1068,7 @@ BIAS SUMMARY:
                 result_parsed = safe_parse_json(content)
                 if isinstance(result_parsed, dict):
                     result_parsed['llm_cost_usd'] = cost_usd
-                    result_parsed['model_name'] = model_name
+                    result_parsed['model_name'] = model_version
                 return result_parsed
             elif provider == "openai":
                 endpoint = "https://api.openai.com/v1/chat/completions"
