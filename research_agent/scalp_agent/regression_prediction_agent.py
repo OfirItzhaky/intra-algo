@@ -5,6 +5,7 @@ from sklearn.preprocessing import StandardScaler
 from backend.analyzer_cerebro_strategy_engine import CerebroStrategyEngine
 from backend.analyzer_dashboard import AnalyzerDashboard
 import requests, os, json
+import requests
 
 from research_agent.config import CONFIG
 import traceback
@@ -407,7 +408,7 @@ class RegressionPredictorAgent:
         df_results = self._save_and_visualize_results(best_result, df_with_preds, results)
         # Now call LLM selector
         print('[LLM] Calling LLM for top strategy selection...')
-        self._call_llm_and_attach(best_result, df_results, user_params)
+        final_best_result = self._call_llm_and_attach(best_result, df_results, user_params)
 
         # --- Ensure result is serializable before returning ---
         def to_serializable(obj):
@@ -423,7 +424,7 @@ class RegressionPredictorAgent:
                 return obj
             else:
                 return str(obj)
-        best_result_serializable = to_serializable(best_result)
+        best_result_serializable = to_serializable(final_best_result)
         if 'llm_top_strategies' in best_result_serializable:
             best_result_serializable['llm_top_strategies'] = _strip_json_markdown_fence(best_result_serializable['llm_top_strategies'])
         return best_result_serializable
@@ -521,13 +522,11 @@ class RegressionPredictorAgent:
         bias_summary = (user_params or self.user_params).get('bias_summary', None)
         llm_result = self.llm_select_top_strategies_from_grid(df_results, bias_summary=bias_summary)
         best_result['llm_top_strategies'] = llm_result
-        # Add cost/token info if available
-        cost = None
-        tokens = None
         if isinstance(llm_result, dict):
-            cost = llm_result.get('cost_usd') or llm_result.get('cost') or 0.0
+            cost = llm_result.get('llm_cost_usd')
             tokens = llm_result.get('tokens_used') or llm_result.get('token_usage') or 0
         best_result['llm_top_strategies_cost'] = {'cost_usd': cost, 'tokens': tokens}
+        return best_result
 
     def _build_llm_context_and_matrix(self, best_result, filtered_results, llm_context, strategy_matrix_llm,
                                       user_params):
@@ -805,7 +804,7 @@ class RegressionPredictorAgent:
                     'error': f'Backtest failed at config #{i + 1} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color})\n{tb}',
                     'config': {'long_threshold': long_t, 'short_threshold': short_t, 'min_volume_pct_change': min_vol,
                                'bar_color_filter': bar_color},
-                    'traceback': tb}
+                       'traceback': tb}
             self.user_params = old_params
             backtest_summary = sim.get('backtest_summary', {})
             # --- Debug: Print computed metrics ---
@@ -973,7 +972,7 @@ Return exactly **three trading strategies**, selected based on the data, and out
 📤 **Output Format – This must be strictly followed**:
 Return your response as a JSON with the following structure:
 
-```json
+
 {
   "top_strategies": [
     {
@@ -1020,10 +1019,12 @@ Return your response as a JSON with the following structure:
     }
   ]
 }
-```
+
 📌 Rules:
 
 Do not return anything outside the JSON block.
+
+Return the output as a clean JSON object (not markdown, not wrapped in triple backticks). Your response should start directly with { and be parseable using json.loads() in Python. Do not include extra text, formatting, or explanation
 
 Always include exactly 3 strategies unless instructed otherwise.
 
@@ -1052,7 +1053,6 @@ BIAS SUMMARY:
         # Call LLM
         try:
             if provider == "gemini":
-                import requests
                 endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
                 headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
                 body = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -1060,10 +1060,19 @@ BIAS SUMMARY:
                 resp.raise_for_status()
                 data = resp.json()
                 content = data["candidates"][0]["content"]["parts"][0]["text"]
-                print(f'[LLM] Raw Gemini response: {content[:500]}...')
-                return json.loads(content) if content.strip().startswith('{') else content
+                usage = data.get('usage', {})
+                total_tokens = usage.get('prompt_tokens', 0) + usage.get('completion_tokens', 0)
+                cost_gemini = total_tokens * 0.0025 / 1000  # flat $0.0025 / 1K
+                cost_usd = round(float(cost_gemini), 4)
+                self.last_llm_cost_usd = cost_usd
+                print(f"[LLM Cost] ${cost_usd} (provider: gemini)")
+                print(f"[LLM Tokens] {total_tokens} tokens (provider: gemini)")
+                print(f"[LLM Raw Response] {content[:500]}...")
+                result_parsed = safe_parse_json(content)
+                if isinstance(result_parsed, dict):
+                    result_parsed['llm_cost_usd'] = cost_usd
+                return result_parsed
             elif provider == "openai":
-                import requests
                 endpoint = "https://api.openai.com/v1/chat/completions"
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
                 payload = {
@@ -1075,16 +1084,34 @@ BIAS SUMMARY:
                 resp.raise_for_status()
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"]
-                print(f'[LLM] Raw OpenAI response: {content[:500]}...')
-                return json.loads(content) if content.strip().startswith('{') else content
-            else:
-                print(f'[LLM] Unknown provider: {provider}')
+                usage = data.get('usage', {})
+                total_tokens = usage.get('prompt_tokens', 0) + usage.get('completion_tokens', 0)
+                cost_openai = (usage.get('prompt_tokens', 0) * 0.005 + usage.get('completion_tokens', 0) * 0.015) / 1000  # $/1K tokens
+                cost_usd = round(float(cost_openai), 4)
+                self.last_llm_cost_usd = cost_usd
+                print(f"[LLM Cost] ${cost_usd} (provider: openai)")
+                print(f"[LLM Tokens] {total_tokens} tokens (provider: openai)")
+                print(f"[LLM Raw Response] {content[:500]}...")
+                result_parsed = safe_parse_json(content)
+                if isinstance(result_parsed, dict):
+                    result_parsed['llm_cost_usd'] = cost_usd
+                    return result_parsed
+                else:
+                    print(f'[LLM] Unknown provider: {provider}')
                 return {"error": f"Unknown LLM provider: {provider}"}
         except Exception as e:
-            print(f'[LLM] Exception: {e}')
-            return {"error": f"LLM call failed: {e}"}
+                print(f'[LLM] Exception: {e}')
+                return {"error": f"LLM call failed: {e}"}
 
 def _strip_json_markdown_fence(text):
     if not isinstance(text, str):
         return text
     return re.sub(r'^```json\s*|\s*```$', '', text.strip(), flags=re.IGNORECASE | re.MULTILINE)
+def safe_parse_json(content):
+    try:
+        # Strip markdown fences like ```json ... ```
+        content_clean = re.sub(r"^```json\s*|```$", "", content.strip(), flags=re.IGNORECASE)
+        return json.loads(content_clean)
+    except Exception as e:
+        print(f"[WARN] Failed to parse JSON: {e}")
+        return content  # fallback to raw string

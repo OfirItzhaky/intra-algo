@@ -594,19 +594,16 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('rag-tokens').textContent = ragTokens;
         document.getElementById('rag-cost').textContent = (ragCost === "N/A" ? "$0.0000" : `$${parseFloat(ragCost).toFixed(4)}`);
 
-        // LLM (prefer session totals if present)
-        let llmTokens = data.llm_session_total_tokens !== undefined ? data.llm_session_total_tokens : (data.llm_token_usage !== undefined ? data.llm_token_usage : 0);
-        let llmCost = data.llm_session_total_cost !== undefined ? data.llm_session_total_cost : (data.llm_cost_usd !== undefined ? data.llm_cost_usd : 0.0);
-        document.getElementById('llm-tokens').textContent = llmTokens;
-        document.getElementById('llm-cost').textContent = `$${parseFloat(llmCost).toFixed(4)}`;
+        // LLM - extract cost from llm_top_strategies if present
+        let llmCost = data.llm_top_strategies?.llm_cost_usd;
+        document.getElementById('llm-cost').textContent = llmCost !== undefined ? `$${parseFloat(llmCost).toFixed(4)}` : '-';
+        
+        // Model name
+        document.getElementById('llm-model-name').textContent = data.llm_model_name || 'N/A';
 
-        // Total (prefer session total cost if present)
-        let totalCost = data.llm_session_total_cost !== undefined
-            ? data.llm_session_total_cost
-            : (data.total_cost_usd !== undefined
-                ? data.total_cost_usd
-                : (parseFloat(ragCost) || 0) + (parseFloat(llmCost) || 0));
-        document.getElementById('total-cost').textContent = `$${parseFloat(totalCost).toFixed(4)}`;
+        // Total cost - use llm_cost_usd directly
+        let totalCost = (llmCost !== undefined ? parseFloat(llmCost) : 0) + (ragCost !== "N/A" ? parseFloat(ragCost) : 0);
+        document.getElementById('total-cost').textContent = `$${totalCost.toFixed(4)}`;
     }
 
     function toggleRagPanel(agent) {
@@ -974,9 +971,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                             // Cost fields
                             let costFields = [];
-                            if (result.llm_cost_usd !== undefined) costFields.push(`LLM Cost: $${result.llm_cost_usd}`);
-                            if (result.llm_model_name) costFields.push(`Model: ${result.llm_model_name}`);
-                            if (result.llm_token_usage !== undefined) costFields.push(`Tokens: ${result.llm_token_usage}`);
+                            const costVal = result.llm_top_strategies?.llm_cost_usd !== undefined ? 
+                                `$${parseFloat(result.llm_top_strategies.llm_cost_usd).toFixed(4)}` : '-';
+                            costFields.push(`LLM Cost: ${costVal}`);
+                            const modelVal = result.llm_model_name ? result.llm_model_name : '-';
+                            costFields.push(`Model: ${modelVal}`);
                             if (costFields.length > 0) {
                                 llmInsightsHtml += `<div class='small text-muted mt-2'>${costFields.join(' | ')}</div>`;
                             }
@@ -1437,9 +1436,11 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             // Cost fields
             let costFields = [];
-            if (result.llm_cost_usd !== undefined) costFields.push(`LLM Cost: $${result.llm_cost_usd}`);
-            if (result.llm_model_name) costFields.push(`Model: ${result.llm_model_name}`);
-            if (result.llm_token_usage !== undefined) costFields.push(`Tokens: ${result.llm_token_usage}`);
+            const costVal = result.llm_top_strategies?.llm_cost_usd !== undefined ? 
+                `$${parseFloat(result.llm_top_strategies.llm_cost_usd).toFixed(4)}` : '-';
+            costFields.push(`LLM Cost: ${costVal}`);
+            const modelVal = result.llm_model_name ? result.llm_model_name : '-';
+            costFields.push(`Model: ${modelVal}`);
             if (costFields.length > 0) {
                 llmInsightsHtml += `<div class='small text-muted mt-2'>${costFields.join(' | ')}</div>`;
             }
