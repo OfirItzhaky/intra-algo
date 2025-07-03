@@ -384,7 +384,7 @@ class RegressionScalpingStrategy(bt.Strategy):
         long_threshold=3.0,
         short_threshold=3.0,
         target_ticks=10,
-        stop_ticks=10,
+        stop_ticks=15,
         tick_size=0.25,
         tick_value=1.25,
         contract_size=1,
@@ -494,8 +494,8 @@ class RegressionScalpingStrategy(bt.Strategy):
             return
 
         # Use 5m close for execution
-        tp_offset_ticks = 10
-        sl_offset_ticks = 10
+        tp_offset_ticks = self.p.stop_ticks
+        sl_offset_ticks = self.p.target_ticks
         entry_price = self.datas[0].close[0] + self.p.slippage if long_signal else self.datas[0].close[0] - self.p.slippage
         tp = entry_price + tp_offset_ticks * self.p.tick_size if long_signal else entry_price - tp_offset_ticks * self.p.tick_size
         sl = entry_price - sl_offset_ticks * self.p.tick_size if long_signal else entry_price + sl_offset_ticks * self.p.tick_size

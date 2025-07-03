@@ -835,6 +835,48 @@ document.addEventListener('DOMContentLoaded', function() {
                           if (result.llm_top_strategies) {
                             console.log('[LLM DEBUG] llm_top_strategies:', result.llm_top_strategies, 'type:', typeof result.llm_top_strategies);
                             let llmObj = result.llm_top_strategies;
+                            // If it's an array, render as table
+                            if (Array.isArray(llmObj)) {
+                                let llmInsightsDiv = document.getElementById('llm-strategy-insights-block');
+                                if (!llmInsightsDiv) {
+                                    llmInsightsDiv = document.createElement('div');
+                                    llmInsightsDiv.id = 'llm-strategy-insights-block';
+                                    regResultDiv.appendChild(llmInsightsDiv);
+                                }
+                                let html = `<div class='mb-2'><b>Top Strategies (LLM Selected):</b></div>`;
+                                html += `<div class='table-responsive'><table class='table table-sm table-bordered mb-2'><thead class='table-light'><tr>`;
+                                html += `<th>Name</th><th>Logic</th><th>Direction</th><th>Stop Loss (ticks)</th><th>Take Profit (ticks)</th><th>Profit Factor</th><th>Win Rate</th><th>Avg Daily PnL</th><th>Max Drawdown</th><th>Rationale</th>`;
+                                html += `</tr></thead><tbody>`;
+                                llmObj.forEach((s) => {
+                                    html += `<tr>`;
+                                    html += `<td>${s.name ?? '-'}</td>`;
+                                    html += `<td>${s.logic ?? '-'}</td>`;
+                                    html += `<td>${s.direction ?? '-'}</td>`;
+                                    html += `<td>${s.stop_loss_ticks ?? '-'}</td>`;
+                                    html += `<td>${s.take_profit_ticks ?? '-'}</td>`;
+                                    html += `<td>${s.key_metrics?.profit_factor ?? '-'}</td>`;
+                                    html += `<td>${s.key_metrics?.win_rate ?? '-'}</td>`;
+                                    html += `<td>${s.key_metrics?.avg_daily_pnl ?? '-'}</td>`;
+                                    html += `<td>${s.key_metrics?.max_drawdown ?? '-'}</td>`;
+                                    html += `<td>${s.rationale ?? '-'}</td>`;
+                                    html += `</tr>`;
+                                });
+                                html += `</tbody></table></div>`;
+                                llmInsightsDiv.innerHTML = html;
+                                // Add cost and model info below the table
+                                let costFields = [];
+                                const costVal = (result.llm_top_strategies?.llm_cost_usd !== undefined)
+                                    ? `$${parseFloat(result.llm_top_strategies.llm_cost_usd).toFixed(4)}`
+                                    : (result.llm_cost_usd !== undefined ? `$${parseFloat(result.llm_cost_usd).toFixed(4)}` : '-');
+                                costFields.push(`LLM Cost: ${costVal}`);
+                                const modelVal = result.llm_top_strategies?.model_name || result.llm_model_name || result.model_name || '-';
+                                costFields.push(`Model: ${modelVal}`);
+                                if (costFields.length > 0) {
+                                    llmInsightsDiv.innerHTML += `<div class='small text-muted mt-2'>${costFields.join(' | ')}</div>`;
+                                }
+                                return;
+                            }
+                            // ...existing object-based rendering...
                             if (llmObj && typeof llmObj === 'object' && Array.isArray(llmObj.top_strategies)) {
                               console.log('[LLM DEBUG] Rendering LLM table, top_strategies length:', llmObj.top_strategies.length);
                               pretty = `<div class='mb-2'><b>Top Strategies (LLM Selected):</b></div>`;
@@ -890,10 +932,16 @@ document.addEventListener('DOMContentLoaded', function() {
                             // llm_top_strategies
                             if (result.llm_top_strategies) {
                                 let llmObj = result.llm_top_strategies;
-                                // If it's a string, try to parse as JSON
+                                // If it's a string, try to parse as JSON (strip markdown fences)
                                 if (typeof llmObj === 'string') {
+                                    // Remove ```json ... ``` or ``` ... ```
+                                    let cleaned = llmObj.trim()
+                                        .replace(/^```json\s*/i, '')
+                                        .replace(/^```/, '')
+                                        .replace(/```$/, '')
+                                        .trim();
                                     try {
-                                        llmObj = JSON.parse(llmObj);
+                                        llmObj = JSON.parse(cleaned);
                                     } catch (e) {
                                         llmInsightsHtml += `<div class='alert alert-warning'>Could not parse llm_top_strategies JSON: ${e}</div>`;
                                         llmObj = null;
@@ -928,11 +976,12 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                             // Cost fields
                             let costFields = [];
-                            const costVal = result.llm_top_strategies?.llm_cost_usd !== undefined ? 
-                                `$${parseFloat(result.llm_top_strategies.llm_cost_usd).toFixed(4)}` : '-';
+                            const costVal = (result.llm_top_strategies?.llm_cost_usd !== undefined)
+                                ? `$${parseFloat(result.llm_top_strategies.llm_cost_usd).toFixed(4)}`
+                                : (result.llm_cost_usd !== undefined ? `$${parseFloat(result.llm_cost_usd).toFixed(4)}` : '-');
                             costFields.push(`LLM Cost: ${costVal}`);
-                            // Try to get model name from llm_top_strategies first
-                            const modelVal = result.llm_top_strategies?.model_name || result.llm_model_name || '-';
+                            // Try to get model name from llm_top_strategies first, then top-level
+                            const modelVal = result.llm_top_strategies?.model_name || result.llm_model_name || result.model_name || '-';
                             costFields.push(`Model: ${modelVal}`);
                             if (costFields.length > 0) {
                                 llmInsightsHtml += `<div class='small text-muted mt-2'>${costFields.join(' | ')}</div>`;
@@ -1301,6 +1350,48 @@ document.addEventListener('DOMContentLoaded', function() {
           if (result.llm_top_strategies) {
             console.log('[LLM DEBUG] llm_top_strategies:', result.llm_top_strategies, 'type:', typeof result.llm_top_strategies);
             let llmObj = result.llm_top_strategies;
+            // If it's an array, render as table
+            if (Array.isArray(llmObj)) {
+                let llmInsightsDiv = document.getElementById('llm-strategy-insights-block');
+                if (!llmInsightsDiv) {
+                    llmInsightsDiv = document.createElement('div');
+                    llmInsightsDiv.id = 'llm-strategy-insights-block';
+                    regResultDiv.appendChild(llmInsightsDiv);
+                }
+                let html = `<div class='mb-2'><b>Top Strategies (LLM Selected):</b></div>`;
+                html += `<div class='table-responsive'><table class='table table-sm table-bordered mb-2'><thead class='table-light'><tr>`;
+                html += `<th>Name</th><th>Logic</th><th>Direction</th><th>Stop Loss (ticks)</th><th>Take Profit (ticks)</th><th>Profit Factor</th><th>Win Rate</th><th>Avg Daily PnL</th><th>Max Drawdown</th><th>Rationale</th>`;
+                html += `</tr></thead><tbody>`;
+                llmObj.forEach((s) => {
+                    html += `<tr>`;
+                    html += `<td>${s.name ?? '-'}</td>`;
+                    html += `<td>${s.logic ?? '-'}</td>`;
+                    html += `<td>${s.direction ?? '-'}</td>`;
+                    html += `<td>${s.stop_loss_ticks ?? '-'}</td>`;
+                    html += `<td>${s.take_profit_ticks ?? '-'}</td>`;
+                    html += `<td>${s.key_metrics?.profit_factor ?? '-'}</td>`;
+                    html += `<td>${s.key_metrics?.win_rate ?? '-'}</td>`;
+                    html += `<td>${s.key_metrics?.avg_daily_pnl ?? '-'}</td>`;
+                    html += `<td>${s.key_metrics?.max_drawdown ?? '-'}</td>`;
+                    html += `<td>${s.rationale ?? '-'}</td>`;
+                    html += `</tr>`;
+                });
+                html += `</tbody></table></div>`;
+                llmInsightsDiv.innerHTML = html;
+                // Add cost and model info below the table
+                let costFields = [];
+                const costVal = (result.llm_top_strategies?.llm_cost_usd !== undefined)
+                    ? `$${parseFloat(result.llm_top_strategies.llm_cost_usd).toFixed(4)}`
+                    : (result.llm_cost_usd !== undefined ? `$${parseFloat(result.llm_cost_usd).toFixed(4)}` : '-');
+                costFields.push(`LLM Cost: ${costVal}`);
+                const modelVal = result.llm_top_strategies?.model_name || result.llm_model_name || result.model_name || '-';
+                costFields.push(`Model: ${modelVal}`);
+                if (costFields.length > 0) {
+                    llmInsightsDiv.innerHTML += `<div class='small text-muted mt-2'>${costFields.join(' | ')}</div>`;
+                }
+                return;
+            }
+            // ...existing object-based rendering...
             if (llmObj && typeof llmObj === 'object' && Array.isArray(llmObj.top_strategies)) {
               console.log('[LLM DEBUG] Rendering LLM table, top_strategies length:', llmObj.top_strategies.length);
               pretty = `<div class='mb-2'><b>Top Strategies (LLM Selected):</b></div>`;
@@ -1356,10 +1447,16 @@ document.addEventListener('DOMContentLoaded', function() {
             // llm_top_strategies
             if (result.llm_top_strategies) {
                 let llmObj = result.llm_top_strategies;
-                // If it's a string, try to parse as JSON
+                // If it's a string, try to parse as JSON (strip markdown fences)
                 if (typeof llmObj === 'string') {
+                    // Remove ```json ... ``` or ``` ... ```
+                    let cleaned = llmObj.trim()
+                        .replace(/^```json\s*/i, '')
+                        .replace(/^```/, '')
+                        .replace(/```$/, '')
+                        .trim();
                     try {
-                        llmObj = JSON.parse(llmObj);
+                        llmObj = JSON.parse(cleaned);
                     } catch (e) {
                         llmInsightsHtml += `<div class='alert alert-warning'>Could not parse llm_top_strategies JSON: ${e}</div>`;
                         llmObj = null;
@@ -1394,11 +1491,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             // Cost fields
             let costFields = [];
-            const costVal = result.llm_top_strategies?.llm_cost_usd !== undefined ? 
-                `$${parseFloat(result.llm_top_strategies.llm_cost_usd).toFixed(4)}` : '-';
+            const costVal = (result.llm_top_strategies?.llm_cost_usd !== undefined)
+                ? `$${parseFloat(result.llm_top_strategies.llm_cost_usd).toFixed(4)}`
+                : (result.llm_cost_usd !== undefined ? `$${parseFloat(result.llm_cost_usd).toFixed(4)}` : '-');
             costFields.push(`LLM Cost: ${costVal}`);
-            // Try to get model name from llm_top_strategies first
-            const modelVal = result.llm_top_strategies?.model_name || result.llm_model_name || '-';
+            // Try to get model name from llm_top_strategies first, then top-level
+            const modelVal = result.llm_top_strategies?.model_name || result.llm_model_name || result.model_name || '-';
             costFields.push(`Model: ${modelVal}`);
             if (costFields.length > 0) {
                 llmInsightsHtml += `<div class='small text-muted mt-2'>${costFields.join(' | ')}</div>`;

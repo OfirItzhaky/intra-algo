@@ -27,6 +27,11 @@ import numpy as np
 import time
 from backend.analyzer_dashboard import AnalyzerDashboard
 
+import re
+import json
+
+
+
 # === Runtime Constants ===
 today = datetime.today().strftime("%Y-%m-%d")
 DEFAULT_MARKETS = ["US"]
@@ -1430,13 +1435,7 @@ def run_regression_predictor():
     regression_backtest_tracker["status"] = "done"
     print(f"[run_regression_predictor] agent.find_best_threshold_strategy() returned keys: {list(result.keys())}")
     print(f"[run_regression_predictor] Returning result to client.")
-    # --- LLM cost tracking fields (simulate for now) ---
-    # result["llm_token_usage"] = 0
-    # result["llm_cost_usd"] = 0.0
-    # result["llm_model_name"] = "Gemini 1.5 Pro"
-    # result["llm_session_total_cost"] = 0.0
-    # result["total_cost_usd"] = 0.0
-    # Ensure all numpy types are converted to native Python types
+
     result = to_serializable(result)
     # Pass through regression_trades_plot_path if present in best_result
     # Define which keys to keep
@@ -1466,6 +1465,7 @@ def run_regression_predictor():
 
     # Final conversion and return
     cleaned_result = to_serializable(cleaned_result)
+    cleaned_result["llm_model_name"] = CONFIG.get('model_name')
     return jsonify(cleaned_result)
 
 

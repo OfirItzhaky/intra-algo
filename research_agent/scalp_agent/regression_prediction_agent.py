@@ -221,6 +221,24 @@ class RegressionPredictorAgent:
             "n_train": self.metadata.get('n_train'),
         }
 
+    def _make_serializable(self, obj):
+        def helper(o):
+            basic_types = (str, int, float, bool, type(None))
+            if isinstance(o, dict):
+                return {k: helper(v) for k, v in o.items()
+                        if k not in ['strategy', 'cerebro'] and isinstance(v, (basic_types + (dict, list)))}
+            elif isinstance(o, list):
+                return [helper(v) for v in o]
+            elif isinstance(o, basic_types):
+                if isinstance(o, float):
+                    if math.isinf(o) or math.isnan(o):
+                        return None
+                return o
+            else:
+                return str(o)
+
+        return helper(obj)
+
     def find_best_threshold_strategy(self, df, df_1min=None, user_params=None):
         """
         Search for the best long/short threshold config by simulating multiple values and picking the best by profit factor (or win rate).
@@ -244,189 +262,26 @@ class RegressionPredictorAgent:
         df_with_preds = None  # Will hold the DataFrame with predictions for plotting
         df_with_preds = self._simulate_all_configs(df, df_1min, df_with_preds, results, threshold_grid, total_configs,
                                                    user_params)
-        # --- Rule-based filtering ---
-        filtered_out_configs, filtered_results, filtered_results_clean = self._filter_results_by_rules(max_drawdown,
-                                                                                                       min_profit_factor,
-                                                                                                       min_trades,
-                                                                                                       results)
-        best, top_strategies = self._rank_and_pick_best_strategies(filtered_results_clean)
-        best_result = best['sim'] if best and 'sim' in best else None
-        # Compose explanation
-        if best:
-            explanation = (
-                f"Best thresholds: long_delta={best.get('long_threshold')}, short_delta={best.get('short_threshold')}. "
-                f"Profit factor: {best.get('profit_factor', 0.0):.2f}, "
-                f"Win rate: {best.get('win_rate', 0.0):.1f}%. "
-                f"Risk violations: {best.get('risk_violations', 0)}, "
-                f"Daily loss violations: {best.get('daily_loss_violations', 0)}."
-            )
-            if best_result:
-                best_result['threshold_search'] = {
-                    'chosen_long_threshold': best.get('long_threshold'),
-                    'chosen_short_threshold': best.get('short_threshold'),
-                    'risk_meta': {
-                        'risk_violations': best.get('risk_violations', 0),
-                        'daily_loss_violations': best.get('daily_loss_violations', 0)
-                    },
-                    'explanation': explanation
-                }
-                best_result['llm_summary'] = best_result.get('llm_summary', '') + ' ' + explanation
-                # Add top_strategies and recommendation
-                best_result['top_strategies'] = [
-                    {
-                        'long_threshold': r['long_threshold'],
-                        'short_threshold': r['short_threshold'],
-                        'min_volume_pct_change': r['min_volume_pct_change'],
-                        'bar_color_filter': r['bar_color_filter'],
-                        'profit_factor': r['profit_factor'],
-                        'win_rate': r['win_rate'],
-                        'avg_return': r['avg_return'],
-                        'max_drawdown': r['max_drawdown'],
-                        'num_trades': r['num_trades'],
-                        'risk_violations': r['risk_violations'],
-                        'daily_loss_violations': r['daily_loss_violations'],
-                        'direction_tag': r['direction_tag']
-                    } for r in top_strategies
-                ]
-                best_result['recommended_strategy_summary'] = (
-                    f"Strategy with long threshold {best.get('long_threshold')} and short threshold {best.get('short_threshold')} "
-                    f"yielded the highest profit factor ({best.get('profit_factor', 0.0):.2f}) and stayed within risk limits."
-                )
-                best_result['filtered_out_configs'] = filtered_out_configs
-                best_result['filter_meta'] = {
-                    'min_trades': min_trades,
-                    'max_drawdown': max_drawdown,
-                    'min_profit_factor': min_profit_factor
-                }
-                # --- Build strategy_matrix_llm for LLM use ---
-                llm_context, strategy_matrix_llm = self._build_llm_context_and_matrix(best_result, filtered_results,
-                                                                                      llm_context, strategy_matrix_llm,
-                                                                                      user_params)
-                # --- Real LLM output for recommended strategy ---
-                model_name = CONFIG.get("image_analysis_model", "gpt-4o")
-                provider = CONFIG.get("model_provider", "openai")
-                api_key = CONFIG.get("openai_api_key") if provider == "openai" else CONFIG.get("gemini_api_key")
-                bias_summary = llm_context.get('bias_summary')
-                if not bias_summary or not isinstance(bias_summary, str) or not bias_summary.strip():
-                    best_result['llm_strategy_recommendation'] = {
-                        'selected_strategy': None,
-                        'alternative_strategies': [],
-                        'llm_rationale': "Bias context is missing. Please run the Multi-Timeframe Agent first.",
-                        'model_used': model_name,
-                        'tokens_used': 0,
-                        'cost_usd': 0.0,
-                        'llm_error': True
-                    }
-                    return best_result
-                # --- Build prompt ---
-                top_strats = strategy_matrix_llm[:10]
-                user_risk = llm_context['user_risk_settings']
-                llm_prompt = """
-                    You are a trading strategist assistant. Your task is to select the best strategies from a 256-strategy grid and an optional market bias summary.
-                    
-                    🎯 Your Goal:
-                    Return exactly **three trading strategies**, selected based on the data, and output them in a **fixed JSON format**. This format must always be followed **exactly as shown below** to ensure consistency.
-                    
-                    🧠 Inputs:
-                    - A strategy grid containing 256 rows, each with metrics like: win rate, profit factor, max drawdown, avg daily PnL, etc.
-                    - An optional market bias text summary that may include sector flow, macro bias, symbol news, or support/resistance levels.
-                    
-                    📋 Selection Criteria:
-                    - Choose based on meaningful metrics (not only PnL) — including stability, risk, win rate, and drawdown.
-                    - You may weight metrics differently if market bias suggests strong long/short skew or risk-aversion.
-                    - Use judgment to combine multiple signals into effective strategy logic.
-                    
-                    📤 **Output Format – This must be strictly followed**:
-                    Return your response as a JSON with the following structure:
-                    
-                    ```json
-                    {
-                      "top_strategies": [
-                        {
-                          "name": "Volatile Shorts",
-                          "logic": "Trade when predicted short > 0.6 and candle color is red. Use only if volume spike > 5%.",
-                          "direction": "short",
-                          "stop_loss_ticks": 10,
-                          "take_profit_ticks": 10,
-                          "key_metrics": {
-                            "profit_factor": 1.25,
-                            "win_rate": 52.3,
-                            "avg_daily_pnl": 5.2,
-                            "max_drawdown": 90.0
-                          },
-                          "rationale": "This strategy favors short trades in high-volume environments. It has stable win rate and low drawdown, making it ideal in bearish or volatile conditions."
-                        },
-                        {
-                          "name": "Balanced Intraday",
-                          "logic": "Trade when either long/short predicted > 0.5 and candle matches direction. No volume filter.",
-                          "direction": "both",
-                          "stop_loss_ticks": 10,
-                          "take_profit_ticks": 10,
-                          "key_metrics": {
-                            "profit_factor": 1.18,
-                            "win_rate": 48.7,
-                            "avg_daily_pnl": 6.9,
-                            "max_drawdown": 100.0
-                          },
-                          "rationale": "This is a general-purpose strategy that performs well on both sides with decent stability. Recommended for trend-neutral sessions."
-                        },
-                        {
-                          "name": "Momentum Longs",
-                          "logic": "Trade when predicted long > 0.7 and min_volume_pct_change > 3%. Only on green candles.",
-                          "direction": "long",
-                          "stop_loss_ticks": 10,
-                          "take_profit_ticks": 10,
-                          "key_metrics": {
-                            "profit_factor": 1.32,
-                            "win_rate": 56.2,
-                            "avg_daily_pnl": 7.5,
-                            "max_drawdown": 70.0
-                          },
-                          "rationale": "Best performing long-biased strategy with high win rate and consistent daily returns. Ideal for strong bullish sessions."
-                        }
-                      ]
-                    }
-                    ```
-                    📌 Rules:
-                    
-                    Do not return anything outside the JSON block.
-                    
-                    Always include exactly 3 strategies unless instructed otherwise.
-                    
-                    Ensure keys and structure are identical in casing and order.
-                    
-                    If market bias is empty, ignore it. If present, use it to prioritize strategy alignment.
-                    
-                    Below is the strategy grid and bias summary:
-                    
-                    STRATEGY GRID:
-                    {grid_json}
-                    
-                    BIAS SUMMARY:
-                    {bias_str}
-                    """
-        df_results = self._save_and_visualize_results(best_result, df_with_preds, results)
+        # --- Get diverse strategies instead of rule-based filtering ---
+
+        diverse_strategies = self.pick_top_n_strategies_mixed(pd.DataFrame(results))
+
+
+
+
+
         # Now call LLM selector
         print('[LLM] Calling LLM for top strategy selection...')
-        final_best_result = self._call_llm_and_attach(best_result, df_results, user_params)
+        bias_summary = llm_context.get('bias_summary')
+        final_best_result = self._call_llm_and_attach(diverse_strategies, bias_summary)
+
+        df_results = self._save_and_visualize_results(final_best_result, df_with_preds, results)
 
         # --- Ensure result is serializable before returning ---
-        def to_serializable(obj):
-            basic_types = (str, int, float, bool, type(None))
-            if isinstance(obj, dict):
-                return {k: to_serializable(v) for k, v in obj.items() if k not in ['strategy', 'cerebro'] and (isinstance(v, basic_types) or isinstance(v, (dict, list)))}
-            elif isinstance(obj, list):
-                return [to_serializable(v) for v in obj]
-            elif isinstance(obj, basic_types):
-                if isinstance(obj, float):
-                    if math.isinf(obj) or math.isnan(obj):
-                        return None  # or 0.0 if you prefer
-                return obj
-            else:
-                return str(obj)
-        best_result_serializable = to_serializable(final_best_result)
+        best_result_serializable = self._make_serializable(final_best_result)
+
         if 'llm_top_strategies' in best_result_serializable:
-            best_result_serializable['llm_top_strategies'] = _strip_json_markdown_fence(best_result_serializable['llm_top_strategies'])
+            best_result_serializable['llm_top_strategies'] = parse_llm_response(best_result_serializable['llm_top_strategies'])
         return best_result_serializable
 
     def _save_and_visualize_results(self, best_result, df_with_preds, results):
@@ -518,69 +373,128 @@ class RegressionPredictorAgent:
                 dashboard.display_strategy_and_metrics_side_by_side(metrics_df, params_dict)
         return df_results
 
-    def _call_llm_and_attach(self, best_result, df_results, user_params):
-        bias_summary = (user_params or self.user_params).get('bias_summary', None)
-        llm_result = self.llm_select_top_strategies_from_grid(df_results, bias_summary=bias_summary)
-        best_result['llm_top_strategies'] = llm_result
-        if isinstance(llm_result, dict):
-            cost = llm_result.get('llm_cost_usd')
-            tokens = llm_result.get('tokens_used') or llm_result.get('token_usage') or 0
-        best_result['llm_top_strategies_cost'] = {'cost_usd': cost, 'tokens': tokens}
-        return best_result
+    def _call_llm_and_attach(self, diverse_strategies, bias_summary
+                             ):
+        # Serialize the diverse strategy grid
+        try:
+            # Drop problematic fields before serializing
+            df_clean = diverse_strategies.drop(columns=['sim', 'strategy', 'cerebro'], errors='ignore')
+            grid_json = df_clean.to_json(orient='records', indent=2)
+        except Exception as e:
+            print(f"[LLM] Failed to serialize strategies: {e}")
+            return {"error": "Could not prepare strategy input for LLM."}
 
-    def _build_llm_context_and_matrix(self, best_result, filtered_results, llm_context, strategy_matrix_llm,
-                                      user_params):
-        strategy_matrix_llm = []
-        for r in filtered_results:
-            entry = {
-                'long_threshold': r.get('long_threshold'),
-                'short_threshold': r.get('short_threshold'),
-                'min_volume_pct_change': r.get('min_volume_pct_change'),
-                'bar_color_filter': r.get('bar_color_filter'),
-                'direction_tag': r.get('direction_tag'),
-                'profit_factor': r.get('profit_factor'),
-                'win_rate': r.get('win_rate'),
-                'avg_return': r.get('avg_return'),
-                'num_trades': r.get('num_trades'),
-                'max_drawdown': r.get('max_drawdown'),
-                'risk_violations': r.get('risk_violations'),
-                'daily_loss_violations': r.get('daily_loss_violations'),
+        # Construct the prompt
+        llm_prompt = f"""
+    You are a trading strategist assistant. Your task is to select the best strategies from a 256-strategy grid and an optional market bias summary.
+
+    🎯 Your Goal:
+    Return exactly **three trading strategies**, selected based on the data, and output them in a **fixed JSON format**. This format must always be followed **exactly as shown below** to ensure consistency.
+
+    🧠 Inputs:
+    - A strategy grid containing 256 rows, each with metrics like: win rate, profit factor, max drawdown, avg daily PnL, etc.
+    - An optional market bias text summary that may include sector flow, macro bias, symbol news, or support/resistance levels.
+
+    📋 Selection Criteria:
+    - Choose based on meaningful metrics (not only PnL) — including stability, risk, win rate, and drawdown.
+    - You may weight metrics differently if market bias suggests strong long/short skew or risk-aversion.
+    - Use judgment to combine multiple signals into effective strategy logic.
+
+    📤 **Output Format – This must be strictly followed**:
+    Return your response as a JSON with the following structure (starting directly with {{):
+
+    {{
+      "top_strategies": [
+        {{
+          "name": "Example Strategy",
+          "logic": "Trade when conditions are met.",
+          "direction": "both",
+          "stop_loss_ticks": 10,
+          "take_profit_ticks": 10,
+          "key_metrics": {{
+            "profit_factor": 1.0,
+            "win_rate": 50.0,
+            "avg_daily_pnl": 5.0,
+            "max_drawdown": 100.0
+          }},
+          "rationale": "Explanation of why this strategy is selected."
+        }},
+        ...
+      ]
+    }}
+    📌 Rules:
+    - Output must be clean JSON parseable by json.loads()
+    - No markdown formatting, no triple backticks
+    - Must always include exactly 3 strategies unless told otherwise
+
+    STRATEGY GRID:
+    {grid_json}
+
+    BIAS SUMMARY:
+    {bias_summary}
+    """
+
+        model_name = CONFIG.get("model_name")
+        provider = CONFIG.get("model_provider")
+        # Call the appropriate LLM API
+        try:
+            if provider == "google":
+                import requests
+                endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+                headers = {"Content-Type": "application/json", "x-goog-api-key": CONFIG.get("gemini_api_key")}
+                body = {"contents": [{"parts": [{"text": llm_prompt}]}]}
+                resp = requests.post(endpoint, headers=headers, json=body, timeout=60)
+                resp.raise_for_status()
+                data = resp.json()
+                content = data["candidates"][0]["content"]["parts"][0]["text"]
+                usage = data.get("usageMetadata", {})
+
+                prompt_tokens = usage['promptTokenCount']
+                candidate_tokens = usage['candidatesTokenCount']
+                tokens = prompt_tokens + candidate_tokens
+                cost = round(tokens * 0.0025 / 1000, 4)
+
+            elif provider == "openai":
+                import requests
+                endpoint = "https://api.openai.com/v1/chat/completions"
+                headers = {"Authorization": f"Bearer {CONFIG.get('openai_api_key')}",
+                           "Content-Type": "application/json"}
+                payload = {
+                    "model": model_name,
+                    "messages": [{"role": "user", "content": llm_prompt}],
+                    "max_tokens": 1000
+                }
+                resp = requests.post(endpoint, headers=headers, json=payload, timeout=60)
+                resp.raise_for_status()
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"]
+                usage = data.get("usage", {})
+                tokens = usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
+                cost = round((usage.get("prompt_tokens", 0) * 0.005 + usage.get("completion_tokens", 0) * 0.015) / 1000,
+                             4)
+
+            else:
+                return {"error": f"Unsupported LLM provider: {provider}"}
+
+            print(f"[LLM Cost] ${cost} ({tokens} tokens from {provider})")
+            print(f"[LLM Response Preview] {content[:300]}...")
+
+            parsed = json.loads(content) if content.strip().startswith('{') else {"llm_raw_response": content}
+            best_result = {
+                "llm_top_strategies": parsed,
+                "llm_cost_usd": cost,
+                "llm_token_usage": tokens,
+                "model_name": model_name,
+                "provider": provider,
+                "bias_summary_used": bias_summary,
+                "strategy_matrix_llm": diverse_strategies,
             }
-            # Optionally add more contextually useful fields here
-            strategy_matrix_llm.append(entry)
-        # --- Prepare LLM context ---
-        # User risk settings
-        user_risk_settings = {
-            'max_risk_per_trade': float((user_params or self.user_params).get('max_risk_per_trade', 30)),
-            'max_daily_risk': float((user_params or self.user_params).get('max_daily_risk', 100)),
-            'tick_size': float((user_params or self.user_params).get('tick_size', 0.25)),
-            'tick_value': float((user_params or self.user_params).get('tick_value', 1.25)),
-        }
-        # Bias summary placeholder
-        bias_summary = (user_params or self.user_params).get('bias_summary',
-                                                             "Bullish bias detected on 15min and hourly. Volatility elevated.")
-        # Add suggested_contracts to each strategy
-        strategy_matrix_llm_with_contracts = []
-        for strat in strategy_matrix_llm:
-            stop_ticks = int((user_params or self.user_params).get('stop_ticks', 10))
-            tick_value = user_risk_settings['tick_value']
-            stop_loss_dollars = stop_ticks * tick_value
-            max_risk = user_risk_settings['max_risk_per_trade']
-            suggested_contracts = int(max(1, max_risk // stop_loss_dollars)) if stop_loss_dollars > 0 else 1
-            strat_with_contracts = dict(strat)
-            strat_with_contracts['suggested_contracts'] = suggested_contracts
-            strat_with_contracts['stop_ticks'] = stop_ticks
-            strat_with_contracts['stop_loss_dollars'] = stop_loss_dollars
-            strategy_matrix_llm_with_contracts.append(strat_with_contracts)
-        llm_context = {
-            'user_risk_settings': user_risk_settings,
-            'bias_summary': bias_summary,
-            'strategy_matrix': strategy_matrix_llm_with_contracts,
-            'auto_contract_calculation': True
-        }
-        best_result['strategy_matrix_llm'] = strategy_matrix_llm
-        best_result['llm_context'] = llm_context
-        return llm_context, strategy_matrix_llm
+
+            return best_result
+
+        except Exception as e:
+            print(f"[LLM Error] {e}")
+            return {"error": str(e), "llm_prompt": llm_prompt}
 
     @staticmethod
     def _safe_float(val):
@@ -589,63 +503,7 @@ class RegressionPredictorAgent:
         except Exception:
             return 0.0
 
-    def _rank_and_pick_best_strategies(self, filtered_results_clean):
-        results_sorted = sorted(filtered_results_clean,
-                                key=lambda x: (self._safe_float(x.get('profit_factor')), self._safe_float(x.get('win_rate'))),
-                                reverse=True)
-        # Filter for risk-respecting configs
-        risk_ok = [r for r in results_sorted if
-                   r.get('risk_violations', 1) == 0 and r.get('daily_loss_violations', 1) == 0]
-        top_strategies = (risk_ok if risk_ok else results_sorted)[:3]
-        # Pick best
-        best = top_strategies[0] if top_strategies else None
-        return best, top_strategies
 
-    def _filter_results_by_rules(self, max_drawdown, min_profit_factor, min_trades, results):
-        filtered_results = []
-        filtered_out_configs = []
-        for r in results:
-            required_keys = ['profit_factor', 'num_trades', 'max_drawdown']
-            missing_keys = [k for k in required_keys if k not in r]
-            if missing_keys:
-                print(f"[DEBUG] Skipping config due to missing keys: {missing_keys}. Available keys: {list(r.keys())}")
-                r['error'] = f"Missing keys: {missing_keys}"
-                filtered_out_configs.append(r)
-                continue
-            pf = r['profit_factor']
-            nt = r['num_trades']
-            drawdown = r['max_drawdown']
-            discard = False
-            if (min_profit_factor > 0 and pf < min_profit_factor):
-                discard = True
-            if (min_trades > 0 and nt < min_trades):
-                discard = True
-            if (max_drawdown < float('inf') and drawdown > max_drawdown):
-                discard = True
-            if discard:
-                filtered_out_configs.append(r)
-            else:
-                filtered_results.append(r)
-
-        # Sort by profit factor, fallback win rate
-        def safe_float(val):
-            try:
-                return float(val) if val is not None else 0.0
-            except Exception:
-                return 0.0
-
-        # Filter out configs with None for profit_factor or win_rate, print warning
-        filtered_results_clean = []
-        for r in filtered_results:
-            pf = r.get('profit_factor', 0.0)
-            wr = r.get('win_rate', 0.0)
-            if pf is None or wr is None:
-                print(
-                    f"[WARNING] Skipping config due to NoneType in metrics: profit_factor={pf}, win_rate={wr}, config={r}")
-                filtered_out_configs.append(r)
-            else:
-                filtered_results_clean.append(r)
-        return filtered_out_configs, filtered_results, filtered_results_clean
 
     def _simulate_all_configs(self, df, df_1min, df_with_preds, results, threshold_grid, total_configs, user_params):
         for i, (long_t, short_t, min_vol, bar_color) in enumerate(threshold_grid):
@@ -665,9 +523,9 @@ class RegressionPredictorAgent:
                 'max_drawdown': None
             }
             # TEMP DEV MODE: Early-stop after 5 strategy simulations for faster development. Remove or increase for full runs.
-            # if i >= 5:
-            #     print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
-            #     break
+            if i >= 15:
+                print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
+                break
             if regression_backtest_tracker is not None:
                 if regression_backtest_tracker.get("cancel_requested"):
                     regression_backtest_tracker["status"] = "cancelled"
@@ -873,6 +731,142 @@ class RegressionPredictorAgent:
             }
             results[-1].update(result_row)
         return df_with_preds
+
+    def pick_top_n_strategies_mixed(self, df_results, n_per_slice=5):
+        """
+        Pick top strategies using multiple slicing criteria to ensure diversity.
+        
+        Slicing Categories (44 total slices):
+        1. Performance Metrics (16 slices):
+           - Top by profit_factor (both, longs only, shorts only)
+           - Top by win_rate (both, longs only, shorts only)
+           - Top by avg_daily_pnl (both, longs only, shorts only)
+           - Top by Sharpe-like ratio (pnl/drawdown)
+           - Lowest drawdown with profit_factor > 1.2
+           - Highest num_trades with win_rate > 50%
+           - Best performing strategies with bar_color_filter=True/False
+           - Best performing strategies with min_volume_pct_change > 0
+        
+        2. Risk Metrics (12 slices):
+           - Lowest max_consec_losses
+           - Lowest outlier_count_3sigma
+           - Best risk-adjusted returns (various combinations)
+           - Lowest daily_loss_violations
+           - Lowest risk_violations
+           - Best performing with stop_loss_dollars < median
+        
+        3. Trade Characteristics (8 slices):
+           - Best avg_trade_duration (shortest profitable trades)
+           - Most consistent daily_pnl (lowest std dev)
+           - Highest avg_trades_per_day with profit_factor > 1
+           - Best performing in different volatility regimes
+        
+        4. Hybrid Metrics (8 slices):
+           - Combined profit_factor + win_rate score
+           - Combined profit_factor + num_trades score
+           - Combined win_rate + avg_daily_pnl score
+           - Combined low drawdown + high profit_factor score
+        
+        Args:
+            df_results: DataFrame containing all strategy results
+            n_per_slice: Number of top strategies to keep per slice (default 3)
+            
+        Returns:
+            DataFrame with diverse set of top strategies, deduplicated
+        """
+
+        if df_results is None or len(df_results) == 0:
+            print("[Strategy Picker] Warning: Empty results dataframe")
+            return df_results
+            
+        try:
+            # Create a copy to avoid modifying original
+            df = df_results.copy()
+            all_top_strategies = []
+            
+            # Helper for safe sorting when NaN present
+            def safe_sort(df, column, ascending=False):
+                if isinstance(df, pd.DataFrame):
+                    return df.sort_values(column, ascending=ascending, na_position='last')
+                else:
+                    sorted = pd.DataFrame(df)
+                    return sorted.sort_values(column, ascending=ascending, na_position='last')
+            
+            # 1. Performance Metrics Slices
+            # Profit Factor slices
+            all_top_strategies.extend([
+                safe_sort(df, 'profit_factor').head(n_per_slice),  # Overall best
+                safe_sort(df[df['direction_tag'] == 'long_only'], 'profit_factor').head(n_per_slice),  # Long only
+                safe_sort(df[df['direction_tag'] == 'short_only'], 'profit_factor').head(n_per_slice),  # Short only
+            ])
+            
+            # Win Rate slices
+            all_top_strategies.extend([
+                safe_sort(df, 'win_rate').head(n_per_slice),
+                safe_sort(df[df['direction_tag'] == 'long_only'], 'win_rate').head(n_per_slice),
+                safe_sort(df[df['direction_tag'] == 'short_only'], 'win_rate').head(n_per_slice),
+            ])
+            
+            # PnL and Trade metrics
+            df['pnl_drawdown_ratio'] = df['total_pnl'] / df['max_drawdown'].replace(0, np.inf)
+            all_top_strategies.extend([
+                safe_sort(df, 'avg_daily_pnl').head(n_per_slice),
+                safe_sort(df, 'pnl_drawdown_ratio').head(n_per_slice),
+                safe_sort(df[df['profit_factor'] > 1.2], 'max_drawdown', ascending=True).head(n_per_slice),
+                safe_sort(df[df['win_rate'] > 0.5], 'num_trades').head(n_per_slice)
+            ])
+            
+            # Filter-based best performers
+            all_top_strategies.extend([
+                safe_sort(df[df['bar_color_filter'] == True], 'profit_factor').head(n_per_slice),
+                safe_sort(df[df['bar_color_filter'] == False], 'profit_factor').head(n_per_slice),
+                safe_sort(df[df['min_volume_pct_change'] > 0], 'profit_factor').head(n_per_slice)
+            ])
+            
+            # 2. Risk Metrics Slices
+            all_top_strategies.extend([
+                safe_sort(df, 'max_consec_losses', ascending=True).head(n_per_slice),
+                safe_sort(df, 'outlier_count_3sigma', ascending=True).head(n_per_slice),
+                safe_sort(df, 'daily_loss_violations', ascending=True).head(n_per_slice),
+                safe_sort(df, 'risk_violations', ascending=True).head(n_per_slice)
+            ])
+            
+            # Risk-adjusted metrics
+            df['risk_adjusted_pnl'] = df['avg_daily_pnl'] / (df['max_drawdown'].replace(0, 0.01))
+            all_top_strategies.extend([
+                safe_sort(df, 'risk_adjusted_pnl').head(n_per_slice)
+            ])
+            
+            # 3. Trade Characteristics
+            df['consistency_score'] = df['avg_daily_pnl'] / (df['drawdown_$'].abs().replace(0, 0.01))
+            all_top_strategies.extend([
+                safe_sort(df[df['profit_factor'] > 1], 'avg_trades_per_day').head(n_per_slice),
+                safe_sort(df, 'consistency_score').head(n_per_slice)
+            ])
+            
+            # 4. Hybrid Metrics
+            df['profit_win_score'] = df['profit_factor'] * df['win_rate']
+            df['profit_trades_score'] = df['profit_factor'] * np.log1p(df['num_trades'])
+            df['win_pnl_score'] = df['win_rate'] * df['avg_daily_pnl']
+            all_top_strategies.extend([
+                safe_sort(df, 'profit_win_score').head(n_per_slice),
+                safe_sort(df, 'profit_trades_score').head(n_per_slice),
+                safe_sort(df, 'win_pnl_score').head(n_per_slice)
+            ])
+            
+            # Combine all slices and drop duplicates
+            combined_df = pd.concat(all_top_strategies)
+            key_fields = ['long_threshold', 'short_threshold', 'bar_color_filter', 'min_volume_pct_change']
+            combined_df.drop_duplicates(subset=key_fields,inplace=True)
+            
+            print(f"[Strategy Picker] Selected {len(combined_df)} unique strategies from {len(all_top_strategies) * n_per_slice} candidates")
+            
+            return combined_df
+            
+        except Exception as e:
+            print(f"[Strategy Picker] Error filtering strategies: {e}")
+            print(f"[Strategy Picker] Full error: {traceback.format_exc()}")
+            return df_results
 
     def _generate_threshold_grid(self, user_params):
         thresholds = [0.5, 1.0, 1.5, 2.0, 2.5, 3, 3.5, 4]
@@ -1114,3 +1108,30 @@ def safe_parse_json(content):
     except Exception as e:
         print(f"[WARN] Failed to parse JSON: {e}")
         return content  # fallback to raw string
+
+def parse_llm_response(raw):
+    """
+    Accepts a string or a dict (possibly with 'llm_raw_response').
+    Cleans markdown-style wrapping, parses JSON, and returns the list at data['top_strategies'].
+    Always returns a list (empty if parsing fails or 'top_strategies' is missing).
+    Prints the result for debugging.
+    """
+    import re, json
+    result = []
+    # If it's a dict with 'llm_raw_response', parse that recursively
+    if isinstance(raw, dict) and 'llm_raw_response' in raw:
+        result = parse_llm_response(raw['llm_raw_response'])
+    # If it's a string, clean and parse
+    elif isinstance(raw, str):
+        cleaned = re.sub(r'^```json\s*|```$', '', raw.strip(), flags=re.IGNORECASE | re.MULTILINE)
+        try:
+            data = json.loads(cleaned)
+            if isinstance(data, dict) and 'top_strategies' in data and isinstance(data['top_strategies'], list):
+                result = data['top_strategies']
+        except Exception as e:
+            print(f"[parse_llm_response] Failed to parse or extract top_strategies: {e}")
+    # If it's already a dict with 'top_strategies'
+    elif isinstance(raw, dict) and 'top_strategies' in raw and isinstance(raw['top_strategies'], list):
+        result = raw['top_strategies']
+    print(f"[parse_llm_response] Returning top_strategies: {result}")
+    return result
