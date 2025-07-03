@@ -762,8 +762,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         const formData = new FormData();
                         Array.from(files).forEach(file => formData.append('csv_files', file));
                         console.log('Calling /run_regression_predictor with files:', Array.from(files).map(f => f.name));
-                        polling = true;
-                        pollProgress();
+                        // polling = true;
+                        // pollProgress(); // --- DISABLED: synchronous, no progress bar ---
                         fetch('/run_regression_predictor', {
                           method: 'POST',
                           body: formData
@@ -1180,39 +1180,40 @@ document.addEventListener('DOMContentLoaded', function() {
       const regResultDiv = document.getElementById('regression-strategy-result');
       if (!regBtn || regBtn._handlerAttached) return;
       regBtn._handlerAttached = true;
-      let polling = false;
-      let regressionInterval = null;
+      // --- Polling logic disabled: regression is synchronous for now ---
+      // let polling = false;
+      // let regressionInterval = null;
       let originalBtnHTML = regBtn.innerHTML;
-      let cancelRequested = false;
-      async function pollProgress() {
-        regressionInterval = setInterval(async () => {
-          try {
-            const response = await fetch("/regression_backtest_progress");
-            const data = await response.json();
-            const { current, total, start_time, status } = data;
-            if (total > 0) {
-              const pct = Math.round((current / total) * 100);
-              const elapsed = (Date.now() / 1000) - start_time;
-              const estTotal = current > 0 ? (elapsed / current) * total : 0;
-              const eta = current > 0 ? estTotal - elapsed : 0;
-              regBtn.innerHTML = `<span class='spinner-border spinner-border-sm me-2' role='status' aria-hidden='true'></span>${pct}% (${eta > 0 ? eta.toFixed(0) : '...'}s left)`;
-            } else {
-              regBtn.innerHTML = `<span class='spinner-border spinner-border-sm me-2' role='status' aria-hidden='true'></span>Running...`;
-            }
-            if (status === "done" || status === "cancelled") {
-              clearInterval(regressionInterval);
-              regBtn.disabled = false;
-              regBtn.innerHTML = originalBtnHTML;
-              polling = false;
-            }
-            if (status === "cancelled") {
-              regBtn.innerHTML = 'Cancelled';
-            }
-          } catch (e) {
-            // Optionally handle error
-          }
-        }, 1000);
-      }
+      // let cancelRequested = false;
+      // async function pollProgress() {
+      //   regressionInterval = setInterval(async () => {
+      //     try {
+      //       const response = await fetch("/regression_backtest_progress");
+      //       const data = await response.json();
+      //       const { current, total, start_time, status } = data;
+      //       if (total > 0) {
+      //         const pct = Math.round((current / total) * 100);
+      //         const elapsed = (Date.now() / 1000) - start_time;
+      //         const estTotal = current > 0 ? (elapsed / current) * total : 0;
+      //         const eta = current > 0 ? estTotal - elapsed : 0;
+      //         regBtn.innerHTML = `<span class='spinner-border spinner-border-sm me-2' role='status' aria-hidden='true'></span>${pct}% (${eta > 0 ? eta.toFixed(0) : '...'}s left)`;
+      //       } else {
+      //         regBtn.innerHTML = `<span class='spinner-border spinner-border-sm me-2' role='status' aria-hidden='true'></span>Running...`;
+      //       }
+      //       if (status === "done" || status === "cancelled") {
+      //         clearInterval(regressionInterval);
+      //         regBtn.disabled = false;
+      //         regBtn.innerHTML = originalBtnHTML;
+      //         polling = false;
+      //       }
+      //       if (status === "cancelled") {
+      //         regBtn.innerHTML = 'Cancelled';
+      //       }
+      //     } catch (e) {
+      //       // Optionally handle error
+      //     }
+      //   }, 1000);
+      // }
       // Add cancel button logic (optional, if you want to support cancel)
       // You can add a right-aligned cancel button next to the main button if desired
       regBtn.onclick = function() {
@@ -1225,8 +1226,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData();
         Array.from(files).forEach(file => formData.append('csv_files', file));
         console.log('Calling /run_regression_predictor with files:', Array.from(files).map(f => f.name));
-        polling = true;
-        pollProgress();
+        // polling = true;
+        // pollProgress(); // --- DISABLED: synchronous, no progress bar ---
         fetch('/run_regression_predictor', {
           method: 'POST',
           body: formData
@@ -1235,8 +1236,8 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(result => {
           regBtn.disabled = false;
           regBtn.innerHTML = originalBtnHTML;
-          polling = false;
-          clearInterval(regressionInterval);
+          // polling = false;
+          // clearInterval(regressionInterval);
           let out = '';
           if (result.feedback) {
             out += `<div class='alert alert-warning'>${result.feedback}</div>`;
