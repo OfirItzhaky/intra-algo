@@ -975,6 +975,28 @@ class AnalyzerDashboard:
                 showlegend=False
             ))
             visible_trades += 1
+            # Add entry arrow marker with vertical offset
+            arrow_offset = (plot_df["high"].max() - plot_df["low"].min()) * 0.02
+
+            if eprice < xprice:  # Long trade
+                arrow_y = eprice - arrow_offset
+                fig.add_trace(go.Scatter(
+                    x=[entry],
+                    y=[arrow_y],
+                    mode='markers',
+                    marker=dict(symbol='arrow-up', size=16, color='limegreen'),
+                    showlegend=False
+                ))
+            elif eprice > xprice:  # Short trade
+                arrow_y = eprice + arrow_offset
+                fig.add_trace(go.Scatter(
+                    x=[entry],
+                    y=[arrow_y],
+                    mode='markers',
+                    marker=dict(symbol='arrow-down', size=16, color='red'),
+                    showlegend=False
+                ))
+
         print(f"🧮 Trades visible in Plotly chart: {visible_trades} / {len(trade_df)}")
         # Step 4: Layout styling
         fig.update_layout(
