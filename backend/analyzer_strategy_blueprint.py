@@ -541,6 +541,9 @@ class RegressionScalpingStrategy(bt.Strategy):
 
     def notify_trade(self, trade):
         if trade.isclosed:
+            if self.entry_side == 'short':
+                print(
+                    f"[DEBUG] SHORT TRADE CLOSED → Entry: {self.last_entry_price:.2f}, Exit: {self.last_exit_price:.2f}")
             entry_time = bt.num2date(trade.dtopen, tz=pytz.UTC)
             exit_time = bt.num2date(trade.dtclose, tz=pytz.UTC)
             entry_price = self.last_entry_price

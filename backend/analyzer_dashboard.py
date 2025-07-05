@@ -129,6 +129,15 @@ class AnalyzerDashboard:
             marker=dict(symbol='circle', size=6)
         ))
 
+        fig.add_trace(go.Scatter(
+            x=plot_df.index,
+            y=plot_df["Actual_Low"],
+            mode='lines+markers',
+            name="Actual Low",
+            line=dict(color="deepskyblue"),
+            marker=dict(symbol='circle-open', size=6)
+        ))
+
         # Step 5: Plot trade markers
         visible_trades = 0
         for _, trade in trade_df.iterrows():
@@ -874,6 +883,8 @@ class AnalyzerDashboard:
             raise ValueError("Could not find suitable date/time columns for plotting. Columns found: " + str(list(plot_df.columns)))
         plot_df["actual_high"] = plot_df["high"].shift(-1)
         plot_df = plot_df.dropna(subset=["actual_high"])
+        plot_df["actual_Low"] = plot_df["low"].shift(-1)
+        plot_df = plot_df.dropna(subset=["actual_high", "actual_Low"])
         plot_df.set_index("timestamp", inplace=True)
         self.plot_df = plot_df  # store for possible reuse
         # Step 2: Start chart
@@ -893,7 +904,7 @@ class AnalyzerDashboard:
             y=plot_df["predicted_high"],
             mode='lines+markers',
             name="Predicted High",
-            line=dict(color="orange"),
+            line=dict(color="orange",width=1.5,dash="dot"),
             marker=dict(symbol='x', size=8)
         ))
         fig.add_trace(go.Scatter(
@@ -901,9 +912,29 @@ class AnalyzerDashboard:
             y=plot_df["actual_high"],
             mode='lines+markers',
             name="Actual High",
-            line=dict(color="blue"),
+            line=dict(color="blue",width=1.5),
             marker=dict(symbol='circle', size=6)
         ))
+        # Plot Predicted Low if present
+        if 'predicted_low' in plot_df.columns:
+            fig.add_trace(go.Scatter(
+                x=plot_df.index,
+                y=plot_df["predicted_low"],
+                mode='lines+markers',
+                name="Predicted Low",
+                line=dict(color="darkorange",width=1.5,dash="dot"),
+                marker=dict(symbol='x', size=8)
+            ))
+        # Plot Actual Low if present
+        if 'actual_Low' in plot_df.columns:
+            fig.add_trace(go.Scatter(
+                x=plot_df.index,
+                y=plot_df["actual_Low"],
+                mode='lines+markers',
+                name="Actual Low",
+                line=dict(color="pink",width=1.5),
+                marker=dict(symbol='circle-open', size=6)
+            ))
         # Step 3: Plot trade markers (limit to last N trades)
         if max_trades is not None and len(trade_df) > max_trades:
             trade_df = trade_df.iloc[-max_trades:]
@@ -961,6 +992,19 @@ class AnalyzerDashboard:
         fig.show()
         # If you want to save for debugging, you can keep this commented out:
         # fig.write_html(save_path)
+
+        # Debug: print columns before plotting
+        print('[DEBUG] plot_df columns before plotting:', list(plot_df.columns))
+        if 'predicted_high' not in plot_df.columns:
+            print('[WARNING] plot_df is missing predicted_high column!')
+        if 'predicted_low' not in plot_df.columns:
+            print('[WARNING] plot_df is missing predicted_low column!')
+        else:
+            print('[DEBUG] plot_df["predicted_low"] head:', plot_df['predicted_low'].head())
+        if 'actual_Low' not in plot_df.columns:
+            print('[WARNING] plot_df is missing actual_Low column!')
+        else:
+            print('[DEBUG] plot_df["actual_Low"] head:', plot_df['actual_Low'].head())
 
 
 
