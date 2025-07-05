@@ -79,13 +79,7 @@ class AnalyzerDashboard:
 
         self.plot_df = plot_df  # store for possible reuse
 
-        # Debug: print columns before plotting
-        print('[DEBUG] plot_df columns before plotting:', list(plot_df.columns))
-        # Check for predicted_high and predicted_low
-        if 'predicted_high' not in plot_df.columns:
-            print('[WARNING] plot_df is missing predicted_high column!')
-        if 'predicted_low' not in plot_df.columns:
-            print('[WARNING] plot_df is missing predicted_low column!')
+
         # Step 4: Start chart
         fig = go.Figure()
 

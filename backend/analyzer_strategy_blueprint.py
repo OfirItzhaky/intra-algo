@@ -414,7 +414,8 @@ class RegressionScalpingStrategy(bt.Strategy):
         # Add any other dynamic params here with sensible defaults
     )
 
-    def __init__(self):
+    def __init__(self, *args, max_predicted_low_for_long=None, min_predicted_high_for_short=None, **kwargs):
+        super().__init__(*args, **kwargs)
         self.order = None
         self.last_bar_time = None
         self.trades = []
@@ -424,6 +425,8 @@ class RegressionScalpingStrategy(bt.Strategy):
         self.current_trade_date = None
         self.entry_side = None  # 'long' or 'short'
         self.entry_dt = None
+        self.max_pred_low = max_predicted_low_for_long
+        self.min_pred_high = min_predicted_high_for_short
 
     def next(self):
         dt5 = self.datas[0].datetime.datetime(0)  # 5m bar datetime
@@ -469,6 +472,16 @@ class RegressionScalpingStrategy(bt.Strategy):
         close5 = self.datas[0].close[0]
         long_signal = (pred_high - close5) > self.p.long_threshold
         short_signal = (close5 - pred_low) > self.p.short_threshold
+
+        # --- Cross-comparison filters ---
+        # Only go long if predicted_low <= self.max_pred_low (if set)
+        if long_signal and self.max_pred_low is not None:
+            if pred_low > self.max_pred_low:
+                return  # skip this long trade
+        # Only go short if predicted_high >= self.min_pred_high (if set)
+        if short_signal and self.min_pred_high is not None:
+            if pred_high < self.min_pred_high:
+                return  # skip this short trade
 
         # Volume and bar color filters (unchanged, but suppress debug unless trade is placed)
         vol_change_pct = None
@@ -541,9 +554,6 @@ class RegressionScalpingStrategy(bt.Strategy):
 
     def notify_trade(self, trade):
         if trade.isclosed:
-            if self.entry_side == 'short':
-                print(
-                    f"[DEBUG] SHORT TRADE CLOSED → Entry: {self.last_entry_price:.2f}, Exit: {self.last_exit_price:.2f}")
             entry_time = bt.num2date(trade.dtopen, tz=pytz.UTC)
             exit_time = bt.num2date(trade.dtclose, tz=pytz.UTC)
             entry_price = self.last_entry_price

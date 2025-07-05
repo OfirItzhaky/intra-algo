@@ -176,6 +176,22 @@ class RegressionPredictorAgent:
             print("[simulate_trades] Must provide config_idx or config_dict.")
             return None
         trades = result['trades']
+        config = result['config']
+        # Apply cross-comparison filters if present
+        max_pred_low = config.get('max_predicted_low_for_long', None)
+        min_pred_high = config.get('min_predicted_high_for_short', None)
+        if max_pred_low is not None or min_pred_high is not None:
+            filtered_trades = []
+            for t in trades:
+                # Only filter if the relevant fields are present in the trade
+                if t.get('side', '').lower() == 'long' and max_pred_low is not None:
+                    if t.get('predicted_low', float('-inf')) > max_pred_low:
+                        continue  # skip this long trade
+                if t.get('side', '').lower() == 'short' and min_pred_high is not None:
+                    if t.get('predicted_high', float('inf')) < min_pred_high:
+                        continue  # skip this short trade
+                filtered_trades.append(t)
+            trades = filtered_trades
         metrics = result['metrics']
         trades_df = pd.DataFrame(trades)
         # Save to CSV in uploaded_csvs with clear name if label is provided
@@ -604,7 +620,7 @@ class RegressionPredictorAgent:
 
 
     def _simulate_all_configs(self, df, df_1min, df_with_preds, results, threshold_grid, total_configs, user_params):
-        for i, (long_t, short_t, min_vol, bar_color) in enumerate(threshold_grid):
+        for i, (long_t, short_t, min_vol, bar_color, max_pred_low, min_pred_high) in enumerate(threshold_grid):
             # Fallback metrics always defined at the start of each iteration
             metrics = {
                 'profit_factor': None,
@@ -621,9 +637,9 @@ class RegressionPredictorAgent:
                 'max_drawdown': None
             }
             # TEMP DEV MODE: Early-stop after 5 strategy simulations for faster development. Remove or increase for full runs.
-            if i >= 15:
-                print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
-                break
+            # if i >= 15:
+            #     print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
+            #     break
             if regression_backtest_tracker is not None:
                 if regression_backtest_tracker.get("cancel_requested"):
                     regression_backtest_tracker["status"] = "cancelled"
@@ -635,6 +651,8 @@ class RegressionPredictorAgent:
             params_copy['short_threshold'] = short_t
             params_copy['min_volume_pct_change'] = min_vol
             params_copy['bar_color_filter'] = bar_color
+            params_copy['max_predicted_low_for_long'] = max_pred_low
+            params_copy['min_predicted_high_for_short'] = min_pred_high
             # Temporarily set self.user_params for simulate_trades
             old_params = self.user_params
             self.user_params = params_copy
@@ -680,7 +698,9 @@ class RegressionPredictorAgent:
                     long_t=long_t,
                     short_t=short_t,
                     min_vol=min_vol,
-                    bar_color=bar_color
+                    bar_color=bar_color,
+                    max_pred_low=max_pred_low,
+                    min_pred_high=min_pred_high
                 )
                 # Store the sim dict for this config
                 self.all_strategy_sims.append(sim)
@@ -772,6 +792,8 @@ class RegressionPredictorAgent:
                 'short_threshold': short_t,
                 'min_volume_pct_change': min_vol,
                 'bar_color_filter': bar_color,
+                'max_predicted_low_for_long': max_pred_low,
+                'min_predicted_high_for_short': min_pred_high,
                 'suggested_contracts': sim.get('suggested_contracts', 1),
                 'stop_ticks': sim.get('stop_ticks', 10),
                 'stop_loss_dollars': sim.get('stop_loss_dollars', 0),
@@ -781,28 +803,44 @@ class RegressionPredictorAgent:
             # After simulating trades for this config, calculate extra metrics
             dashboard = AnalyzerDashboard(df_with_preds, pd.DataFrame(trades))
             df_trades = pd.DataFrame(trades) if trades else pd.DataFrame()
+            # After filtering trades for this config, print debug info
+            print(f"[DEBUG] Config: long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}, max_pred_low={max_pred_low}, min_pred_high={min_pred_high} | Num trades after filtering: {len(trades)}")
+            if trades:
+                print(f"[DEBUG] First trade: {trades[0]}")
             # Compute metrics from per-trade DataFrame
-            if not df_trades.empty:
-                df_trades['date'] = pd.to_datetime(df_trades['entry_time']).dt.date
-                # avg_daily_pnl
-                daily_pnl = df_trades.groupby('date')['pnl'].sum()
-                avg_daily_pnl = daily_pnl.mean()
-                # avg_trades_per_day
-                avg_trades_per_day = df_trades.groupby('date').size().mean()
-                # max_consec_losses
-                loss_streaks = "".join(['L' if p < 0 else 'W' for p in df_trades['pnl']])
-                max_consec_losses = max(map(len, loss_streaks.split('W')), default=0)
-                # outlier_count_3sigma
-                mean_pnl = df_trades['pnl'].mean()
-                std_pnl = df_trades['pnl'].std()
-                outliers = df_trades[np.abs(df_trades['pnl'] - mean_pnl) > 3 * std_pnl]
-                outlier_count_3sigma = len(outliers)
+            print(f"[DEBUG] df_trades columns: {df_trades.columns.tolist()} | empty: {df_trades.empty}")
+            if not df_trades.empty and 'pnl' in df_trades.columns:
+                metrics_llm = dashboard.calculate_strategy_metrics_for_llm(df_trades).iloc[0]
+                # Also define these for later use
+                avg_daily_pnl = metrics_llm.get('avg_daily_pnl', 0)
+                avg_trades_per_day = metrics_llm.get('avg_trades_per_day', 0)
+                max_consec_losses = metrics_llm.get('max_consec_losses', 0)
+                outlier_count_3sigma = metrics_llm.get('outlier_count_3sigma', 0)
             else:
+                print(f"[WARNING] Skipping metrics calculation: df_trades empty or missing 'pnl'.")
+                metrics_llm = {
+                    'total_pnl': 0,
+                    'profit_factor': 0,
+                    'win_rate': 0,
+                    'max_drawdown': 0,
+                    'drawdown_pct': 0,
+                    'avg_daily_pnl': 0,
+                    'avg_trades_per_day': 0,
+                    'max_consec_losses': 0,
+                    'outlier_count_3sigma': 0,
+                    'total_net_pnl': 0,
+                    'avg_win': 0,
+                    'avg_loss': 0,
+                    'win_loss_ratio': 0,
+                    'largest_win': 0,
+                    'largest_loss': 0,
+                    'num_winning_days': 0,
+                    'num_losing_days': 0
+                }
                 avg_daily_pnl = 0
                 avg_trades_per_day = 0
                 max_consec_losses = 0
                 outlier_count_3sigma = 0
-            metrics_llm = dashboard.calculate_strategy_metrics_for_llm(df_trades).iloc[0]
             num_trades = metrics_llm.get('num_trades', len(trades))
             total_pnl = metrics_llm.get('total_pnl', 0)
             win_rate = metrics_llm.get('win_rate', 0)
@@ -813,6 +851,8 @@ class RegressionPredictorAgent:
                 'short_threshold': short_t,
                 'min_volume_pct_change': min_vol,
                 'bar_color_filter': bar_color,
+                'max_predicted_low_for_long': max_pred_low,
+                'min_predicted_high_for_short': min_pred_high,
                 'pnl': metrics_llm['total_pnl'],
                 'profit_factor': metrics_llm['profit_factor'],
                 'win_rate': metrics_llm['win_rate'],
@@ -978,12 +1018,16 @@ class RegressionPredictorAgent:
         min_profit_factor = float((user_params or self.user_params).get('min_profit_factor', 0.0))
         min_volume_pct_change_values = [0.0, 0.05]
         bar_color_filter_values = [True, False]
+        cross_low_values = [1, 2, 3]  # max_predicted_low_for_long
+        cross_high_values = [1, 2, 3] # min_predicted_high_for_short
         threshold_grid = [
-            (long_t, short_t, min_vol, bar_color)
+            (long_t, short_t, min_vol, bar_color, max_pred_low, min_pred_high)
             for long_t in thresholds
             for short_t in thresholds
             for min_vol in min_volume_pct_change_values
             for bar_color in bar_color_filter_values
+            for max_pred_low in cross_low_values
+            for min_pred_high in cross_high_values
         ]
         return max_drawdown, min_profit_factor, min_trades, results, threshold_grid
 

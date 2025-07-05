@@ -180,7 +180,9 @@ class CerebroStrategyEngine:
         long_t: float = None,
         short_t: float = None,
         min_vol: float = None,
-        bar_color: bool = None
+        bar_color: bool = None,
+        max_pred_low: float = None,
+        min_pred_high: float = None
     ) -> tuple:
         """
         Runs RegressionScalpingStrategy with CustomRegressionData (5m) only. 1-min feed is ignored.
@@ -224,11 +226,15 @@ class CerebroStrategyEngine:
         cerebro.adddata(data_5min)  # data0: 5m
         # Add strategy
         print(f"[DEBUG] Params sent to RegressionScalpingStrategy: {params}")
+        # Add cross-filter params if present
+        if max_pred_low is not None:
+            params['max_predicted_low_for_long'] = max_pred_low
+        if min_pred_high is not None:
+            params['min_predicted_high_for_short'] = min_pred_high
         cerebro.addstrategy(RegressionScalpingStrategy, **params)
         # Add analyzer
         cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
         # Memory usage before cerebro.run()
-        print("[DEBUG] Attempting to import psutil for memory logging", flush=True)
         try:
             import psutil
             process = psutil.Process()
