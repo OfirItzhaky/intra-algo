@@ -225,7 +225,7 @@ class CerebroStrategyEngine:
         # Add only the 5m feed
         cerebro.adddata(data_5min)  # data0: 5m
         # Add strategy
-        print(f"[DEBUG] Params sent to RegressionScalpingStrategy: {params}")
+        # print(f"[DEBUG] Params sent to RegressionScalpingStrategy: {params}")
         # Add cross-filter params if present
         if max_pred_low is not None:
             params['max_predicted_low_for_long'] = max_pred_low

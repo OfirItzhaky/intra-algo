@@ -330,17 +330,18 @@ class RegressionPredictorAgent:
         # --- Multi-Heatmap Visualization ---
         import matplotlib.pyplot as plt
         import seaborn as sns
+        import numpy as np
         df = pd.DataFrame(results)
-        print(f"[DEBUG] Heatmap DataFrame columns: {df.columns.tolist()} shape: {df.shape}")
-        required_cols = ['long_threshold', 'short_threshold', 'min_volume_pct_change', 'bar_color_filter', 'win_rate',
-                         'avg_pnl']
+        required_cols = ['long_threshold', 'short_threshold', 'min_volume_pct_change', 'bar_color_filter', 'win_rate', 'avg_pnl']
         missing_cols = [col for col in required_cols if col not in df.columns]
         if missing_cols:
             print(f"[WARNING] Cannot plot heatmaps, missing columns: {missing_cols}")
         else:
-            min_vols = [0.0, 0.025, 0.05]
-            bar_colors = [False, True]
-            fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+            min_vols = sorted(df['min_volume_pct_change'].dropna().unique())
+            bar_colors = sorted(df['bar_color_filter'].dropna().unique())
+            n_rows = len(bar_colors)
+            n_cols = len(min_vols)
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=(6*n_cols, 5*n_rows), squeeze=False)
             for i, min_vol in enumerate(min_vols):
                 for j, bar_color in enumerate(bar_colors):
                     ax = axes[j, i]
@@ -349,12 +350,10 @@ class RegressionPredictorAgent:
                         ax.set_title(f"min_vol={min_vol}, bar_color={bar_color}\n(No data)")
                         ax.axis('off')
                         continue
-                    pivot = sub.pivot_table(index='long_threshold', columns='short_threshold', values='win_rate',
-                                            aggfunc='mean')
+                    pivot = sub.pivot_table(index='long_threshold', columns='short_threshold', values='win_rate', aggfunc='mean')
                     if pivot.isnull().all().all():
                         # fallback to avg_pnl
-                        pivot = sub.pivot_table(index='long_threshold', columns='short_threshold', values='avg_pnl',
-                                                aggfunc='mean')
+                        pivot = sub.pivot_table(index='long_threshold', columns='short_threshold', values='avg_pnl', aggfunc='mean')
                         value_label = 'avg_pnl'
                     else:
                         value_label = 'win_rate'
@@ -759,11 +758,11 @@ class RegressionPredictorAgent:
                     print(
                         f"[WARNING] No trades or no trade signals for config: long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}")
                     # metrics fallback already defined at top of loop
-                print(f"[Debug] Trades simulated: {len(trades)}")
-                if not df_trades.empty:
-                    print(f"[Debug] First 3 trades: {df_trades.head(3).to_dict(orient='records')}")
-                    print(f"[Debug] Sample PnLs: {df_trades['pnl'].head(3).tolist()}")
-                print(f"[Debug] Computed metrics: {metrics}")
+                # print(f"[Debug] Trades simulated: {len(trades)}")
+                # if not df_trades.empty:
+                #     print(f"[Debug] First 3 trades: {df_trades.head(3).to_dict(orient='records')}")
+                #     print(f"[Debug] Sample PnLs: {df_trades['pnl'].head(3).tolist()}")
+                # print(f"[Debug] Computed metrics: {metrics}")
                 # Store all results for this config
                 self.all_strategy_results.append({
                     'config': params_copy.copy(),
@@ -784,7 +783,7 @@ class RegressionPredictorAgent:
             self.user_params = old_params
             backtest_summary = sim.get('backtest_summary', {})
             # --- Debug: Print computed metrics ---
-            print(f"[Debug] Computed metrics: {backtest_summary}")
+            # print(f"[Debug] Computed metrics: {backtest_summary}")
             trades = sim.get('trades', [])
             # --- Append config and metrics to results ---
             results.append({
@@ -804,11 +803,11 @@ class RegressionPredictorAgent:
             dashboard = AnalyzerDashboard(df_with_preds, pd.DataFrame(trades))
             df_trades = pd.DataFrame(trades) if trades else pd.DataFrame()
             # After filtering trades for this config, print debug info
-            print(f"[DEBUG] Config: long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}, max_pred_low={max_pred_low}, min_pred_high={min_pred_high} | Num trades after filtering: {len(trades)}")
-            if trades:
-                print(f"[DEBUG] First trade: {trades[0]}")
+            # print(f"[DEBUG] Config: long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}, max_pred_low={max_pred_low}, min_pred_high={min_pred_high} | Num trades after filtering: {len(trades)}")
+            # if trades:
+            #     print(f"[DEBUG] First trade: {trades[0]}")
             # Compute metrics from per-trade DataFrame
-            print(f"[DEBUG] df_trades columns: {df_trades.columns.tolist()} | empty: {df_trades.empty}")
+            # print(f"[DEBUG] df_trades columns: {df_trades.columns.tolist()} | empty: {df_trades.empty}")
             if not df_trades.empty and 'pnl' in df_trades.columns:
                 metrics_llm = dashboard.calculate_strategy_metrics_for_llm(df_trades).iloc[0]
                 # Also define these for later use
@@ -1007,7 +1006,7 @@ class RegressionPredictorAgent:
             return df_results
 
     def _generate_threshold_grid(self, user_params):
-        thresholds = [0.5, 1.0, 1.5, 2.0, 2.5, 3, 3.5, 4]
+        thresholds = [1.0, 1.5, 2.0, 2.5, 3, 3.5]
         results = []
         max_risk_per_trade = float((user_params or self.user_params).get('max_risk_per_trade', 15.0))
         max_daily_risk = float((user_params or self.user_params).get('max_daily_risk', 100.0))
@@ -1016,7 +1015,7 @@ class RegressionPredictorAgent:
         min_trades = int((user_params or self.user_params).get('min_trades', 0))
         max_drawdown = float((user_params or self.user_params).get('max_drawdown', float('inf')))
         min_profit_factor = float((user_params or self.user_params).get('min_profit_factor', 0.0))
-        min_volume_pct_change_values = [0.0, 0.05]
+        min_volume_pct_change_values = [0.0, 0.5]  # rethink with other volume factors...
         bar_color_filter_values = [True, False]
         cross_low_values = [1, 2, 3]  # max_predicted_low_for_long
         cross_high_values = [1, 2, 3] # min_predicted_high_for_short
