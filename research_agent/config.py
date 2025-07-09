@@ -7,12 +7,12 @@ load_dotenv()  # Load from .env
 today = datetime.today().strftime("%Y-%m-%d")
 
 CONFIG = {
-    "model_provider": "google",
-    "model_name": "gemini-1.5-pro-latest",
+    "model_provider": "openai",
+    "model_name": "gpt-4o",
     # Alternatives LLM
-    # gemini-1.5-pro-latest
-    # gpt-4o
-    # gpt-4.1
+    # gemini-1.5-pro-latest provider- google
+    # gpt-4o provider provider openai
+    # gpt-4.1 provider openai
 
 
     "openai_api_key": os.getenv("OPENAI_API_KEY"),
