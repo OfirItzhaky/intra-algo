@@ -410,58 +410,43 @@ class RegressionPredictorAgent:
         import json
         import re
 
-        raw_json_text = llm_output['llm_top_strategies'].get('llm_raw_response', '')
+        llm_top = llm_output['llm_top_strategies']
+        raw_json_text = llm_top.get('llm_raw_response', '')
 
-        # Strip markdown if present (```json\n...\n```)
-        cleaned = re.sub(r'^```json\s*|\s*```$', '', raw_json_text.strip(), flags=re.DOTALL)
-
-        try:
-            parsed = json.loads(cleaned)
-            top_strategies = parsed.get("top_strategies", [])
-        except json.JSONDecodeError as e:
-            print(f"[extract_best_result_from_top_3] JSON decode failed: {e}")
-            return {}
+        if raw_json_text:
+            cleaned = re.sub(r'^```json\s*|\s*```$', '', raw_json_text.strip(), flags=re.DOTALL)
+            try:
+                parsed = json.loads(cleaned)
+                top_strategies = parsed.get("top_strategies", [])
+            except json.JSONDecodeError as e:
+                print(f"[extract_best_result_from_top_3] JSON decode failed: {e}")
+                return {}
+        else:
+            top_strategies = llm_top.get("top_strategies", [])
 
         if not top_strategies or len(top_strategies) == 0:
             print("[extract_best_result_from_top_3] No top strategies found in LLM output")
             return {}
 
-        # Take the first (top) strategy from the LLM output
         top_strategy = top_strategies[0]
         print(f"[extract_best_result_from_top_3] Looking for match for top strategy: {top_strategy}")
 
-        # Extract the key parameters to match on
-        # Note: LLM output might not have these exact fields, so we'll need to handle this carefully
-        target_long_threshold = None
-        target_short_threshold = None
-        target_min_volume_pct_change = None
-        target_bar_color_filter = None
-
-        # Try to extract parameters from the LLM strategy description
-        # This is a heuristic approach since LLM output format may vary
-        strategy_name = top_strategy.get('name', '')
-        strategy_logic = top_strategy.get('logic', '')
-
-        # Look for the matching strategy in all_strategy_results
+        # Strategy matching logic
         matched_result = None
-
-        # First, try to find by exact config match if we can extract parameters
         for result in self.all_strategy_results:
             config = result.get('config', {})
-
-            # For now, we'll use a simple approach: find the strategy with the best metrics
-            # that matches the general characteristics described by the LLM
             if matched_result is None:
                 matched_result = result
             else:
-                # Compare metrics to find the best match
                 current_metrics = result.get('metrics', {})
                 best_metrics = matched_result.get('metrics', {})
-
-                # Prefer higher profit factor, win rate, and lower drawdown
-                if (current_metrics.get('profit_factor', 0) > best_metrics.get('profit_factor', 0) or
-                        (current_metrics.get('profit_factor', 0) == best_metrics.get('profit_factor', 0) and
-                         current_metrics.get('win_rate', 0) > best_metrics.get('win_rate', 0))):
+                if (
+                        current_metrics.get('profit_factor', 0) > best_metrics.get('profit_factor', 0) or
+                        (
+                                current_metrics.get('profit_factor', 0) == best_metrics.get('profit_factor', 0) and
+                                current_metrics.get('win_rate', 0) > best_metrics.get('win_rate', 0)
+                        )
+                ):
                     matched_result = result
 
         if matched_result is None:
@@ -470,12 +455,11 @@ class RegressionPredictorAgent:
 
         print(f"[extract_best_result_from_top_3] Matched strategy with config: {matched_result.get('config', {})}")
 
-        # Return the result in the format expected by _save_and_visualize_results
-        best_result = {
+        return {
             'config': matched_result['config'],
             'trades': matched_result['trades'],
-            'top_strategies': top_strategies,  # Include all top strategies from LLM
-            'llm_top_strategies': llm_output.get('llm_top_strategies'),  # Keep original LLM output
+            'top_strategies': top_strategies,
+            'llm_top_strategies': llm_top,
             'llm_cost_usd': llm_output.get('llm_cost_usd'),
             'llm_token_usage': llm_output.get('llm_token_usage'),
             'model_name': llm_output.get('model_name'),
@@ -484,7 +468,7 @@ class RegressionPredictorAgent:
             'strategy_matrix_llm': llm_output.get('strategy_matrix_llm'),
         }
 
-        return best_result
+
 
     def _call_llm_and_attach(self, diverse_strategies, bias_summary
                              ):
@@ -636,7 +620,7 @@ class RegressionPredictorAgent:
                 'max_drawdown': None
             }
             # TEMP DEV MODE: Early-stop after 5 strategy simulations for faster development. Remove or increase for full runs.
-            if i >= 5:
+            if i >= 15:
                 print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
                 break
             if regression_backtest_tracker is not None:

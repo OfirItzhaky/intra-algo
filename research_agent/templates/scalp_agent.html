@@ -83,7 +83,7 @@
     <div class="tab-content" id="scalpAgentTabContent">
       <!-- TAB 1: SETUP -->
       <div class="tab-pane fade show active" id="setup" role="tabpanel" aria-labelledby="setup-tab">
-        <form id="setup-form" method="POST" enctype="multipart/form-data" class="mb-4">
+        <form id="setup-form" action="/run_regression_predictor" method="POST" enctype="multipart/form-data" class="mb-4">
           <div class="mb-3">
             <label for="max_risk" class="form-label fw-bold">Max Daily Risk</label>
             <input type="number" step="any" class="form-control" id="max_risk" name="max_risk" placeholder="Enter your daily max risk" required>
@@ -124,12 +124,13 @@
               <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv,.txt,.xlsx,.xls" multiple>
             </div>
             <div style="flex: 1; display: flex; align-items: flex-end;">
-              <button id="run-regression-strategy-btn" type="button" class="btn btn-success fw-bold text-uppercase" style="display:inline-block; width: 100%; min-width: 0; background-color: #198754; color: #fff; border-radius: 0.375rem; padding: 0.5rem 1.25rem; font-size: 1rem;" disabled>
+              <button id="run-regression-strategy-btn" type="submit" class="btn btn-success fw-bold text-uppercase" style="display:inline-block; width: 100%; min-width: 0; background-color: #198754; color: #fff; border-radius: 0.375rem; padding: 0.5rem 1.25rem; font-size: 1rem;" disabled>
                 <span style="vertical-align: middle;">💡 Run Regression Predictor Strategy</span>
               </button>
             </div>
           </div>
           <div id="csv-summary-list" class="mb-2"></div>
+          <div id="regression-strategy-result"></div>
           {% if csv_summaries and csv_summaries|length > 0 %}
             <div class="mb-2">
               <ul class="list-unstyled mb-0">
@@ -860,6 +861,13 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                             out += `</div></div>`;
                           }
+                          // Place results in the new location
+                          document.getElementById('regression-strategy-result').innerHTML = out;
+                          // Open both popups
+                          if (result.regression_trades_plot_path) {
+                            window.open(result.regression_trades_plot_path, '_blank');
+                          }
+                          window.open('/heatmap?t=' + Date.now(), '_blank');
                           regResultDiv.innerHTML = out;
                           // Show heatmap inline after regression results
                           const heatmapHtml = `<div class="mt-3"><h5>Heatmap</h5><img src="/heatmap?t=${Date.now()}" alt="Heatmap" style="max-width:100%;border:1px solid #ccc;border-radius:8px;" /></div>`;
@@ -1031,7 +1039,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         })
                         .catch(err => {
                           regBtn.disabled = false;
-                          regBtn.innerHTML = '💡 Run Regression Predictor Strategy';
+                          regBtn.innerHTML = originalBtnHTML;
                           regResultDiv.innerHTML = `<div class='alert alert-danger'>Error: ${err}</div>`;
                         });
                     };
@@ -1372,6 +1380,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             out += `</div></div>`;
           }
+          // Place results in the new location
+          document.getElementById('regression-strategy-result').innerHTML = out;
+          // Open both popups
+          if (result.regression_trades_plot_path) {
+            window.open(result.regression_trades_plot_path, '_blank');
+          }
+          window.open('/heatmap?t=' + Date.now(), '_blank');
           regResultDiv.innerHTML = out;
           // Show heatmap inline after regression results
           const heatmapHtml = `<div class="mt-3"><h5>Heatmap</h5><img src="/heatmap?t=${Date.now()}" alt="Heatmap" style="max-width:100%;border:1px solid #ccc;border-radius:8px;" /></div>`;
