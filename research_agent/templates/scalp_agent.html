@@ -85,16 +85,16 @@
       <div class="tab-pane fade show active" id="setup" role="tabpanel" aria-labelledby="setup-tab">
         <form id="setup-form" method="POST" enctype="multipart/form-data" class="mb-4">
           <div class="mb-3">
-            <label for="max_risk" class="form-label">Max Daily Risk</label>
+            <label for="max_risk" class="form-label fw-bold">Max Daily Risk</label>
             <input type="number" step="any" class="form-control" id="max_risk" name="max_risk" placeholder="Enter your daily max risk" required>
             <div class="form-text">This is your total loss cap for the day. The agent will not suggest trades that may exceed this.</div>
           </div>
           <div class="mb-3">
-            <label for="max_risk_per_trade" class="form-label">Max Risk Per Trade</label>
+            <label for="max_risk_per_trade" class="form-label fw-bold">Max Risk Per Trade</label>
             <input type="number" step="any" class="form-control" id="max_risk_per_trade" name="max_risk_per_trade" placeholder="Enter max risk per trade (optional)">
           </div>
           <div class="mb-3">
-            <label for="session_notes" class="form-label">Session Notes (optional)</label>
+            <label for="session_notes" class="form-label fw-bold">Session Notes (optional)</label>
             <textarea class="form-control" id="session_notes" name="session_notes" rows="3" placeholder="Enter any notes..."></textarea>
           </div>
           <div class="mb-2 d-flex align-items-center">
@@ -120,7 +120,7 @@
           </div>
           <div class="mb-3 d-flex flex-row gap-2" style="width: 100%; align-items: end;">
             <div style="flex: 1;">
-              <label for="csv_file" class="form-label">Upload CSV (Regression)</label>
+              <label for="csv_file" class="form-label">Upload CSV (<span class="fw-bold">Regression</span>)</label>
               <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv,.txt,.xlsx,.xls" multiple>
             </div>
             <div style="flex: 1; display: flex; align-items: flex-end;">
@@ -164,7 +164,7 @@
                 <input type="file" class="form-control" id="vwap_image_file" name="vwap_image_file" accept="image/*" multiple style="margin-top: 8px;">
               </div>
               <div>
-                <label for="vwap_csv_file" class="form-label">Upload CSV (VWAP)</label>
+                <label for="vwap_csv_file" class="form-label">Upload CSV (<span class="fw-bold">VWAP</span>)</label>
                 <input type="file" class="form-control" id="vwap_csv_file" name="vwap_csv_file" accept=".csv,.txt,.xlsx,.xls">
               </div>
             </div>
