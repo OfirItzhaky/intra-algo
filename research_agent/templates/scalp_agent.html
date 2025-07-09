@@ -120,7 +120,7 @@
           </div>
           <div class="mb-3 d-flex flex-row gap-2" style="width: 100%; align-items: end;">
             <div style="flex: 1;">
-              <label for="csv_file" class="form-label">Upload CSV (OHLCV + indicators)</label>
+              <label for="csv_file" class="form-label">Upload CSV (Regression)</label>
               <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv,.txt,.xlsx,.xls" multiple>
             </div>
             <div style="flex: 1; display: flex; align-items: flex-end;">
@@ -137,8 +137,14 @@
           <div class="mb-3 d-flex flex-row gap-2" style="width: 100%; align-items: stretch;">
             <div style="flex: 2; display: flex; flex-direction: column; gap: 0.5rem;">
               <div>
-                <label for="vwap_image_file" class="form-label">Upload Chart Image</label>
-                <input type="file" class="form-control" id="vwap_image_file" name="vwap_image_file" accept="image/*">
+                <div id="vwap-paste-dropzone" class="border border-primary rounded p-4 mb-3 text-center" tabindex="0" style="background: #f8f9fa; cursor: pointer;">
+                  <span class="text-secondary">
+                    <strong>📋 Paste chart images here (Ctrl+V)</strong><br>
+                    <small>Or use the file upload below (multiple images supported)</small>
+                  </span>
+                  <div id="vwap-multi-image-preview" class="mt-3" style="display: flex; flex-wrap: wrap; gap: 12px; overflow-x: auto;"></div>
+                </div>
+                <input type="file" class="form-control" id="vwap_image_file" name="vwap_image_file" accept="image/*" multiple style="margin-top: 8px;">
               </div>
               <div>
                 <label for="vwap_csv_file" class="form-label">Upload CSV (VWAP)</label>
