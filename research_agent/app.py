@@ -30,6 +30,7 @@ from backend.analyzer_dashboard import AnalyzerDashboard
 import re
 import json
 
+from scalp_agent.prompt_manager import VWAP_PROMPT_SINGLE_IMAGE, VWAP_PROMPT_4_IMAGES
 
 
 # === Runtime Constants ===
@@ -1477,6 +1478,147 @@ def regression_backtest_progress():
 def cancel_regression_backtest():
     regression_backtest_tracker["cancel_requested"] = True
     return jsonify({"message": "Cancellation requested"})
+
+@app.route("/run_vwap_agent", methods=["POST"])
+def run_vwap_agent():
+    """
+    Accepts up to 4 images (field name: 'images'), determines the correct VWAP prompt, and calls the LLM (OpenAI or Gemini) with the prompt and images.
+    Prints and returns the raw LLM response as JSON.
+    """
+    import base64
+    import imghdr
+    import os
+    from flask import jsonify, request
+    from config import CONFIG
+    import traceback
+
+    try:
+        # Step 1: Get images from request
+        images = request.files.getlist("images")
+        if not images or len(images) == 0:
+            return jsonify({"error": "No images uploaded. Please upload at least one image."}), 400
+        if len(images) > 4:
+            return jsonify({"error": "Maximum 4 images allowed."}), 400
+
+        # Step 2: Convert images to bytes
+        image_bytes_list = []
+        for img in images:
+            img_bytes = img.read()
+            if not img_bytes:
+                continue
+            image_bytes_list.append(img_bytes)
+        num_images = len(image_bytes_list)
+        if num_images == 0:
+            return jsonify({"error": "No valid images found."}), 400
+
+        # Step 3: Select prompt
+        if num_images == 1:
+            prompt_text = VWAP_PROMPT_SINGLE_IMAGE
+            prompt_type = "single_image"
+        else:
+            prompt_text = VWAP_PROMPT_4_IMAGES
+            prompt_type = "multi_image"
+
+        # Step 4: Call LLM (Gemini/OpenAI Vision)
+        model_name = CONFIG["model_name"]
+        provider = "gemini" if model_name.startswith("gemini-") else "openai"
+        llm_response = None
+        raw_response_text = None
+        llm_cost_usd = None
+        llm_token_usage = None
+
+        # --- Multi-image support ---
+        if provider == "gemini":
+            import requests
+            api_key = CONFIG.get("gemini_api_key") or os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                return jsonify({"error": "GEMINI_API_KEY not set in config or environment."}), 500
+            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+            parts = [{"text": prompt_text}]
+            for img_bytes in image_bytes_list:
+                mime_type = imghdr.what(None, h=img_bytes) or "png"
+                mime_type = f"image/{mime_type}"
+                encoded_image = base64.b64encode(img_bytes).decode("utf-8")
+                parts.append({
+                    "inlineData": {
+                        "mimeType": mime_type,
+                        "data": encoded_image
+                    }
+                })
+            body = {"contents": [{"parts": parts}]}
+            headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
+            response = requests.post(endpoint, headers=headers, json=body)
+            print(f"[VWAP_AGENT] Gemini Vision raw response: {response.text[:1000]}{'...' if len(response.text) > 1000 else ''}")
+            response.raise_for_status()
+            response_data = response.json()
+            raw_response_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
+            llm_response = response.text
+            # Cost/usage extraction for Gemini
+            usage = response_data.get('usage', response_data.get('usageMetadata', {}))
+            llm_token_usage = usage.get('totalTokenCount')
+            llm_cost_usd = usage.get('totalCostUsd')
+            if llm_cost_usd is None and llm_token_usage is not None:
+                try:
+                    llm_cost_usd = float(llm_token_usage) * 0.0025 / 1000
+                except Exception:
+                    llm_cost_usd = None
+        elif provider == "openai":
+            import requests
+            api_key = CONFIG.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                return jsonify({"error": "OPENAI_API_KEY not set in config or environment."}), 500
+            endpoint = "https://api.openai.com/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            img_bytes = image_bytes_list[0]
+            mime_type = imghdr.what(None, h=img_bytes) or "png"
+            image_data = f"data:image/{mime_type};base64,{base64.b64encode(img_bytes).decode()}"
+            payload = {
+                "model": model_name,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt_text},
+                            {"type": "image_url", "image_url": {"url": image_data}}
+                        ]
+                    }
+                ],
+                "max_tokens": 1000
+            }
+            response = requests.post(endpoint, headers=headers, json=payload)
+            print(f"[VWAP_AGENT] OpenAI Vision raw response: {response.text[:1000]}{'...' if len(response.text) > 1000 else ''}")
+            response.raise_for_status()
+            response_data = response.json()
+            raw_response_text = response_data["choices"][0]["message"]["content"]
+            llm_response = response.text
+            # Cost/usage extraction for OpenAI
+            usage = response_data.get('usage', {})
+            prompt_tokens = usage.get('prompt_tokens', 0)
+            completion_tokens = usage.get('completion_tokens', 0)
+            llm_token_usage = prompt_tokens + completion_tokens
+            # gpt-4-vision-preview: $0.01/1K prompt, $0.03/1K output (2024-06)
+            try:
+                llm_cost_usd = (prompt_tokens * 0.01 + completion_tokens * 0.03) / 1000
+            except Exception:
+                llm_cost_usd = None
+        else:
+            return jsonify({"error": f"Unknown or unsupported model_name '{model_name}'."}), 500
+
+        # Step 5: Print and return
+        print(f"[VWAP_AGENT] Full LLM raw response:\n{llm_response}")
+        print(f"[VWAP_AGENT] Model: {model_name} | Provider: {provider} | Cost: {llm_cost_usd} | Tokens: {llm_token_usage} | Prompt type: {prompt_type}")
+        return jsonify({
+            "llm_raw_response": raw_response_text,
+            "model_name": model_name,
+            "provider": provider,
+            "llm_cost_usd": llm_cost_usd,
+            "llm_token_usage": llm_token_usage,
+            "num_images": num_images,
+            "prompt_type": prompt_type
+        })
+    except Exception as e:
+        print(f"[VWAP_AGENT] Error: {e}\n{traceback.format_exc()}")
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
 def to_serializable(val):
     if isinstance(val, dict):

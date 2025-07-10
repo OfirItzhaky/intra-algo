@@ -173,6 +173,7 @@
               <button id="run-vwap-strategy-btn" type="button" class="btn h-100" style="display:inline-block; min-width:260px; background-color: #7c3aed; color: #fff; font-weight: 600; border-radius: 0.375rem; transition: background 0.2s; font-size: 1.15rem; height: 100%; white-space: normal;" disabled>🚀 Run VWAP Strategy Agent</button>
             </div>
           </div>
+          <div id="vwap-agent-result" class="mt-2"></div>
           <div class="action-btns-container" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1.5rem;">
             <div class="d-flex flex-row gap-2" style="width: 100%;">
               <button id="run-instinct-btn" class="btn btn-primary fw-bold text-uppercase flex-fill" type="button" style="min-width: 0;">
@@ -811,7 +812,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         .then(resp => resp.json())
                         .then(result => {
                           regBtn.disabled = false;
-                          regBtn.innerHTML = '💡 Run Regression Predictor Strategy';
+                          regBtn.innerHTML = originalBtnHTML;
+                          // polling = false;
+                          // clearInterval(regressionInterval);
                           let out = '';
                           if (result.feedback) {
                             out += `<div class='alert alert-warning'>${result.feedback}</div>`;
@@ -1574,6 +1577,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const vwapDropzone = document.getElementById('vwap-paste-dropzone');
     const vwapPreviewArea = document.getElementById('vwap-multi-image-preview');
     let vwapImages = [];
+    // Add result div if not present
+    let vwapResultDiv = document.getElementById('vwap-agent-result');
+    if (!vwapResultDiv) {
+      vwapResultDiv = document.createElement('div');
+      vwapResultDiv.id = 'vwap-agent-result';
+      vwapBtn.parentNode.appendChild(vwapResultDiv);
+    }
 
     function updateVwapBtnState() {
       const hasCsv = vwapCsvInput && vwapCsvInput.files && vwapCsvInput.files.length > 0;
@@ -1661,6 +1671,43 @@ document.addEventListener('DOMContentLoaded', function() {
     vwapDropzone.addEventListener('click', function() { vwapDropzone.focus(); });
     // Initial state
     updateVwapBtnState();
+
+    // --- VWAP Agent button logic ---
+    vwapBtn.addEventListener('click', function() {
+      // Show spinner and running text inside the button
+      vwapBtn.disabled = true;
+      let originalBtnHTML = vwapBtn.innerHTML;
+      vwapBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Running...';
+      vwapResultDiv.innerHTML = '';
+      // Prepare FormData with up to 4 images
+      const formData = new FormData();
+      // Use vwapImages (from preview/paste) if present, else from file input
+      let imagesToSend = vwapImages.length > 0 ? vwapImages.map(img => img.file) : (vwapImageInput.files ? Array.from(vwapImageInput.files) : []);
+      imagesToSend.slice(0, 4).forEach(file => formData.append('images', file));
+      fetch('/run_vwap_agent', {
+        method: 'POST',
+        body: formData
+      })
+      .then(resp => resp.json())
+      .then(data => {
+        vwapBtn.disabled = false;
+        vwapBtn.innerHTML = originalBtnHTML;
+        if (data.error) {
+          vwapResultDiv.innerHTML = `<div class='alert alert-danger'>${data.error}</div>`;
+          return;
+        }
+        let html = `<div class='card border-primary mt-2'><div class='card-header bg-primary text-white'><b>VWAP Agent LLM Output</b></div><div class='card-body'>`;
+        html += `<div class='mb-2'><b>Model:</b> ${data.model_name || '-'} | <b>Provider:</b> ${data.provider || '-'} | <b>Cost:</b> $${data.llm_cost_usd !== undefined && data.llm_cost_usd !== null ? Number(data.llm_cost_usd).toFixed(4) : '-'} | <b>Tokens:</b> ${data.llm_token_usage || '-'} | <b>Prompt:</b> ${data.prompt_type === 'single_image' ? 'Single Image' : (data.prompt_type === 'multi_image' ? '4-Image' : '-') } | <b>Images:</b> ${data.num_images || 0}</div>`;
+        html += `<pre style='white-space:pre-wrap;'>${data.llm_raw_response || ''}</pre>`;
+        html += `</div></div>`;
+        vwapResultDiv.innerHTML = html;
+      })
+      .catch(err => {
+        vwapBtn.disabled = false;
+        vwapBtn.innerHTML = originalBtnHTML;
+        vwapResultDiv.innerHTML = `<div class='alert alert-danger'>Error: ${err}</div>`;
+      });
+    });
 
 });
 </script>
