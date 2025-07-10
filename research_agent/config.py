@@ -5,16 +5,19 @@ from dotenv import load_dotenv
 load_dotenv()  # Load from .env
 
 today = datetime.today().strftime("%Y-%m-%d")
+#todo: Alternative LLMs
+# provider- google
+# gemini-1.5-pro-latest
+#  provider openai
+# gpt-4o
+# gpt-4.1 provider openai
+# Choose Model:
+MODEL = "gemini-1.5-pro-latest"
 
+company = "google" if MODEL=="gemini-1.5-pro-latest" else "openai"
 CONFIG = {
-    "model_provider": "openai",
-    "model_name": "gpt-4o",
-    # Alternatives LLM
-    # gemini-1.5-pro-latest provider- google
-    # gpt-4o provider provider openai
-    # gpt-4.1 provider openai
-
-
+    "model_provider": company,
+    "model_name": MODEL,
     "openai_api_key": os.getenv("OPENAI_API_KEY"),
     "gemini_api_key": os.getenv("GEMINI_API_KEY"),
 
