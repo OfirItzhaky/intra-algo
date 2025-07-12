@@ -2,6 +2,7 @@ import backtrader as bt
 import pandas as pd
 from backend.analyzer_strategy_blueprint import ElasticNetStrategy
 from backend.analyzer_cerebro_custom_feeds import CustomRegressionData
+from backend.analyzer_strategy_blueprint import VWAPScalpingStrategy
 
 class CustomClassifierData(bt.feeds.PandasData):
     """
@@ -280,3 +281,53 @@ class CerebroStrategyEngine:
         else:
             sim = results[0] if results else {}
         return sim, strategy_instance, cerebro
+
+def run_backtest_VWAPStrategy(config_dict, df_5m, df_1m=None):
+    """
+    Runs a VWAP-based strategy backtest using Backtrader.
+    Args:
+        config_dict: Dictionary of strategy parameters (thresholds, stop loss, take profit, etc.)
+        df_5m: 5-minute OHLCV DataFrame.
+        df_1m: Optional 1-minute DataFrame for intrabar logic (ignored for now).
+    Returns:
+        dict with 'metrics' and 'trades'
+    """
+    try:
+        # === DEBUG PRINTS FOR DATETIME TROUBLESHOOTING ===
+        print("[DEBUG] Current dataframe head:\n", df_5m.head())
+        print("[DEBUG] Dataframe index type:", type(df_5m.index))
+        print("[DEBUG] Dataframe index sample:", df_5m.index[:5])
+        print("[DEBUG] Dataframe columns:", df_5m.columns)
+        print("[DEBUG] Cerebro expected datetime format:", df_5m.index.dtype)
+        # === DATETIME INDEX FIX ===
+        # If 'Date' and 'Time' columns exist, create a proper DatetimeIndex
+        if 'Date' in df_5m.columns and 'Time' in df_5m.columns:
+            df_5m = df_5m.copy()
+            df_5m['Datetime'] = pd.to_datetime(df_5m['Date'].astype(str) + ' ' + df_5m['Time'].astype(str))
+            df_5m.set_index('Datetime', inplace=True)
+        # If index is not datetime, try to convert
+        if not pd.api.types.is_datetime64_any_dtype(df_5m.index):
+            df_5m.index = pd.to_datetime(df_5m.index)
+        # Print debug info after fix
+        print("[DEBUG] (Post-fix) Dataframe index type:", type(df_5m.index))
+        print("[DEBUG] (Post-fix) Dataframe index sample:", df_5m.index[:5])
+        print("[DEBUG] (Post-fix) Dataframe columns:", df_5m.columns)
+        print("[DEBUG] (Post-fix) Cerebro expected datetime format:", df_5m.index.dtype)
+        # Prepare data feed
+        data_5m = bt.feeds.PandasData(dataname=df_5m)
+        cerebro = bt.Cerebro()
+        cerebro.adddata(data_5m)
+        # Print debug info
+        print(f"[VWAP_BACKTEST] Running strategy: {config_dict.get('strategy_name', 'VWAP_Bounce')}")
+        # Add strategy with config_dict as params
+        cerebro.addstrategy(VWAPScalpingStrategy, **config_dict)
+        # Run
+        results = cerebro.run()
+        strat = results[0]
+        trades = getattr(strat, 'trades', [])
+        metrics = getattr(strat, 'metrics', {})
+        print(f"[VWAP_BACKTEST] Done. Trades: {len(trades)}, PnL: {metrics.get('PnL')}, Win rate: {metrics.get('win_rate')}, Max DD: {metrics.get('max_drawdown')}")
+        return {"metrics": metrics, "trades": trades}
+    except Exception as e:
+        print(f"[VWAP_BACKTEST] ERROR: {e}")
+        return {"metrics": {"error": str(e)}, "trades": []}

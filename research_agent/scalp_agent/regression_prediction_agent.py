@@ -7,7 +7,7 @@ from backend.analyzer_dashboard import AnalyzerDashboard
 import requests, os, json
 import requests
 
-from research_agent.config import CONFIG
+from research_agent.config import CONFIG, REGRESSION_STRATEGY_DEFAULTS
 import traceback
 import time
 import math  # Ensure math is imported for isinf/isnan
@@ -603,35 +603,24 @@ class RegressionPredictorAgent:
         except Exception:
             return 0.0
 
-
-
     def _simulate_all_configs(self, df, df_1min, df_with_preds, results, threshold_grid, total_configs, user_params):
         for i, (long_t, short_t, min_vol, bar_color, max_pred_low, min_pred_high) in enumerate(threshold_grid):
-            # Fallback metrics always defined at the start of each iteration
-            metrics = {
-                'profit_factor': None,
-                'avg_pnl': None,
-                'avg_return': None,
-                'direction_tag': None,
-                'risk_violations': None,
-                'daily_loss_violations': None,
-                'num_trades': 0,
-                'total_pnl': None,
-                'max_pnl': None,
-                'min_pnl': None,
-                'win_rate': None,
-                'max_drawdown': None
-            }
             # TEMP DEV MODE: Early-stop after 5 strategy simulations for faster development. Remove or increase for full runs.
-            # if i >= 15:
-            #     print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
-            #     break
+            if i >= 15:
+                print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
+                break
+            metrics = {k: None for k in [
+                'profit_factor', 'avg_pnl', 'avg_return', 'direction_tag', 'risk_violations',
+                'daily_loss_violations', 'num_trades', 'total_pnl', 'max_pnl', 'min_pnl',
+                'win_rate', 'max_drawdown'
+            ]}
+
             if regression_backtest_tracker is not None:
                 if regression_backtest_tracker.get("cancel_requested"):
                     regression_backtest_tracker["status"] = "cancelled"
                     break
                 regression_backtest_tracker["current"] = i + 1
-            # Use a copy of user_params to avoid mutating shared state
+
             params_copy = (user_params or self.user_params).copy()
             params_copy['long_threshold'] = long_t
             params_copy['short_threshold'] = short_t
@@ -639,13 +628,25 @@ class RegressionPredictorAgent:
             params_copy['bar_color_filter'] = bar_color
             params_copy['max_predicted_low_for_long'] = max_pred_low
             params_copy['min_predicted_high_for_short'] = min_pred_high
-            # Temporarily set self.user_params for simulate_trades
+            for k, v in REGRESSION_STRATEGY_DEFAULTS.items():
+                if k not in params_copy or params_copy[k] is None:
+                    params_copy[k] = v
+            # Strict key check
+            required_keys = [
+                'initial_cash', 'tick_size', 'tick_value', 'contract_size',
+                'target_ticks', 'stop_ticks', 'min_dist', 'max_dist',
+                'min_classifier_signals', 'session_start', 'session_end',
+                'maxdailyprofit_dollars', 'maxdailyloss_dollars'
+            ]
+            missing_keys = [k for k in required_keys if k not in params_copy or params_copy[k] is None]
+            if missing_keys:
+                raise ValueError(f"❌ Missing required keys in params_copy: {missing_keys}")
+
             old_params = self.user_params
             self.user_params = params_copy
-            # --- Ensure predicted_high and predicted_low are present ---
+
             df = df.copy()
             if 'predicted_high' not in df.columns or 'predicted_low' not in df.columns:
-                # Compute features if needed
                 df = self._compute_group_1_features(df)
                 features = self.feature_names or ['fastavg', 'close_vs_ema_10', 'high_15min', 'macd',
                                                   'high_vs_ema_5_high', 'atr']
@@ -654,28 +655,28 @@ class RegressionPredictorAgent:
                 df['predicted_high'] = self.model_high.predict(X_scaled)
                 df['predicted_low'] = self.model_low.predict(X_scaled)
             if df_with_preds is None:
-                # Save the first version of df with predictions for plotting
                 df_with_preds = df.copy()
-            # --- Enhanced: pass config info to engine for better print ---
+
             sim = None
             try:
                 engine = CerebroStrategyEngine(
                     df_strategy=df,
                     df_classifiers=pd.DataFrame(),
-                    initial_cash=params_copy.get('initial_cash', 10000),
-                    tick_size=params_copy.get('tick_size', 0.25),
-                    tick_value=params_copy.get('tick_value', 1.25),
-                    contract_size=params_copy.get('contract_size', 1),
-                    target_ticks=params_copy.get('target_ticks', 10),
-                    stop_ticks=params_copy.get('stop_ticks', 10),
-                    min_dist=params_copy.get('min_dist', 3.0),
-                    max_dist=params_copy.get('max_dist', 20.0),
-                    min_classifier_signals=params_copy.get('min_classifier_signals', 0),
-                    session_start=params_copy.get('session_start', '10:00'),
-                    session_end=params_copy.get('session_end', '23:00'),
-                    max_daily_profit=params_copy.get('max_daily_profit', 36.0),
-                    max_daily_loss=params_copy.get('max_daily_loss', -36.0)
+                    initial_cash=params_copy["initial_cash"],
+                    tick_size=params_copy["tick_size"],
+                    tick_value=params_copy["tick_value"],
+                    contract_size=params_copy["contract_size"],
+                    target_ticks=params_copy["target_ticks"],
+                    stop_ticks=params_copy["stop_ticks"],
+                    min_dist=params_copy["min_dist"],
+                    max_dist=params_copy["max_dist"],
+                    min_classifier_signals=params_copy["min_classifier_signals"],
+                    session_start=params_copy["session_start"],
+                    session_end=params_copy["session_end"],
+                    max_daily_profit=params_copy["maxdailyprofit_dollars"],
+                    max_daily_loss=params_copy["maxdailyloss_dollars"]
                 )
+
                 sim, strategy, cerebro = engine.run_backtest_RegressionScalpingStrategy(
                     df, df_1min,
                     params_copy,
@@ -688,6 +689,7 @@ class RegressionPredictorAgent:
                     max_pred_low=max_pred_low,
                     min_pred_high=min_pred_high
                 )
+
                 # Store the sim dict for this config
                 self.all_strategy_sims.append(sim)
                 # --- Extract trades from strategy if present ---

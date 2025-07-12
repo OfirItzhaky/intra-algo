@@ -5,6 +5,9 @@ from backtrader.utils.date import num2date
 import pytz
 import datetime
 
+from research_agent.config import REGRESSION_STRATEGY_DEFAULTS
+
+
 class ElasticNetStrategy(bt.Strategy):
     """
     A basic strategy using predicted highs from regression models (e.g., ElasticNet),
@@ -379,43 +382,53 @@ class Long5min1minStrategy(bt.Strategy):
         dt = self.datas[0].datetime.datetime(0)
         print(f"[{dt}] {txt}")
 
+
+import backtrader as bt
+
 class RegressionScalpingStrategy(bt.Strategy):
     params = dict(
-        long_threshold=3.0,
-        short_threshold=3.0,
-        target_ticks=10,
-        stop_ticks=15,
-        tick_size=0.25,
-        tick_value=1.25,
-        contract_size=1,
-        initial_cash=10000.0,
-        min_classifier_signals=0,
-        session_start='10:00',
-        session_end='23:00',
-        max_daily_profit=36.0,
-        max_daily_loss=-36.0,
-        slippage=0.0,
+        # Dynamic grid-varying parameters (must be passed explicitly)
+        long_threshold=None,
+        short_threshold=None,
+        min_volume_pct_change=None,
+        bar_color_filter=None,
+        max_predicted_low_for_long=None,
+        min_predicted_high_for_short=None,
+
+        # Constant required parameters (from config)
+        target_ticks=REGRESSION_STRATEGY_DEFAULTS['target_ticks'],
+        stop_ticks=REGRESSION_STRATEGY_DEFAULTS['stop_ticks'],
+        tick_size=REGRESSION_STRATEGY_DEFAULTS['tick_size'],
+        tick_value=REGRESSION_STRATEGY_DEFAULTS['tick_value'],
+        contract_size=REGRESSION_STRATEGY_DEFAULTS['contract_size'],
+        initial_cash=REGRESSION_STRATEGY_DEFAULTS['initial_cash'],
+        session_start=REGRESSION_STRATEGY_DEFAULTS['session_start'],
+        session_end=REGRESSION_STRATEGY_DEFAULTS['session_end'],
+        max_daily_profit=REGRESSION_STRATEGY_DEFAULTS['maxdailyprofit_dollars'],
+        max_daily_loss=REGRESSION_STRATEGY_DEFAULTS['maxdailyloss_dollars'],
+
+        # All other params explicitly defaulted to None or ''
+        min_classifier_signals=None,
+        slippage=REGRESSION_STRATEGY_DEFAULTS['slippage'],
         force_exit=True,
-        min_volume_pct_change=0.0,
-        max_drawdown=100.0,
-        bar_color_filter=False,
-        min_dist=3.0,
-        max_dist=20.0,
-        max_risk_per_trade=15.0,
-        max_daily_risk=100.0,
-        min_trades=0,
-        min_profit_factor=0.0,
+        max_drawdown=None,
+        min_dist=None,
+        max_dist=None,
+        max_risk_per_trade=None,
+        max_daily_risk=None,
+        min_trades=None,
+        min_profit_factor=None,
         use_multi_class=False,
-        multi_class_threshold=3,
+        multi_class_threshold=None,
         bias_summary='',
-        stop_loss_dollars=0.0,
-        suggested_contracts=1,
+        stop_loss_dollars=None,
+        suggested_contracts=None,
         direction_tag='',
-        # Add any other dynamic params here with sensible defaults
     )
 
-    def __init__(self, *args, max_predicted_low_for_long=None, min_predicted_high_for_short=None, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
         self.order = None
         self.last_bar_time = None
         self.trades = []
@@ -423,10 +436,24 @@ class RegressionScalpingStrategy(bt.Strategy):
         self.last_exit_price = None
         self.daily_pnl = 0
         self.current_trade_date = None
-        self.entry_side = None  # 'long' or 'short'
+        self.entry_side = None
         self.entry_dt = None
-        self.max_pred_low = max_predicted_low_for_long
-        self.min_pred_high = min_predicted_high_for_short
+
+        # Special dynamic thresholds
+        self.max_pred_low = self.p.max_predicted_low_for_long
+        self.min_pred_high = self.p.min_predicted_high_for_short
+
+        # Strict validation of critical runtime-required params
+        critical_params = [
+            "long_threshold", "short_threshold",
+            "target_ticks", "stop_ticks",
+            "tick_size", "tick_value",
+            "initial_cash", "session_start", "session_end"
+        ]
+        missing_params = [p for p in critical_params if getattr(self.p, p) in (None, '')]
+        if missing_params:
+            raise ValueError(f"❌ Missing critical params: {missing_params}")
+
 
     def next(self):
         dt5 = self.datas[0].datetime.datetime(0)  # 5m bar datetime
@@ -619,6 +646,153 @@ class RegressionScalpingStrategy(bt.Strategy):
     def log(self, txt: str) -> None:
         dt = self.datas[0].datetime.datetime(0)
         print(f"[{dt}] {txt}")
+
+
+class VWAPScalpingStrategy(bt.Strategy):
+    params = dict(
+        strategy_name=None,
+        bias=None,
+        vwap_distance_pct=None,
+        volume_zscore_min=None,
+        ema_bias_filter=None,
+        stop_loss_rule=None,
+        take_profit_rule=None,
+        risk_type=None,
+    )
+
+    def __init__(self):
+        self.order = None
+        self.entry_price = None
+        self.entry_time = None
+        self.trades = []
+        self.metrics = {}
+        self.max_equity = self.broker.getvalue()
+        self.equity_curve = []
+        self.current_trade = None
+        self.pnl = 0.0
+        self.wins = 0
+        self.losses = 0
+        self.max_drawdown = 0.0
+
+    def log(self, txt):
+        dt = self.datas[0].datetime.datetime(0)
+        print(f"[{dt}] {txt}")
+
+    def next(self):
+        dt = self.datas[0].datetime.datetime(0)
+        close = self.datas[0].close[0]
+        vwap = getattr(self.datas[0], 'VWAP', close)  # fallback to close if no VWAP
+        volume = self.datas[0].volume[0]
+        # Placeholder: use rolling mean/std for z-score
+        if len(self.datas[0]) > 20:
+            vol_mean = self.datas[0].volume.get(size=20, ago=1)
+            vol_std = self.datas[0].volume.get(size=20, ago=1, method='std')
+            if vol_std == 0 or vol_std is None:
+                vol_z = 0
+            else:
+                vol_z = (volume - vol_mean) / vol_std
+        else:
+            vol_z = 0
+        ema9 = self.datas[0].close[-8] if len(self.datas[0]) > 8 else close
+        ema20 = self.datas[0].close[-19] if len(self.datas[0]) > 19 else close
+        bias = "bullish" if ema9 > ema20 else "bearish"
+        # --- Entry Logic ---
+        if not self.position and not self.order:
+            if self.p.strategy_name == "VWAP_Bounce":
+                # Enter long if price is within vwap_distance_pct below VWAP and volume z-score is high
+                if close < vwap and abs((close - vwap) / vwap) <= self.p.vwap_distance_pct and vol_z >= self.p.volume_zscore_min and bias in self.p.ema_bias_filter:
+                    self.log(f"VWAP_Bounce entry: close={close:.2f}, vwap={vwap:.2f}, vol_z={vol_z:.2f}, bias={bias}")
+                    self.order = self.buy()
+                    self.entry_price = close
+                    self.entry_time = dt
+                    self.current_trade = {"entry_time": dt, "entry_price": close, "strategy": self.p.strategy_name}
+            elif self.p.strategy_name == "VWAP_Reclaim":
+                # Enter long if price dipped below VWAP and now closes above
+                if self.datas[0].close[-1] < vwap and close > vwap and vol_z >= self.p.volume_zscore_min and bias in self.p.ema_bias_filter:
+                    self.log(f"VWAP_Reclaim entry: close={close:.2f}, vwap={vwap:.2f}, vol_z={vol_z:.2f}, bias={bias}")
+                    self.order = self.buy()
+                    self.entry_price = close
+                    self.entry_time = dt
+                    self.current_trade = {"entry_time": dt, "entry_price": close, "strategy": self.p.strategy_name}
+            elif self.p.strategy_name == "VWAP_Compression":
+                # Enter if price is tightly consolidating near VWAP (placeholder: last 5 closes within 0.1% of VWAP)
+                if len(self.datas[0]) > 5 and all(abs((self.datas[0].close[-i] - vwap) / vwap) < 0.001 for i in range(5)):
+                    self.log(f"VWAP_Compression entry: close={close:.2f}, vwap={vwap:.2f}")
+                    self.order = self.buy()
+                    self.entry_price = close
+                    self.entry_time = dt
+                    self.current_trade = {"entry_time": dt, "entry_price": close, "strategy": self.p.strategy_name}
+            elif self.p.strategy_name == "VWAP_EMA_Cross":
+                # Enter if EMA9 crosses above VWAP (placeholder: close crosses above VWAP)
+                if self.datas[0].close[-1] < vwap and close > vwap:
+                    self.log(f"VWAP_EMA_Cross entry: close={close:.2f}, vwap={vwap:.2f}")
+                    self.order = self.buy()
+                    self.entry_price = close
+                    self.entry_time = dt
+                    self.current_trade = {"entry_time": dt, "entry_price": close, "strategy": self.p.strategy_name}
+        # --- Exit Logic ---
+        if self.position:
+            # Placeholder: exit if price moves 2x vwap_distance_pct above entry or falls below stop
+            take_profit = self.entry_price * (1 + 2 * self.p.vwap_distance_pct)
+            stop_loss = self.entry_price * (1 - self.p.vwap_distance_pct)
+            if close >= take_profit:
+                self.log(f"Take profit hit: close={close:.2f} >= {take_profit:.2f}")
+                self.order = self.sell()
+            elif close <= stop_loss:
+                self.log(f"Stop loss hit: close={close:.2f} <= {stop_loss:.2f}")
+                self.order = self.sell()
+        # Track equity curve
+        equity = self.broker.getvalue()
+        self.equity_curve.append(equity)
+        if equity > self.max_equity:
+            self.max_equity = equity
+        drawdown = self.max_equity - equity
+        if drawdown > self.max_drawdown:
+            self.max_drawdown = drawdown
+
+    def notify_order(self, order):
+        if order.status in [order.Completed]:
+            if order.isbuy():
+                self.log(f"BUY EXECUTED: price={order.executed.price:.2f}")
+            elif order.issell():
+                self.log(f"SELL EXECUTED: price={order.executed.price:.2f}")
+        if order.status in [order.Completed, order.Canceled, order.Margin, order.Rejected]:
+            self.order = None
+
+    def notify_trade(self, trade):
+        if trade.isclosed:
+            pnl = trade.pnl
+            self.pnl += pnl
+            win = pnl > 0
+            if win:
+                self.wins += 1
+            else:
+                self.losses += 1
+            trade_record = {
+                "entry_time": self.entry_time,
+                "exit_time": self.datas[0].datetime.datetime(0),
+                "entry_price": self.entry_price,
+                "exit_price": self.datas[0].close[0],
+                "pnl": pnl,
+                "win": win,
+                "strategy": self.p.strategy_name
+            }
+            self.trades.append(trade_record)
+            self.entry_price = None
+            self.entry_time = None
+            self.current_trade = None
+
+    def stop(self):
+        n_trades = len(self.trades)
+        win_rate = self.wins / n_trades * 100 if n_trades > 0 else 0
+        self.metrics = {
+            "PnL": self.pnl,
+            "win_rate": win_rate,
+            "max_drawdown": self.max_drawdown,
+            "num_trades": n_trades,
+            "strategy": self.p.strategy_name
+        }
+        self.log(f"Strategy stopped. PnL={self.pnl:.2f}, Win rate={win_rate:.1f}%, Max DD={self.max_drawdown:.2f}, Trades={n_trades}")
 
 
 

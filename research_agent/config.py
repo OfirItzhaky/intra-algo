@@ -46,3 +46,22 @@ CONFIG = {
 
 SUMMARY_CACHE = {}
 EVENT_CACHE = {}
+
+# --- Explicit Regression Strategy Constants ---
+REGRESSION_STRATEGY_DEFAULTS = {
+    'target_ticks': 10,
+    'stop_ticks': 10,
+    'tick_size': 0.25,
+    'tick_value': 1.25,
+    'contract_size': 1,
+    'initial_cash': 10000.0,
+    'session_start': '01:00',
+    'session_end': '23:00',
+    'maxdailyprofit_dollars': 36.0,
+    'maxdailyloss_dollars': -36.0,
+    'slippage': 0.0,
+    'min_dist': 1.0,
+    'max_dist': 20.0,
+    'min_classifier_signals': 0
+}
+

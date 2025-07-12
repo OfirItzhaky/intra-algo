@@ -1491,6 +1491,9 @@ def run_vwap_agent():
     from flask import jsonify, request
     from config import CONFIG
     import traceback
+    import json
+    import pandas as pd
+    from research_agent.scalp_agent.vwap_agent import VWAPAgent
 
     try:
         # Step 1: Get images from request
@@ -1511,110 +1514,54 @@ def run_vwap_agent():
         if num_images == 0:
             return jsonify({"error": "No valid images found."}), 400
 
-        # Step 3: Select prompt
-        if num_images == 1:
-            prompt_text = VWAP_PROMPT_SINGLE_IMAGE
-            prompt_type = "single_image"
-        else:
-            prompt_text = VWAP_PROMPT_4_IMAGES
-            prompt_type = "multi_image"
+        # Step 3: VWAPAgent pipeline
+        vwap_agent = VWAPAgent()
+        llm_result = vwap_agent.call_llm_with_images(image_bytes_list)
+        print(f"[VWAP_AGENT] Step 1: LLM result: {json.dumps(llm_result, indent=2)[:1000]}")
+        raw_response_text = llm_result.get("llm_raw_response")
+        model_name = llm_result.get("model_name")
+        provider = llm_result.get("provider")
+        llm_cost_usd = llm_result.get("llm_cost_usd")
+        llm_token_usage = llm_result.get("llm_token_usage")
+        prompt_type = llm_result.get("prompt_type")
+        num_images = llm_result.get("num_images")
 
-        # Step 4: Call LLM (Gemini/OpenAI Vision)
-        model_name = CONFIG["model_name"]
-        provider = "gemini" if model_name.startswith("gemini-") else "openai"
-        llm_response = None
-        raw_response_text = None
-        llm_cost_usd = None
-        llm_token_usage = None
+        # Step 4: Parse LLM response (expecting JSON)
+        llm_structured = VWAPAgent.parse_llm_response_text(raw_response_text)
+        print(f"[VWAP_AGENT] Step 2: Parsed LLM response: {json.dumps(llm_structured, indent=2)[:1000]}")
 
-        # --- Multi-image support ---
-        if provider == "gemini":
-            import requests
-            api_key = CONFIG.get("gemini_api_key") or os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                return jsonify({"error": "GEMINI_API_KEY not set in config or environment."}), 500
-            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-            parts = [{"text": prompt_text}]
-            for img_bytes in image_bytes_list:
-                mime_type = imghdr.what(None, h=img_bytes) or "png"
-                mime_type = f"image/{mime_type}"
-                encoded_image = base64.b64encode(img_bytes).decode("utf-8")
-                parts.append({
-                    "inlineData": {
-                        "mimeType": mime_type,
-                        "data": encoded_image
-                    }
-                })
-            body = {"contents": [{"parts": parts}]}
-            headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
-            response = requests.post(endpoint, headers=headers, json=body)
-            print(f"[VWAP_AGENT] Gemini Vision raw response: {response.text[:1000]}{'...' if len(response.text) > 1000 else ''}")
-            response.raise_for_status()
-            response_data = response.json()
-            raw_response_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
-            llm_response = response.text
-            # Cost/usage extraction for Gemini
-            usage = response_data.get('usage', response_data.get('usageMetadata', {}))
-            llm_token_usage = usage.get('totalTokenCount')
-            llm_cost_usd = usage.get('totalCostUsd')
-            if llm_cost_usd is None and llm_token_usage is not None:
-                try:
-                    llm_cost_usd = float(llm_token_usage) * 0.0025 / 1000
-                except Exception:
-                    llm_cost_usd = None
-        elif provider == "openai":
-            import requests
-            api_key = CONFIG.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                return jsonify({"error": "OPENAI_API_KEY not set in config or environment."}), 500
-            endpoint = "https://api.openai.com/v1/chat/completions"
-            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            img_bytes = image_bytes_list[0]
-            mime_type = imghdr.what(None, h=img_bytes) or "png"
-            image_data = f"data:image/{mime_type};base64,{base64.b64encode(img_bytes).decode()}"
-            payload = {
-                "model": model_name,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt_text},
-                            {"type": "image_url", "image_url": {"url": image_data}}
-                        ]
-                    }
-                ],
-                "max_tokens": 1000
-            }
-            response = requests.post(endpoint, headers=headers, json=payload)
-            print(f"[VWAP_AGENT] OpenAI Vision raw response: {response.text[:1000]}{'...' if len(response.text) > 1000 else ''}")
-            response.raise_for_status()
-            response_data = response.json()
-            raw_response_text = response_data["choices"][0]["message"]["content"]
-            llm_response = response.text
-            # Cost/usage extraction for OpenAI
-            usage = response_data.get('usage', {})
-            prompt_tokens = usage.get('prompt_tokens', 0)
-            completion_tokens = usage.get('completion_tokens', 0)
-            llm_token_usage = prompt_tokens + completion_tokens
-            # gpt-4-vision-preview: $0.01/1K prompt, $0.03/1K output (2024-06)
-            try:
-                llm_cost_usd = (prompt_tokens * 0.01 + completion_tokens * 0.03) / 1000
-            except Exception:
-                llm_cost_usd = None
-        else:
-            return jsonify({"error": f"Unknown or unsupported model_name '{model_name}'."}), 500
+        # Step 5: Build parameter grid
+        grid_df = vwap_agent.build_grid_from_llm_response(llm_structured)
+        print(f"[VWAP_AGENT] Step 3: Built parameter grid (top 5 rows):\n{grid_df.head(5).to_string(index=False)}")
 
-        # Step 5: Print and return
-        print(f"[VWAP_AGENT] Full LLM raw response:\n{llm_response}")
-        print(f"[VWAP_AGENT] Model: {model_name} | Provider: {provider} | Cost: {llm_cost_usd} | Tokens: {llm_token_usage} | Prompt type: {prompt_type}")
+        # Step 6: Load uploaded CSV for VWAP Agent
+        csv_file = request.files.get('csv_file')
+        if not csv_file or csv_file.filename == '':
+            return jsonify({"error": "No CSV file uploaded for VWAP Agent."}), 400
+        df_ohlcv = pd.read_csv(csv_file)
+        print(f"[CSV] Loaded VWAP CSV: {df_ohlcv.shape} rows, columns: {list(df_ohlcv.columns)}")
+
+        # Step 7: Run backtests with real data
+        all_results, summary_df = vwap_agent.run_backtests_from_grid(grid_df, df_ohlcv)
+        vwap_agent.summary_df = summary_df
+        print(f"[VWAP_AGENT] Step 4: Backtest summary (top 5 rows):\n{summary_df.head(5).to_string(index=False)}")
+
+        # Step 8: Generate natural language rules
+        rules = vwap_agent.generate_natural_language_rules(top_n=5)
+
+        # Step 9: Return all results
         return jsonify({
             "llm_raw_response": raw_response_text,
+            "llm_structured": llm_structured,
             "model_name": model_name,
             "provider": provider,
             "llm_cost_usd": llm_cost_usd,
             "llm_token_usage": llm_token_usage,
             "num_images": num_images,
-            "prompt_type": prompt_type
+            "prompt_type": prompt_type,
+            "parameter_grid": grid_df.to_dict(orient="records"),
+            "backtest_summary": summary_df.to_dict(orient="records"),
+            "natural_language_rules": rules
         })
     except Exception as e:
         print(f"[VWAP_AGENT] Error: {e}\n{traceback.format_exc()}")

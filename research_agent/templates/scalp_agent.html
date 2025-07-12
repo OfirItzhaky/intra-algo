@@ -78,6 +78,21 @@
     </style>
 </head>
 <body style="font-family: Arial; margin: 40px;">
+<div class="container mb-4">
+  <div class="card border-info mb-3" style="max-width: 480px; margin: 0 auto;">
+    <div class="card-header bg-info text-white"><b>LLM Model Selection</b></div>
+    <div class="card-body">
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="radio" name="llm_model" id="llm-model-gpt4o" value="gpt-4o">
+        <label class="form-check-label" for="llm-model-gpt4o">OpenAI GPT-4o</label>
+      </div>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="radio" name="llm_model" id="llm-model-gemini" value="gemini-1.5-pro-latest">
+        <label class="form-check-label" for="llm-model-gemini">Google Gemini 1.5 Pro</label>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="container">
     {% include "shared_ui_blocks.html" %}
     <div class="tab-content" id="scalpAgentTabContent">
@@ -165,8 +180,9 @@
                 <input type="file" class="form-control" id="vwap_image_file" name="vwap_image_file" accept="image/*" multiple style="margin-top: 8px;">
               </div>
               <div>
-                <label for="vwap_csv_file" class="form-label">Upload CSV (<span class="fw-bold">VWAP</span>)</label>
-                <input type="file" class="form-control" id="vwap_csv_file" name="vwap_csv_file" accept=".csv,.txt,.xlsx,.xls">
+                <label for="vwap-csv-upload" class="form-label">Upload CSV for VWAP Agent:</label>
+                <input type="file" class="form-control" id="vwap-csv-upload" name="csv_file" accept=".csv,.txt,.xlsx,.xls">
+                <div id="vwap-csv-summary" class="mt-1 text-secondary"></div>
               </div>
             </div>
             <div style="flex: 1; display: flex; align-items: stretch; justify-content: flex-end;">
@@ -1666,7 +1682,24 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // CSV input change
-    vwapCsvInput.addEventListener('change', updateVwapBtnState);
+    const vwapCsvSummaryDiv = document.getElementById('vwap-csv-summary');
+    const vwapCsvUploadInput = document.getElementById('vwap-csv-upload');
+    vwapCsvUploadInput.addEventListener('change', function() {
+      updateVwapBtnState();
+      if (vwapCsvUploadInput.files.length > 0) {
+        const file = vwapCsvUploadInput.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const text = e.target.result;
+          const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+          const numRows = Math.max(0, lines.length - 1); // header
+          vwapCsvSummaryDiv.innerHTML = `📄 CSV Detected: <b>${numRows}</b> bars loaded (${file.name})`;
+        };
+        reader.readAsText(file);
+      } else {
+        vwapCsvSummaryDiv.innerHTML = '';
+      }
+    });
     // Focus dropzone on click for better UX
     vwapDropzone.addEventListener('click', function() { vwapDropzone.focus(); });
     // Initial state
@@ -1684,6 +1717,14 @@ document.addEventListener('DOMContentLoaded', function() {
       // Use vwapImages (from preview/paste) if present, else from file input
       let imagesToSend = vwapImages.length > 0 ? vwapImages.map(img => img.file) : (vwapImageInput.files ? Array.from(vwapImageInput.files) : []);
       imagesToSend.slice(0, 4).forEach(file => formData.append('images', file));
+      // --- VWAP CSV upload ---
+      const csvInput = document.getElementById('vwap-csv-upload');
+      if (csvInput && csvInput.files.length > 0) {
+        formData.append('csv_file', csvInput.files[0]);
+        console.log('VWAP CSV file appended:', csvInput.files[0].name);
+      } else {
+        console.log('No VWAP CSV file selected');
+      }
       fetch('/run_vwap_agent', {
         method: 'POST',
         body: formData
