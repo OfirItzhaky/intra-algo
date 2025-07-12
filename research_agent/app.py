@@ -31,6 +31,7 @@ import re
 import json
 
 from scalp_agent.prompt_manager import VWAP_PROMPT_SINGLE_IMAGE, VWAP_PROMPT_4_IMAGES
+from research_agent.config import CONFIG, SUMMARY_CACHE, EVENT_CACHE, REGRESSION_STRATEGY_DEFAULTS
 
 
 # === Runtime Constants ===
@@ -43,7 +44,6 @@ PRINT_LIVE_SUMMARY = True
 COPY_TO_CLIPBOARD = False
 SAVE_DIRECTORY = "research_outputs"
 
-from config import CONFIG, SUMMARY_CACHE, EVENT_CACHE
 
 # --- Global progress tracker ---
 regression_backtest_tracker = {
@@ -1566,6 +1566,11 @@ def run_vwap_agent():
     except Exception as e:
         print(f"[VWAP_AGENT] Error: {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
+@app.route("/regression_strategy_defaults", methods=["GET"])
+def regression_strategy_defaults():
+    """Return the regression strategy default parameters as JSON for frontend UI."""
+    return jsonify(REGRESSION_STRATEGY_DEFAULTS)
 
 def to_serializable(val):
     if isinstance(val, dict):
