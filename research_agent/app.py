@@ -19,18 +19,12 @@ from scalp_agent.scalp_agent_controller import ScalpAgentController
 from scalp_agent.input_container import InputContainer
 from scalp_agent.agent_handler import AgentHandler
 from scalp_agent.instinct_agent import InstinctAgent
-from scalp_agent.playbook_agent import PlaybookAgent
 from scalp_agent.playbook_simulator import PlaybookSimulator
 from scalp_agent.csv_utils import validate_csv_against_indicators
 from scalp_agent.regression_prediction_agent import RegressionPredictorAgent
 import numpy as np
 import time
-from backend.analyzer_dashboard import AnalyzerDashboard
 
-import re
-import json
-
-from scalp_agent.prompt_manager import VWAP_PROMPT_SINGLE_IMAGE, VWAP_PROMPT_4_IMAGES
 from research_agent.config import CONFIG, SUMMARY_CACHE, EVENT_CACHE, REGRESSION_STRATEGY_DEFAULTS
 
 
@@ -1485,11 +1479,7 @@ def run_vwap_agent():
     Accepts up to 4 images (field name: 'images'), determines the correct VWAP prompt, and calls the LLM (OpenAI or Gemini) with the prompt and images.
     Prints and returns the raw LLM response as JSON.
     """
-    import base64
-    import imghdr
-    import os
     from flask import jsonify, request
-    from config import CONFIG
     import traceback
     import json
     import pandas as pd

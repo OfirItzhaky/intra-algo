@@ -1,8 +1,7 @@
 import backtrader as bt
 import pandas as pd
-from backend.analyzer_strategy_blueprint import ElasticNetStrategy
-from backend.analyzer_cerebro_custom_feeds import CustomRegressionData
-from backend.analyzer_strategy_blueprint import VWAPScalpingStrategy
+from backend.analyzer.analyzer_strategy_blueprint import ElasticNetStrategy
+from backend.analyzer.analyzer_strategy_blueprint import VWAPScalpingStrategy
 
 class CustomClassifierData(bt.feeds.PandasData):
     """
@@ -190,7 +189,7 @@ class CerebroStrategyEngine:
         params: dict of strategy parameters to pass to RegressionScalpingStrategy.
         Returns (results, strategy_instance, cerebro)
         """
-        from backend.analyzer_strategy_blueprint import RegressionScalpingStrategy
+        from backend.analyzer.analyzer_strategy_blueprint import RegressionScalpingStrategy
         cerebro = bt.Cerebro()
         # Prepare 5min data feed
         df_5min = df_5min.copy()

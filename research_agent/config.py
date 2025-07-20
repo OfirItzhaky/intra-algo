@@ -65,3 +65,15 @@ REGRESSION_STRATEGY_DEFAULTS = {
     'min_classifier_signals': 0
 }
 
+VWAP_STRATEGY_DEFAULTS = {
+    "tick_size": 0.25,
+    "tick_value": 1.25,
+    "contract_size": 1,
+    "initial_cash": 10000.0,
+    "slippage": 0.0,
+    "session_start": "01:00",
+    "session_end": "23:00",
+    "maxdailyprofit_dollars": 36.0,
+    "maxdailyloss_dollars": -36.0,
+
+}

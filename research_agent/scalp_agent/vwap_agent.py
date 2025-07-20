@@ -215,7 +215,7 @@ class VWAPAgent:
             all_results: List of dicts, each with 'config', 'trades', 'metrics'
             summary_df: DataFrame of metrics for all strategies
         """
-        from backend.analyzer_cerebro_strategy_engine import run_backtest_VWAPStrategy
+        from backend.analyzer.analyzer_cerebro_strategy_engine import run_backtest_VWAPStrategy
         print(f"[Step 8] Running backtest for {len(df_grid)} strategy configs...")
         all_results = []
         metrics_rows = []

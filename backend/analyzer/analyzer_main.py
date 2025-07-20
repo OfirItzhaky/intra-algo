@@ -1,10 +1,8 @@
 import numpy as np
 import pandas as pd
 from pandasgui import show
-import backtrader as bt
 import joblib
 from imblearn.over_sampling import SMOTE
-import importlib
 
 from analyzer_load_eda import ModelLoaderAndExplorer
 from analyzer_cerebro_strategy_engine import CerebroStrategyEngine
@@ -184,7 +182,7 @@ def run_analyzer_with_training():
 
 # === Training Constants ===
 USE_TRAINING_MODE = True  # Switch between training and pre-trained modes
-TRAINING_DATA_PATH = "data/training/mes_2_new.csv"  # 5-min data for training
+TRAINING_DATA_PATH = "../data/training/mes_2_new.csv"  # 5-min data for training
 TRAIN_TEST_SPLIT = 0.8
 DROP_PRICE_COLUMNS = True
 APPLY_FILTER = True
@@ -227,8 +225,8 @@ USE_MULTI_CLASS = True    # Set to True to use multi-class instead of binary
 
 # === File Paths ===
 REGRESSION_MODEL_PATH = "regression_trainer_model.pkl"
-CLASSIFIER_MODEL_PATH = "classifier_trainer_model.pkl"
-INTRABAR_DATA_PATH = "MES_1_MINUTE_JAN_13_JAN_21.txt"
+CLASSIFIER_MODEL_PATH = "../classifier_trainer_model.pkl"
+INTRABAR_DATA_PATH = "../MES_1_MINUTE_JAN_13_JAN_21.txt"
 
 # === Daily PnL Limits ===
 MAX_DAILY_PROFIT = 36.0  # Equivalent to about 30 ticks
@@ -237,7 +235,7 @@ MAX_DAILY_LOSS = -36.0   # Negative value for losses
 if __name__ == "__main__":
     if TRAIN_MODEL_FROM_SCRATCH:
         # Dynamic ElasticNet mode
-        from backend.analyzer_regression_trainer import AnalyzerRegressionTrainer
+        from backend.analyzer.analyzer_regression_trainer import AnalyzerRegressionTrainer
         data_loader = DataLoader()
         raw_df = data_loader.load_from_csv(TRAINING_DATA_PATH)
         raw_df = raw_df.drop_duplicates(subset=["Date", "Time"])
