@@ -15,6 +15,10 @@ research_outputs/
 venv/
 
 
+# Ignore Python cache
+__pycache__/
+**/__pycache__/
+*.py[cod]
 
 
 # Ignore notebook checkpoints
