@@ -1539,6 +1539,23 @@ def run_vwap_agent():
         # Step 8: Generate natural language rules
         rules = vwap_agent.generate_natural_language_rules(top_n=5)
 
+        # Step 8.5: Visualization (heatmap, metrics, trades)
+        try:
+            vwap_agent.display_top_results_grid_and_metrics()
+        except Exception as viz_exc:
+            print(f"[VWAP_AGENT] Visualization warning: {viz_exc}")
+
+        # Step 8.6: Extract top strategy for frontend display
+        final_strategy = None
+        try:
+            sort_col = 'PnL' if 'PnL' in summary_df.columns else ('win_rate' if 'win_rate' in summary_df.columns else None)
+            if sort_col:
+                top_row = summary_df.sort_values(sort_col, ascending=False).head(1)
+                if not top_row.empty:
+                    final_strategy = top_row.iloc[0].to_dict()
+        except Exception as e:
+            print(f"[VWAP_AGENT] Could not extract final strategy: {e}")
+
         # Step 9: Return all results
         return jsonify({
             "llm_raw_response": raw_response_text,
@@ -1551,7 +1568,8 @@ def run_vwap_agent():
             "prompt_type": prompt_type,
             "parameter_grid": grid_df.to_dict(orient="records"),
             "backtest_summary": summary_df.to_dict(orient="records"),
-            "natural_language_rules": rules
+            "natural_language_rules": rules,
+            "final_strategy": final_strategy
         })
     except Exception as e:
         print(f"[VWAP_AGENT] Error: {e}\n{traceback.format_exc()}")

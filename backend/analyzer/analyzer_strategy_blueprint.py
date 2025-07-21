@@ -1,4 +1,5 @@
 import backtrader as bt
+import numpy as np
 import pandas as pd
 from matplotlib.dates import num2date
 from backtrader.utils.date import num2date
@@ -650,17 +651,39 @@ class RegressionScalpingStrategy(bt.Strategy):
 
 class VWAPScalpingStrategy(bt.Strategy):
     params = dict(
-        strategy_name=None,
-        bias=None,
-        vwap_distance_pct=None,
-        volume_zscore_min=None,
-        ema_bias_filter=None,
-        stop_loss_rule=None,
-        take_profit_rule=None,
-        risk_type=None,
+            # Core strategy config
+            strategy_name=None,
+            bias=None,
+
+            # Entry signal thresholds
+            vwap_distance_pct=None,
+            volume_zscore_min=None,
+            volume_increase_pct=None,
+            ema_bias_filter=None,
+            dmi_crossover=None,
+            dmi_bias_filter=None,
+            dmi_trend=None,
+            ema_vwap_cross=None,
+            vwap_reclaim_time=None,
+            volume_confirmation=None,
+            dmi_plus_min=None,
+            dmi_divergence=None,
+            vwap_reclaim_speed=None,
+            volume_increase=None,  # ✅ NEW
+            dmi_positive_slope=None,  # ✅ add this line
+
+        # Optional raw natural language summary
+            entry_conditions=None,
+
+            # Risk/Reward
+            stop_loss_rule=None,
+            take_profit_rule=None,
+            risk_type=None,
     )
 
     def __init__(self):
+        print("✅ VWAPScalpingStrategy __init__ called")
+
         self.order = None
         self.entry_price = None
         self.entry_time = None
@@ -679,14 +702,18 @@ class VWAPScalpingStrategy(bt.Strategy):
         print(f"[{dt}] {txt}")
 
     def next(self):
+        # print("🌀 VWAPScalpingStrategy next() called")
+
         dt = self.datas[0].datetime.datetime(0)
         close = self.datas[0].close[0]
         vwap = getattr(self.datas[0], 'VWAP', close)  # fallback to close if no VWAP
         volume = self.datas[0].volume[0]
         # Placeholder: use rolling mean/std for z-score
         if len(self.datas[0]) > 20:
-            vol_mean = self.datas[0].volume.get(size=20, ago=1)
-            vol_std = self.datas[0].volume.get(size=20, ago=1, method='std')
+
+            vols = [self.datas[0].volume[-i] for i in range(1, 21)]  # past 20 bars
+            vol_mean = np.mean(vols)
+            vol_std = np.std(vols)
             if vol_std == 0 or vol_std is None:
                 vol_z = 0
             else:
@@ -793,6 +820,43 @@ class VWAPScalpingStrategy(bt.Strategy):
             "strategy": self.p.strategy_name
         }
         self.log(f"Strategy stopped. PnL={self.pnl:.2f}, Win rate={win_rate:.1f}%, Max DD={self.max_drawdown:.2f}, Trades={n_trades}")
+
+    def format_rule(self) -> str:
+        """
+        Formats a human-readable summary of the VWAP scalping strategy configuration.
+        Returns a string summarizing the key parameters and logic for display or logging.
+        """
+        p = self.p
+        parts = []
+        # Strategy Name
+        if getattr(p, 'strategy_name', None):
+            parts.append(f"Strategy: {str(p.strategy_name)}")
+        # Bias
+        if getattr(p, 'bias', None):
+            parts.append(f"Bias: {str(p.bias).capitalize()}")
+        # VWAP proximity
+        if getattr(p, 'vwap_distance_pct', None) is not None:
+            parts.append(f"VWAP proximity ≤ {round(p.vwap_distance_pct * 100, 2):.2f}%")
+        # Volume Z-Score
+        if getattr(p, 'volume_zscore_min', None) is not None:
+            parts.append(f"Volume Z-Score ≥ {round(p.volume_zscore_min, 2):.2f}")
+        # EMA bias filter
+        if getattr(p, 'ema_bias_filter', None):
+            if isinstance(p.ema_bias_filter, list):
+                ema_str = ", ".join(str(x) for x in p.ema_bias_filter)
+            else:
+                ema_str = str(p.ema_bias_filter)
+            parts.append(f"EMA bias filter: {ema_str}")
+        # Stop Loss Rule
+        if getattr(p, 'stop_loss_rule', None):
+            parts.append(f"Stop Loss: {str(p.stop_loss_rule)}")
+        # Take Profit Rule
+        if getattr(p, 'take_profit_rule', None):
+            parts.append(f"Take Profit: {str(p.take_profit_rule)}")
+        # Risk Type
+        if getattr(p, 'risk_type', None):
+            parts.append(f"Risk Profile: {str(p.risk_type)}")
+        return " | ".join(parts)
 
 
 

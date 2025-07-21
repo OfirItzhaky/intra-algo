@@ -5,10 +5,12 @@ import imghdr
 
 import pandas as pd
 
-from research_agent.scalp_agent.prompt_manager import VWAP_PROMPT_SINGLE_IMAGE, VWAP_PROMPT_4_IMAGES
+from research_agent.scalp_agent.prompt_manager import VWAP_PROMPT_SINGLE_IMAGE, VWAP_PROMPT_4_IMAGES, OPTION_A_SL_TP_TRANSLATOR_PROMPT
 from research_agent.config import CONFIG
 import requests
 import json
+import plotly.graph_objects as go
+from backend.analyzer.analyzer_dashboard import AnalyzerDashboard
 
 class VWAPAgent:
     """
@@ -304,6 +306,87 @@ class VWAPAgent:
         print("\n====================================\n")
         return rules
 
+    def translate_risk_blocks_option_a(self, llm_structured):
+        """
+        For each suggested_strategy, extract the risk_management block and call the LLM with the translator prompt.
+        Attach sl_tp_function and numeric parameters to each strategy dict.
+        """
+        import json
+        strategies = llm_structured.get('suggested_strategies', [])
+        # List of available SL/TP functions (should match backend)
+        function_list = [
+            "sl_tp_from_r_multiple",
+            "sl_tp_fixed_dollar",
+            "sl_tp_swing_low_high",
+            "sl_tp_dynamic_atr",
+            "sl_tp_bar_by_bar_trailing",
+            "sl_tp_vwap_bands",
+            "sl_tp_custom_zscore",
+            "sl_tp_pivot_level_trailing",
+            "sl_tp_volume_spike",
+            "sl_tp_dmi_bias",
+            "sl_tp_ema_cross",
+            "sl_tp_bias_based",
+            "sl_tp_trailing_update"
+        ]
+        for strat in strategies:
+            risk = strat.get('risk_management', {})
+            stop_loss = risk.get('stop_loss', '')
+            take_profit = risk.get('take_profit', '')
+            risk_type = risk.get('risk_type', '')
+            prompt = OPTION_A_SL_TP_TRANSLATOR_PROMPT.format(
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                risk_type=risk_type,
+                function_list=', '.join(function_list)
+            )
+            # Call LLM (same provider as main agent)
+            try:
+                if self.provider == "gemini":
+                    api_key = CONFIG.get("gemini_api_key") or os.getenv("GEMINI_API_KEY")
+                    if not api_key:
+                        print("[VWAPAgent] GEMINI_API_KEY not set for SL/TP translation.")
+                        continue
+                    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
+                    body = {"contents": [{"parts": [{"text": prompt}]}]}
+                    headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
+                    response = requests.post(endpoint, headers=headers, json=body)
+                    response.raise_for_status()
+                    response_data = response.json()
+                    text = response_data["candidates"][0]["content"]["parts"][0]["text"]
+                elif self.provider == "openai":
+                    api_key = CONFIG.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
+                    if not api_key:
+                        print("[VWAPAgent] OPENAI_API_KEY not set for SL/TP translation.")
+                        continue
+                    endpoint = "https://api.openai.com/v1/chat/completions"
+                    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+                    payload = {
+                        "model": self.model_name,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 400
+                    }
+                    response = requests.post(endpoint, headers=headers, json=payload)
+                    response.raise_for_status()
+                    response_data = response.json()
+                    text = response_data["choices"][0]["message"]["content"]
+                else:
+                    print(f"[VWAPAgent] Unknown provider {self.provider} for SL/TP translation.")
+                    continue
+                # Parse LLM response (should be JSON)
+                try:
+                    parsed = json.loads(text.strip().split('```')[-1])
+                    sl_tp_func = parsed.get("sl_tp_function")
+                    params = parsed.get("parameters", {})
+                    if sl_tp_func:
+                        strat["sl_tp_function"] = sl_tp_func
+                        for k, v in params.items():
+                            strat[k] = v
+                except Exception as parse_exc:
+                    print(f"[VWAPAgent] Failed to parse SL/TP translation for strategy {strat.get('name')}: {parse_exc}\nRaw: {text}")
+            except Exception as e:
+                print(f"[VWAPAgent] SL/TP translation failed for strategy {strat.get('name')}: {e}")
+
     @staticmethod
     def normalize_ohlcv_columns(df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -353,6 +436,43 @@ class VWAPAgent:
 
         return df
 
+    def display_top_results_grid_and_metrics(self, summary_df, top_n=5, show_trades=True):
+        """
+        Display a heatmap of PnL and win rate for the top N strategies using Plotly.
+        Show metrics and trades for the best strategy using AnalyzerDashboard.
+        """
+        if summary_df is None or summary_df.empty:
+            print("[VWAPAgent] No summary DataFrame to display.")
+            return
+        # Determine sort column
+        sort_col = 'PnL' if 'PnL' in summary_df.columns else ('win_rate' if 'win_rate' in summary_df.columns else None)
+        if sort_col is None:
+            print("[VWAPAgent] No PnL or win_rate column in summary_df.")
+            return
+        top_df = summary_df.sort_values(sort_col, ascending=False).head(top_n)
+        # Plotly heatmap
+        fig = go.Figure(data=go.Heatmap(
+            z=top_df[[c for c in ['PnL', 'win_rate'] if c in top_df.columns]].values.T,
+            x=top_df['strategy_name'] if 'strategy_name' in top_df.columns else top_df.index.astype(str),
+            y=[c for c in ['PnL', 'win_rate'] if c in top_df.columns],
+            colorscale='Viridis',
+            colorbar=dict(title='Value'),
+            showscale=True
+        ))
+        fig.update_layout(title=f"Top {top_n} VWAP Strategies: PnL & Win Rate Heatmap", xaxis_title="Strategy", yaxis_title="Metric")
+        fig.show()
+        # Best strategy
+        best_row = top_df.iloc[0]
+        metrics = {k: best_row[k] for k in top_df.columns if k not in ['trades', 'config', 'metrics']}
+        trades = best_row.get('trades', None)
+        # Display metrics and params
+        dashboard = AnalyzerDashboard(pd.DataFrame(), pd.DataFrame())
+        dashboard.display_strategy_and_metrics_side_by_side(pd.DataFrame([metrics]), best_row.to_dict())
+        # Optionally show trades
+        if show_trades and trades is not None and isinstance(trades, (list, pd.DataFrame)) and len(trades) > 0:
+            trade_df = pd.DataFrame(trades) if isinstance(trades, list) else trades
+            dashboard.plot_trades_and_predictions_regression_agent(trade_df, max_trades=50)
+
     def run(self, images, df_5m, user_params=None, top_n=5, df_1m=None):
         """
         Full pipeline: LLM call, grid build, backtest, rule generation, with debug prints after each major step.
@@ -367,6 +487,9 @@ class VWAPAgent:
         llm_result = self.call_llm_with_images(images, user_params=user_params)
         raw_response_text = llm_result.get("llm_raw_response")
         llm_structured = self.parse_llm_response_text(raw_response_text)
+
+        # === Option A SL/TP Translator Integration ===
+        self.translate_risk_blocks_option_a(llm_structured)
 
         # Step 2: Build grid
         grid_df = self.build_grid_from_llm_response(llm_structured)
@@ -397,6 +520,8 @@ class VWAPAgent:
                 print(f"    {line}")
         else:
             print("[VWAPAgent] [DEBUG] No rules generated.")
+        # === Display top results and metrics ===
+        self.display_top_results_grid_and_metrics(self.summary_df)
         return {
             "llm_result": llm_result,
             "llm_structured": llm_structured,

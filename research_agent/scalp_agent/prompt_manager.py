@@ -251,3 +251,44 @@ STRATEGY GRID:
 BIAS SUMMARY:
 {bias_str}
 """
+
+OPTION_A_SL_TP_TRANSLATOR_PROMPT = '''
+You are a trading strategy translator.
+
+Your job is to convert a human-readable risk management block (produced by another LLM) into a structured function name and parameter set that can be executed in a backtest.
+
+---
+
+🎯 Input Block:
+"stop_loss": {stop_loss}
+"take_profit": {take_profit}
+"risk_type": {risk_type}
+
+---
+
+🎯 Your Output:
+Return a JSON object with:
+
+- "sl_tp_function": one of the approved SL/TP logic functions
+- "parameters": dictionary of numeric parameters needed by that function
+
+All values must be numeric and ready for code execution.
+
+---
+
+📌 Example output:
+
+{
+  "sl_tp_function": "sl_tp_from_r_multiple",
+  "parameters": {
+    "tick_size": 0.25,
+    "stop_ticks": 4,
+    "r_multiple": 2.0
+  }
+}
+
+Only choose from the following available SL/TP functions:
+{function_list}
+
+Do not invent new function names. Only return the structured JSON result — no explanations.
+'''

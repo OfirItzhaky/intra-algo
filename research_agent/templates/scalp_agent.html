@@ -263,6 +263,21 @@
             </div>
           </div>
         </div>
+        <!-- Final VWAP Strategy Block -->
+        {% if final_strategy %}
+        <div class="row">
+          <div class="col-12">
+            <div class="card mb-4">
+              <div class="card-header bg-warning text-dark">
+                <strong>Final VWAP Strategy (LLM Selected)</strong>
+              </div>
+              <div class="card-body">
+                <pre class="json-block" id="final-strategy-json">{{ final_strategy | tojson(indent=2) }}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
       </div>
     </div>
 </div>
