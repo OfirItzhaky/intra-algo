@@ -654,24 +654,14 @@ class VWAPScalpingStrategy(bt.Strategy):
             # Core strategy config
             strategy_name=None,
             bias=None,
-
             # Entry signal thresholds
             vwap_distance_pct=None,
             volume_zscore_min=None,
-            volume_increase_pct=None,
             ema_bias_filter=None,
             dmi_crossover=None,
-            dmi_bias_filter=None,
-            dmi_trend=None,
-            ema_vwap_cross=None,
-            vwap_reclaim_time=None,
-            volume_confirmation=None,
-            dmi_plus_min=None,
-            dmi_divergence=None,
-            vwap_reclaim_speed=None,
             volume_increase=None,  # ✅ NEW
             dmi_positive_slope=None,  # ✅ add this line
-
+            ema_vwap_relationship=None,
         # Optional raw natural language summary
             entry_conditions=None,
 
@@ -696,13 +686,31 @@ class VWAPScalpingStrategy(bt.Strategy):
         self.wins = 0
         self.losses = 0
         self.max_drawdown = 0.0
+        self.VWAP = self.datas[0].VWAP
+        self.EMA_9 = self.datas[0].EMA_9
+        self.EMA_20 = self.datas[0].EMA_20
+        self.volume_zscore = self.datas[0].volume_zscore
+        self.ema_bias_filter = self.datas[0].ema_bias_filter
+        self.dmi_crossover = self.datas[0].dmi_crossover
+        self.VWAP_upper = self.datas[0].VWAP_upper
+        self.VWAP_lower = self.datas[0].VWAP_lower
+        self.ATR_14 = self.datas[0].ATR_14
 
     def log(self, txt):
         dt = self.datas[0].datetime.datetime(0)
         print(f"[{dt}] {txt}")
 
     def next(self):
-        # print("🌀 VWAPScalpingStrategy next() called")
+        if not hasattr(self, "_logged_once"):
+            print(f"[DEBUG] First check on bar {self.datas[0].datetime.datetime(0)}")
+            print(f"Close: {self.datas[0].close[0]}, VWAP: {getattr(self.datas[0], 'VWAP', None)}")
+            print(
+                f"Volume: {self.datas[0].volume[0]}, EMA9: {self.datas[0].close[-8] if len(self.datas[0]) > 8 else None}, EMA20: {self.datas[0].close[-19] if len(self.datas[0]) > 19 else None}")
+            print(f"Strategy: {self.p.strategy_name}, Bias: {self.p.bias}, VWAP_dist_pct: {self.p.vwap_distance_pct}")
+            self._logged_once = True
+        if not pd.isna(self.VWAP[0]) and not pd.isna(self.volume_zscore[0]) and self.volume_zscore[0] > 0.5:
+            print(f"[ENTRY DEBUG] Bar: {self.datetime.datetime(0)}, VWAP={self.VWAP[0]:.2f}, "
+                  f"Zscore={self.volume_zscore[0]:.2f}, EMA9={self.EMA_9[0]}, EMA20={self.EMA_20[0]}")
 
         dt = self.datas[0].datetime.datetime(0)
         close = self.datas[0].close[0]

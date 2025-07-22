@@ -1504,73 +1504,15 @@ def run_vwap_agent():
         if num_images == 0:
             return jsonify({"error": "No valid images found."}), 400
 
-        # Step 3: VWAPAgent pipeline
-        vwap_agent = VWAPAgent()
-        llm_result = vwap_agent.call_llm_with_images(image_bytes_list)
-        print(f"[VWAP_AGENT] Step 1: LLM result: {json.dumps(llm_result, indent=2)[:1000]}")
-        raw_response_text = llm_result.get("llm_raw_response")
-        model_name = llm_result.get("model_name")
-        provider = llm_result.get("provider")
-        llm_cost_usd = llm_result.get("llm_cost_usd")
-        llm_token_usage = llm_result.get("llm_token_usage")
-        prompt_type = llm_result.get("prompt_type")
-        num_images = llm_result.get("num_images")
-
-        # Step 4: Parse LLM response (expecting JSON)
-        llm_structured = VWAPAgent.parse_llm_response_text(raw_response_text)
-        print(f"[VWAP_AGENT] Step 2: Parsed LLM response: {json.dumps(llm_structured, indent=2)[:1000]}")
-
-        # Step 5: Build parameter grid
-        grid_df = vwap_agent.build_grid_from_llm_response(llm_structured)
-        print(f"[VWAP_AGENT] Step 3: Built parameter grid (top 5 rows):\n{grid_df.head(5).to_string(index=False)}")
-
-        # Step 6: Load uploaded CSV for VWAP Agent
         csv_file = request.files.get('csv_file')
         if not csv_file or csv_file.filename == '':
             return jsonify({"error": "No CSV file uploaded for VWAP Agent."}), 400
         df_ohlcv = pd.read_csv(csv_file)
-        print(f"[CSV] Loaded VWAP CSV: {df_ohlcv.shape} rows, columns: {list(df_ohlcv.columns)}")
 
-        # Step 7: Run backtests with real data
-        all_results, summary_df = vwap_agent.run_backtests_from_grid(grid_df, df_ohlcv)
-        vwap_agent.summary_df = summary_df
-        print(f"[VWAP_AGENT] Step 4: Backtest summary (top 5 rows):\n{summary_df.head(5).to_string(index=False)}")
+        vwap_agent = VWAPAgent()
+        result = vwap_agent.run(images=image_bytes_list, df_5m=df_ohlcv)
+        return jsonify(result)
 
-        # Step 8: Generate natural language rules
-        rules = vwap_agent.generate_natural_language_rules(top_n=5)
-
-        # Step 8.5: Visualization (heatmap, metrics, trades)
-        try:
-            vwap_agent.display_top_results_grid_and_metrics()
-        except Exception as viz_exc:
-            print(f"[VWAP_AGENT] Visualization warning: {viz_exc}")
-
-        # Step 8.6: Extract top strategy for frontend display
-        final_strategy = None
-        try:
-            sort_col = 'PnL' if 'PnL' in summary_df.columns else ('win_rate' if 'win_rate' in summary_df.columns else None)
-            if sort_col:
-                top_row = summary_df.sort_values(sort_col, ascending=False).head(1)
-                if not top_row.empty:
-                    final_strategy = top_row.iloc[0].to_dict()
-        except Exception as e:
-            print(f"[VWAP_AGENT] Could not extract final strategy: {e}")
-
-        # Step 9: Return all results
-        return jsonify({
-            "llm_raw_response": raw_response_text,
-            "llm_structured": llm_structured,
-            "model_name": model_name,
-            "provider": provider,
-            "llm_cost_usd": llm_cost_usd,
-            "llm_token_usage": llm_token_usage,
-            "num_images": num_images,
-            "prompt_type": prompt_type,
-            "parameter_grid": grid_df.to_dict(orient="records"),
-            "backtest_summary": summary_df.to_dict(orient="records"),
-            "natural_language_rules": rules,
-            "final_strategy": final_strategy
-        })
     except Exception as e:
         print(f"[VWAP_AGENT] Error: {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500

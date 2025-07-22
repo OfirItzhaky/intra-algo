@@ -1,26 +1,11 @@
 import backtrader as bt
 import pandas as pd
+
+from backend.analyzer.analyzer_cerebro_custom_feeds import CustomClassifierData, CustomRegressionData, CustomVWAPData
 from backend.analyzer.analyzer_strategy_blueprint import ElasticNetStrategy
 from backend.analyzer.analyzer_strategy_blueprint import VWAPScalpingStrategy
 
-class CustomClassifierData(bt.feeds.PandasData):
-    """
-    Custom data feed for Backtrader that includes classifier columns and predicted high.
-    """
-    lines = ('predicted_high', 'RandomForest', 'LightGBM', 'XGBoost', 'multi_class_label')
-    params = (
-        ('datetime', None),
-        ('open', 'Open'),
-        ('high', 'High'),
-        ('low', 'Low'),
-        ('close', 'Close'),
-        ('openinterest', -1),
-        ('predicted_high', -1),
-        ('RandomForest', -1),
-        ('LightGBM', -1),
-        ('XGBoost', -1),
-        ('multi_class_label', -1),
-    )
+
 
 class CerebroStrategyEngine:
     """
@@ -207,20 +192,7 @@ class CerebroStrategyEngine:
         if 'predicted_low' not in df_5min.columns:
             df_5min['predicted_low'] = float('nan')
         df_5min.index = pd.to_datetime(df_5min.index)
-        # CustomRegressionData feed expects lowercase columns
-        class CustomRegressionData(bt.feeds.PandasData):
-            lines = ('predicted_high', 'predicted_low',)
-            params = (
-                ('datetime', None),
-                ('open', 'open'),
-                ('high', 'high'),
-                ('low', 'low'),
-                ('close', 'close'),
-                ('volume', 'volume'),
-                ('openinterest', -1),
-                ('predicted_high', 'predicted_high'),
-                ('predicted_low', 'predicted_low'),
-            )
+
         data_5min = CustomRegressionData(dataname=df_5min)
         # Add only the 5m feed
         cerebro.adddata(data_5min)  # data0: 5m
@@ -293,11 +265,7 @@ def run_backtest_VWAPStrategy(config_dict, df_5m, df_1m=None):
     """
     try:
         # === DEBUG PRINTS FOR DATETIME TROUBLESHOOTING ===
-        print("[DEBUG] Current dataframe head:\n", df_5m.head())
-        print("[DEBUG] Dataframe index type:", type(df_5m.index))
-        print("[DEBUG] Dataframe index sample:", df_5m.index[:5])
-        print("[DEBUG] Dataframe columns:", df_5m.columns)
-        print("[DEBUG] Cerebro expected datetime format:", df_5m.index.dtype)
+
         # === DATETIME INDEX FIX ===
         # If 'Date' and 'Time' columns exist, create a proper DatetimeIndex
         if 'Date' in df_5m.columns and 'Time' in df_5m.columns:
@@ -307,15 +275,11 @@ def run_backtest_VWAPStrategy(config_dict, df_5m, df_1m=None):
         # If index is not datetime, try to convert
         if not pd.api.types.is_datetime64_any_dtype(df_5m.index):
             df_5m.index = pd.to_datetime(df_5m.index)
-        # Print debug info after fix
-        print("[DEBUG] (Post-fix) Dataframe index type:", type(df_5m.index))
-        print("[DEBUG] (Post-fix) Dataframe index sample:", df_5m.index[:5])
-        print("[DEBUG] (Post-fix) Dataframe columns:", df_5m.columns)
-        print("[DEBUG] (Post-fix) Cerebro expected datetime format:", df_5m.index.dtype)
+
         # Prepare data feed
-        data_5m = bt.feeds.PandasData(dataname=df_5m)
+        data_5min = CustomVWAPData(dataname=df_5m)
         cerebro = bt.Cerebro()
-        cerebro.adddata(data_5m)
+        cerebro.adddata(data_5min)
         # Print debug info
         print(f"[VWAP_BACKTEST] Running strategy: {config_dict.get('strategy_name', 'VWAP_Bounce')}")
         # Add strategy with config_dict as params

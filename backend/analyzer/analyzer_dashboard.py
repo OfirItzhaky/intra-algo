@@ -529,16 +529,15 @@ class AnalyzerDashboard:
         }
 
         df_metrics["Value"] = df_metrics.apply(
-            lambda row: formatting.get(row["Metric"], lambda v: f"{v:.2f}")(row["Value"]), axis=1
+            lambda row: formatting.get(row["Metric"], lambda v: f"{float(v):.2f}" if isinstance(v, (int, float)) or str(v).replace('.', '', 1).isdigit() else str(v))(row["Value"]),
+            axis=1
         )
 
 
         # --- Prepare Strategy Params Table ---
         df_params = pd.DataFrame(list(strategy_params.items()), columns=["Parameter", "Value"])
         df_params["Value"] = df_params.apply(
-            lambda row: f"${row['Value']:.2f}" if isinstance(row["Value"], (int, float)) and "tick" not in row[
-                "Parameter"].lower()
-            else row["Value"],
+            lambda row: formatting.get(row["Metric"], lambda v: f"{float(v):.2f}" if isinstance(v, (int, float)) or str(v).replace('.', '', 1).isdigit() else str(v))(row["Value"]),
             axis=1
         )
 

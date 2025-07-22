@@ -77,3 +77,28 @@ VWAP_STRATEGY_DEFAULTS = {
     "maxdailyloss_dollars": -36.0,
 
 }
+VWAP_STRATEGY_PARAM_TEMPLATE = {
+    "strategy_name": None,
+    "bias": None,
+    "vwap_distance_pct": None,
+    "volume_zscore_min": None,
+    "volume_increase_pct": None,
+    "volume_increase": None,
+    "ema_bias_filter": None,
+    "dmi_crossover": None,
+    "dmi_bias_filter": None,
+    "dmi_trend": None,
+    "dmi_positive_slope": None,
+    "dmi_divergence": None,
+    "ema_vwap_cross": None,
+    "ema_vwap_relationship": None,
+    "vwap_reclaim_time": None,
+    "vwap_reclaim_speed": None,
+    "volume_confirmation": None,
+    "dmi_plus_min": None,
+    "entry_conditions": None,
+    "stop_loss_rule": None,
+    "take_profit_rule": None,
+    "risk_type": None,
+}
+

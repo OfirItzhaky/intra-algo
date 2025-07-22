@@ -4,9 +4,10 @@ import base64
 import imghdr
 
 import pandas as pd
+from copy import deepcopy
 
 from research_agent.scalp_agent.prompt_manager import VWAP_PROMPT_SINGLE_IMAGE, VWAP_PROMPT_4_IMAGES, OPTION_A_SL_TP_TRANSLATOR_PROMPT
-from research_agent.config import CONFIG
+from research_agent.config import CONFIG, VWAP_STRATEGY_PARAM_TEMPLATE
 import requests
 import json
 import plotly.graph_objects as go
@@ -241,6 +242,7 @@ class VWAPAgent:
             metrics_row = {'config_idx': idx}
             metrics_row.update(config_dict)
             metrics_row.update(metrics)
+            metrics_row["trades"] = trades
             metrics_rows.append(metrics_row)
         summary_df = pd.DataFrame(metrics_rows)
         print(f"[Step 8] Finished backtests. Total results: {len(all_results)}")
@@ -334,12 +336,14 @@ class VWAPAgent:
             stop_loss = risk.get('stop_loss', '')
             take_profit = risk.get('take_profit', '')
             risk_type = risk.get('risk_type', '')
+            function_list_str = "\n".join(function_list)
             prompt = OPTION_A_SL_TP_TRANSLATOR_PROMPT.format(
                 stop_loss=stop_loss,
                 take_profit=take_profit,
                 risk_type=risk_type,
-                function_list=', '.join(function_list)
+                function_list=function_list_str
             )
+
             # Call LLM (same provider as main agent)
             try:
                 if self.provider == "gemini":
@@ -398,6 +402,21 @@ class VWAPAgent:
         print(f"[VWAPAgent] [DEBUG] Columns after normalization: {list(df.columns)}")
         return df
 
+    def normalize_strategy_params(self, llm_params: dict) -> dict:
+        """
+        Merge raw LLM params into a safe VWAP strategy config dict,
+        using the global param template for missing defaults.
+        """
+        full_config = deepcopy(VWAP_STRATEGY_PARAM_TEMPLATE)
+
+        for k, v in llm_params.items():
+            if k in full_config:
+                full_config[k] = v
+            else:
+                print(f"[VWAPAgent] ⚠️ Ignoring unexpected param: {k}")
+
+        return full_config
+
     def enrich_with_all_vwap_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Compute all required indicators across all 4 VWAP strategies:
@@ -414,24 +433,44 @@ class VWAPAgent:
         df = df.copy()
 
         # VWAP and bands
-        df['VWAP'] = ta.vwap(df['High'], df['Low'], df['Close'], df['Volume'])
-        df['ATR_14'] = ta.atr(df['High'], df['Low'], df['Close'], length=14)
+        # Combine 'date' and 'time' into a datetime column
+        df['Datetime'] = pd.to_datetime(df['date'] + ' ' + df['time'])
+
+        # Set it as index
+        df.set_index('Datetime', inplace=True)
+
+        # Drop original columns if not needed
+        df.drop(columns=['date', 'time'], inplace=True)
+
+        df['VWAP'] = ta.vwap(df['high'], df['low'], df['close'], df['vol'])
+        df['ATR_14'] = ta.atr(df['high'], df['low'], df['close'], length=14)
         df['VWAP_upper'] = df['VWAP'] + df['ATR_14']
         df['VWAP_lower'] = df['VWAP'] - df['ATR_14']
 
         # EMAs
-        df['EMA_9'] = ta.ema(df['Close'], length=9)
-        df['EMA_20'] = ta.ema(df['Close'], length=20)
+        df['EMA_9'] = ta.ema(df['close'], length=9)
+        df['EMA_20'] = ta.ema(df['close'], length=20)
 
         # DMI (includes ADX, +DI, -DI)
-        dmi = ta.dmi(df['High'], df['Low'], df['Close'], length=14)
-        df = df.join(dmi)
+        dmi_df = df.ta.dm(length=14)
+        adx_df = df.ta.adx(length=14)
+        # print("[DEBUG] Existing cols dmi_df:", dmi_df.columns)
+        # print("[DEBUG] Existing cols adx_df:", adx_df.columns)
+        # print("[DEBUG] Existing cols before join:", df.columns)
 
+        overlap = dmi_df.columns.intersection(adx_df.columns)
+        if not overlap.empty:
+            print(f"[DEBUG] Dropping overlap columns from adx_df: {overlap}")
+            adx_df = adx_df.drop(columns=overlap)
+
+        # Safe join
+        df = df.join([dmi_df, adx_df])
         # Volume Z-score (based on 20-bar rolling mean)
-        df['volume_zscore'] = (df['Volume'] - df['Volume'].rolling(20).mean()) / df['Volume'].rolling(20).std()
+        df['volume_zscore'] = (df['vol'] - df['vol'].rolling(20).mean()) / df['vol'].rolling(20).std()
 
         # Optional: preprocess ema_bias_filter, dmi_crossover, etc.
         df['ema_bias_filter'] = df['EMA_9'] > df['EMA_20']
+        print("[DEBUG] Existing cols after join befor cross over", df.columns)
         df['dmi_crossover'] = df['DMP_14'] > df['DMN_14']
 
         return df
@@ -463,11 +502,14 @@ class VWAPAgent:
         fig.show()
         # Best strategy
         best_row = top_df.iloc[0]
-        metrics = {k: best_row[k] for k in top_df.columns if k not in ['trades', 'config', 'metrics']}
         trades = best_row.get('trades', None)
         # Display metrics and params
         dashboard = AnalyzerDashboard(pd.DataFrame(), pd.DataFrame())
-        dashboard.display_strategy_and_metrics_side_by_side(pd.DataFrame([metrics]), best_row.to_dict())
+        trade_df = pd.DataFrame(trades)
+
+        metrics_df = dashboard.calculate_strategy_metrics_for_ui(trade_df)
+
+        dashboard.display_strategy_and_metrics_side_by_side(metrics_df, best_row.to_dict())
         # Optionally show trades
         if show_trades and trades is not None and isinstance(trades, (list, pd.DataFrame)) and len(trades) > 0:
             trade_df = pd.DataFrame(trades) if isinstance(trades, list) else trades
@@ -522,11 +564,27 @@ class VWAPAgent:
             print("[VWAPAgent] [DEBUG] No rules generated.")
         # === Display top results and metrics ===
         self.display_top_results_grid_and_metrics(self.summary_df)
+
+        # === Extract final top strategy ===
+        final_strategy = None
+        sort_col = 'PnL' if 'PnL' in summary_df.columns else ('win_rate' if 'win_rate' in summary_df.columns else None)
+        if sort_col:
+            top_row = summary_df.sort_values(sort_col, ascending=False).head(1)
+            if not top_row.empty:
+                final_strategy = top_row.iloc[0].to_dict()
+
         return {
-            "llm_result": llm_result,
+            "llm_raw_response": llm_result.get("llm_raw_response"),
             "llm_structured": llm_structured,
-            "parameter_grid": grid_df,
-            "backtest_results": all_results,
-            "backtest_summary": summary_df,
-            "natural_language_rules": rules
+            "model_name": llm_result.get("model_name"),
+            "provider": llm_result.get("provider"),
+            "llm_cost_usd": llm_result.get("llm_cost_usd"),
+            "llm_token_usage": llm_result.get("llm_token_usage"),
+            "num_images": llm_result.get("num_images"),
+            "prompt_type": llm_result.get("prompt_type"),
+            "parameter_grid": grid_df.to_dict(orient="records"),
+            "backtest_summary": summary_df.to_dict(orient="records"),
+            "natural_language_rules": rules,
+            "final_strategy": final_strategy
         }
+

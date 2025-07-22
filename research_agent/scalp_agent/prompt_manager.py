@@ -10,7 +10,12 @@ Act as a professional trading assistant that interprets multi-timeframe charts a
    - 🧠 Think like a discretionary scalper: don’t rank them — return any that make sense.
 3. For each strategy, define:
    - `"entry_conditions"`: Setup logic that must be met for entry
-   - `"thresholds"`: Trigger values (e.g., VWAP distance %, EMA slope, volume Z-score, DMI signal)
+   - `"thresholds"`: Dictionary with only the following keys:
+       - `vwap_distance_pct`: VWAP pullback distance threshold (e.g., [0.1, 0.2])
+       - `volume_zscore_min`: Volume Z-score filter for confirmation (e.g., [1.5])
+       - `ema_bias_filter`: EMA-based trend qualifier (e.g., ["bullish_9_20"])
+       - `dmi_crossover`: Whether DMI+ crossed above DMI− (e.g., ["bullish"])
+    "All threshold keys must be non-empty and relevant to the selected strategy. If a threshold does not apply, omit the key entirely!!!"
    - `"risk_management"`:
      - `"stop_loss"`: Either technical (e.g., “below VWAP band”) or in R-multiples
      - `"take_profit"`: Either technical (e.g., “prior resistance”) or R-based (e.g., “2R”)
@@ -260,16 +265,16 @@ Your job is to convert a human-readable risk management block (produced by anoth
 ---
 
 🎯 Input Block:
-"stop_loss": {stop_loss}
-"take_profit": {take_profit}
-"risk_type": {risk_type}
+"stop_loss": "{stop_loss}"  
+"take_profit": "{take_profit}"  
+"risk_type": "{risk_type}"
 
 ---
 
 🎯 Your Output:
 Return a JSON object with:
 
-- "sl_tp_function": one of the approved SL/TP logic functions
+- "sl_tp_function": one of the approved SL/TP logic functions  
 - "parameters": dictionary of numeric parameters needed by that function
 
 All values must be numeric and ready for code execution.
@@ -278,17 +283,20 @@ All values must be numeric and ready for code execution.
 
 📌 Example output:
 
-{
+{{
   "sl_tp_function": "sl_tp_from_r_multiple",
-  "parameters": {
+  "parameters": {{
     "tick_size": 0.25,
     "stop_ticks": 4,
     "r_multiple": 2.0
-  }
-}
+  }}
+}}
 
-Only choose from the following available SL/TP functions:
+Only choose from the following available SL/TP functions:  
 {function_list}
 
-Do not invent new function names. Only return the structured JSON result — no explanations.
+Do not invent new function names. Only return the structured JSON result — no explanations.  
+Wrap your JSON block directly in {{}} — do not use triple backticks or `json` formatting tags.
 '''
+
+
