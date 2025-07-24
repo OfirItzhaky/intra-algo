@@ -1,11 +1,16 @@
-import inspect
-import math
+
+import sys
+import os
+
+# Ensure root path is added
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 import backtrader as bt
 import pandas as pd
 
-from backend.analyzer.analyzer_mcp_sl_tp_router import dispatch
-from analyzer_vwap_sl_tp_function_tool import *
+import pandas as pd
+
+from backend.analyzer.analyzer_vwap_sl_tp_function_tool import *
 
 class VWAPBounceStrategy(bt.Strategy):
     params = dict(
@@ -51,7 +56,11 @@ class VWAPBounceStrategy(bt.Strategy):
             self.strategy_id = "_".join(parts[2:])  # Keeps "01_sl_candle_low_tp_2R"
         except Exception:
             raise ValueError(f"Invalid strategy_name format: {self.p.strategy_name}")
-
+        if not hasattr(self, "df_ohlc"):
+            try:
+                self.df_ohlc = self.datas[0].p.dataname.copy()
+            except Exception:
+                raise AttributeError("df_ohlc must be provided for entry logic")
         # Common indicators
         self.VWAP = self.datas[0].VWAP
         self.EMA_9 = self.datas[0].EMA_9
@@ -114,6 +123,28 @@ class VWAPBounceStrategy(bt.Strategy):
                 ema9 < row["EMA_20"] and
                 zscore > min_vol_zscore
         )
+        # if (
+        #         abs(close - vwap) / vwap < 0.01 and  # near VWAP (1%)
+        #         pd.notna(zscore) and
+        #         zscore > 0.1  # slight volume activity
+        # ):
+        #     # self.log(
+        #         f"[DEBUG] {i} Close={close:.2f}, VWAP={vwap:.2f}, Z={zscore:.2f}, EMA9={ema9:.2f}, EMA20={row['EMA_20']:.2f}")
+        if i > 20 and pd.notna(zscore):
+            near_pullback = (
+                    close < vwap and
+                    (vwap - close) / vwap < 0.01 and
+                    min(row_range["Low"]) < vwap * (1 - 0.005)  # Slightly relaxed
+            )
+
+            near_breakout = (
+                    abs(close - vwap) / vwap < 0.005 and
+                    (close > row_prev["High"] or close < row_prev["Low"])
+            )
+
+            # if near_pullback or near_breakout:
+            #     self.log(
+            #         f"[DEBUG] i={i} Date={row.name} Close={close:.2f} VWAP={vwap:.2f} EMA9={ema9:.2f} EMA20={row['EMA_20']:.2f} Z={zscore:.2f}")
 
         if condition1_long or condition2_long:
             return [True, "long"]
@@ -201,7 +232,10 @@ class VWAPBounceStrategy(bt.Strategy):
 
         # === Entry ===
         if not self.is_in_trade():
-            signal, direction = self.check_entry_signal_vwap_bounce_both_directions(self.df_ohlc, i=len(self.df_ohlc) - 1)
+            bar_dt = self.datas[0].datetime.datetime(0)
+            i = self.df_ohlc.index.get_loc(bar_dt)
+
+            signal, direction = self.check_entry_signal_vwap_bounce_both_directions(self.df_ohlc, i=i)
             if signal:
                 self.log(f"[ENTRY] {self.strategy_id} {direction.upper()} @ {close:.2f}")
 
@@ -301,6 +335,7 @@ class VWAPBounceStrategy(bt.Strategy):
             "strategy": self.p.strategy_name
         }
         self.log(f"Strategy stopped. PnL={self.pnl:.2f}, Win rate={win_rate:.1f}%, Max DD={self.max_drawdown:.2f}, Trades={n_trades}")
+
 
 
 
