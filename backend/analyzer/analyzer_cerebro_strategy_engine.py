@@ -3,8 +3,7 @@ import pandas as pd
 
 from backend.analyzer.analyzer_cerebro_custom_feeds import CustomClassifierData, CustomRegressionData, CustomVWAPData
 from backend.analyzer.analyzer_strategy_blueprint import ElasticNetStrategy
-from backend.analyzer.analyzer_strategy_blueprint import VWAPScalpingStrategy
-
+from backend.analyzer.analyzer_blueprint_vwap_strategy import VWAPBounceStrategy
 
 
 class CerebroStrategyEngine:
@@ -253,7 +252,7 @@ class CerebroStrategyEngine:
             sim = results[0] if results else {}
         return sim, strategy_instance, cerebro
 
-def run_backtest_VWAPStrategy(config_dict, df_5m, df_1m=None):
+def run_backtest_VWAPStrategy(config_dict, df_5m):
     """
     Runs a VWAP-based strategy backtest using Backtrader.
     Args:
@@ -283,7 +282,7 @@ def run_backtest_VWAPStrategy(config_dict, df_5m, df_1m=None):
         # Print debug info
         print(f"[VWAP_BACKTEST] Running strategy: {config_dict.get('strategy_name', 'VWAP_Bounce')}")
         # Add strategy with config_dict as params
-        cerebro.addstrategy(VWAPScalpingStrategy, **config_dict)
+        cerebro.addstrategy(VWAPBounceStrategy, **config_dict)
         # Run
         results = cerebro.run()
         strat = results[0]

@@ -1,17 +1,38 @@
+import inspect
 import itertools
 import os
 import base64
 import imghdr
 
 import pandas as pd
+import pandas_ta as ta
+
 from copy import deepcopy
 
-from research_agent.scalp_agent.prompt_manager import VWAP_PROMPT_SINGLE_IMAGE, VWAP_PROMPT_4_IMAGES, OPTION_A_SL_TP_TRANSLATOR_PROMPT
+from backend.analyzer.analyzer_blueprint_vwap_strategy import VWAPBounceStrategy
+from research_agent.scalp_agent.prompt_manager import VWAP_PROMPT_SINGLE_IMAGE, VWAP_PROMPT_4_IMAGES
 from research_agent.config import CONFIG, VWAP_STRATEGY_PARAM_TEMPLATE
 import requests
 import json
 import plotly.graph_objects as go
 from backend.analyzer.analyzer_dashboard import AnalyzerDashboard
+
+SLTP_FUNCTIONS_WITH_PARAMS = {
+    "sl_tp_from_r_multiple": ["tick_size", "stop_ticks", "r_multiple"],
+    "sl_tp_fixed_dollar": ["stop_dollar", "tp_dollar"],
+    "sl_tp_swing_low_high": ["lookback", "r_multiple"],
+    "sl_tp_dynamic_atr": ["atr_period", "atr_mult_sl", "atr_mult_tp"],
+    "sl_tp_bar_by_bar_trailing": ["trail_lookback"],
+    "sl_tp_vwap_bands": ["vwap_std_mult"],
+    "sl_tp_custom_zscore": ["z_threshold", "mean", "std_dev"],
+    "sl_tp_pivot_level_trailing": ["pivot_level", "trailing_offset"],
+    "sl_tp_volume_spike": ["vol_threshold", "drop_pct"],
+    "sl_tp_dmi_bias": ["dmi_bias"],
+    "sl_tp_bias_based": ["bias_strength"],
+    "sl_tp_trailing_update": ["trail_lookback"],
+    "sl_tp_ema_cross": ["fast_period", "slow_period"]
+}
+
 
 class VWAPAgent:
     """
@@ -153,58 +174,79 @@ class VWAPAgent:
 
     def build_grid_from_llm_response(self, llm_response: dict) -> pd.DataFrame:
         """
-        Given an LLM response with suggested_strategies, thresholds, entry_conditions, and risk_management,
-        build a parameter grid DataFrame. Each row is a unique combination of threshold values for a strategy,
-        with strategy_name, bias, all threshold params, risk management fields, and entry_conditions.
+        Converts the structured LLM response into a parameter grid DataFrame.
+        Each row represents a strategy configuration for backtesting.
 
-        Example input:
-        {
-          "bias": "bullish",
-          "suggested_strategies": [
-            {
-              "name": "VWAP_Bounce",
-              "entry_conditions": ["Price pulls back near VWAP", "Volume Z-score > 1.5"],
-              "thresholds": {
-                "vwap_distance_pct": [0.1, 0.2],
-                "volume_zscore_min": [1.0, 1.5],
-                "ema_bias_filter": ["bullish_9_20"]
-              },
-              "risk_management": {
-                "stop_loss": "below entry bar low",
-                "take_profit": "VWAP mean or 2R",
-                "risk_type": "technical"
-              }
-            }
-          ]
-        }
+        Includes:
+        - strategy_name and bias
+        - all threshold combinations (vwap_distance_pct, zscore, etc.)
+        - SL/TP function and parameters if provided by translator
+        - risk description fields (for traceability)
         """
         bias = llm_response.get('bias', None)
         strategies = llm_response.get('suggested_strategies', [])
         all_rows = []
+
         for strat in strategies:
-            name = strat.get('name', None)
+            name = strat.get('name')
             thresholds = strat.get('thresholds', {})
+            risk = strat.get('risk_management', {})
             entry_conditions = strat.get('entry_conditions', [])
-            risk_management = strat.get('risk_management', {})
+
             if not thresholds or not name:
                 continue
-            keys = list(thresholds.keys())
-            value_lists = [thresholds[k] for k in keys]
-            for combo in itertools.product(*value_lists):
+
+            threshold_keys = list(thresholds.keys())
+            threshold_values = [thresholds[k] for k in threshold_keys]
+
+            # Safeguard for threshold list mismatch
+            if not all(isinstance(v, list) for v in threshold_values):
+                print(f"[WARN] Skipping strategy '{name}' due to malformed threshold values.")
+                continue
+
+            # Extract sl_tp_function and its params
+            sl_tp_function = strat.get("sl_tp_function")
+            sl_tp_params = {
+                k: v for k, v in strat.items()
+                if k not in ['name', 'thresholds', 'risk_management', 'entry_conditions', 'sl_tp_function']
+            }
+
+            # Manual combo logic (instead of itertools.product)
+            total_combos = 1
+            for vlist in threshold_values:
+                total_combos *= len(vlist)
+
+            for i in range(total_combos):
+                idxs = []
+                divisor = total_combos
+                for vlist in threshold_values:
+                    divisor = divisor // len(vlist)
+                    idxs.append((i // divisor) % len(vlist))
+
                 row = {
-                    'strategy_name': name,
-                    'bias': bias
+                    "strategy_name": name,
+                    "bias": bias,
+                    "sl_tp_function": sl_tp_function,
+                    "stop_loss_rule": risk.get("stop_loss"),
+                    "take_profit_rule": risk.get("take_profit"),
+                    "risk_type": risk.get("risk_type")
                 }
-                row.update({k: v for k, v in zip(keys, combo)})
-                # Risk management fields
-                row['stop_loss_rule'] = risk_management.get('stop_loss')
-                row['take_profit_rule'] = risk_management.get('take_profit')
-                row['risk_type'] = risk_management.get('risk_type')
-                # Entry conditions as concatenated string (optional)
+
+                for k, vlist, idx in zip(threshold_keys, threshold_values, idxs):
+                    row[k] = vlist[idx]
+
                 if entry_conditions:
-                    row['entry_conditions'] = '\n'.join(entry_conditions)
+                    row["entry_conditions"] = "\n".join(entry_conditions)
+
+                row.update(sl_tp_params)
                 all_rows.append(row)
+
         df = pd.DataFrame(all_rows)
+
+        if not df.empty:
+            debug_cols = [c for c in df.columns if "sl_tp" in c or "multiplier" in c]
+            print(f"[DEBUG] Grid includes SL/TP-related columns: {debug_cols}")
+
         return df
 
     def run_backtests_from_grid(self, df_grid, df_5m, df_1m=None):
@@ -224,10 +266,10 @@ class VWAPAgent:
         metrics_rows = []
         total = len(df_grid)
         for idx, row in df_grid.iterrows():
-            config_dict = row.to_dict()
+            config_dict = self.filter_strategy_params(row.to_dict())
             print(f"[Step 8] Running backtest {idx+1}/{total} for strategy: {config_dict.get('strategy_name', 'N/A')}")
             try:
-                result = run_backtest_VWAPStrategy(config_dict, df_5m, df_1m)
+                result = run_backtest_VWAPStrategy(config_dict, df_5m)
                 metrics = result.get('metrics', {})
                 trades = result.get('trades', [])
             except Exception as e:
@@ -308,88 +350,7 @@ class VWAPAgent:
         print("\n====================================\n")
         return rules
 
-    def translate_risk_blocks_option_a(self, llm_structured):
-        """
-        For each suggested_strategy, extract the risk_management block and call the LLM with the translator prompt.
-        Attach sl_tp_function and numeric parameters to each strategy dict.
-        """
-        import json
-        strategies = llm_structured.get('suggested_strategies', [])
-        # List of available SL/TP functions (should match backend)
-        function_list = [
-            "sl_tp_from_r_multiple",
-            "sl_tp_fixed_dollar",
-            "sl_tp_swing_low_high",
-            "sl_tp_dynamic_atr",
-            "sl_tp_bar_by_bar_trailing",
-            "sl_tp_vwap_bands",
-            "sl_tp_custom_zscore",
-            "sl_tp_pivot_level_trailing",
-            "sl_tp_volume_spike",
-            "sl_tp_dmi_bias",
-            "sl_tp_ema_cross",
-            "sl_tp_bias_based",
-            "sl_tp_trailing_update"
-        ]
-        for strat in strategies:
-            risk = strat.get('risk_management', {})
-            stop_loss = risk.get('stop_loss', '')
-            take_profit = risk.get('take_profit', '')
-            risk_type = risk.get('risk_type', '')
-            function_list_str = "\n".join(function_list)
-            prompt = OPTION_A_SL_TP_TRANSLATOR_PROMPT.format(
-                stop_loss=stop_loss,
-                take_profit=take_profit,
-                risk_type=risk_type,
-                function_list=function_list_str
-            )
 
-            # Call LLM (same provider as main agent)
-            try:
-                if self.provider == "gemini":
-                    api_key = CONFIG.get("gemini_api_key") or os.getenv("GEMINI_API_KEY")
-                    if not api_key:
-                        print("[VWAPAgent] GEMINI_API_KEY not set for SL/TP translation.")
-                        continue
-                    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
-                    body = {"contents": [{"parts": [{"text": prompt}]}]}
-                    headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
-                    response = requests.post(endpoint, headers=headers, json=body)
-                    response.raise_for_status()
-                    response_data = response.json()
-                    text = response_data["candidates"][0]["content"]["parts"][0]["text"]
-                elif self.provider == "openai":
-                    api_key = CONFIG.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
-                    if not api_key:
-                        print("[VWAPAgent] OPENAI_API_KEY not set for SL/TP translation.")
-                        continue
-                    endpoint = "https://api.openai.com/v1/chat/completions"
-                    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-                    payload = {
-                        "model": self.model_name,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": 400
-                    }
-                    response = requests.post(endpoint, headers=headers, json=payload)
-                    response.raise_for_status()
-                    response_data = response.json()
-                    text = response_data["choices"][0]["message"]["content"]
-                else:
-                    print(f"[VWAPAgent] Unknown provider {self.provider} for SL/TP translation.")
-                    continue
-                # Parse LLM response (should be JSON)
-                try:
-                    parsed = json.loads(text.strip().split('```')[-1])
-                    sl_tp_func = parsed.get("sl_tp_function")
-                    params = parsed.get("parameters", {})
-                    if sl_tp_func:
-                        strat["sl_tp_function"] = sl_tp_func
-                        for k, v in params.items():
-                            strat[k] = v
-                except Exception as parse_exc:
-                    print(f"[VWAPAgent] Failed to parse SL/TP translation for strategy {strat.get('name')}: {parse_exc}\nRaw: {text}")
-            except Exception as e:
-                print(f"[VWAPAgent] SL/TP translation failed for strategy {strat.get('name')}: {e}")
 
     @staticmethod
     def normalize_ohlcv_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -417,6 +378,30 @@ class VWAPAgent:
 
         return full_config
 
+    import inspect
+
+    def filter_strategy_params(self, config: dict) -> dict:
+        """
+        Clean config dict by:
+        - Removing unserializable types (Backtrader line objects, etc.)
+        - Filtering SL/TP params to only include those required by the sl_tp_function
+        """
+        allowed_types = (str, int, float, bool, list, dict, type(None))
+        cleaned = {k: v for k, v in config.items() if isinstance(v, allowed_types)}
+
+        # Optional SL/TP param filtering if function is known
+        sl_tp_func_name = cleaned.get("sl_tp_function")
+        if sl_tp_func_name:
+            from backend.analyzer.analyzer_mcp_sl_tp_logic import SL_TP_FUNCTIONS  # or wherever your map lives
+            sl_tp_func = SL_TP_FUNCTIONS.get(sl_tp_func_name)
+            if sl_tp_func:
+                expected_args = set(inspect.signature(sl_tp_func).parameters.keys())
+                # Always keep standard fields
+                standard_keys = {"sl_tp_function", "strategy_name", "entry_price", "entry_time"}
+                cleaned = {k: v for k, v in cleaned.items() if k in expected_args or k in standard_keys}
+
+        return cleaned
+
     def enrich_with_all_vwap_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Compute all required indicators across all 4 VWAP strategies:
@@ -427,7 +412,6 @@ class VWAPAgent:
         - Volume Z-score
         - Any additional indicators used in thresholds (ema_bias_filter, dmi_crossover, etc.)
         """
-        import pandas_ta as ta
         # Normalize columns first
         df = self.normalize_ohlcv_columns(df)
         df = df.copy()
@@ -443,6 +427,11 @@ class VWAPAgent:
         df.drop(columns=['date', 'time'], inplace=True)
 
         df['VWAP'] = ta.vwap(df['high'], df['low'], df['close'], df['vol'])
+        # Optional cleanup: drop raw 'vwap' if exists to avoid confusion
+        if 'vwap' in df.columns:
+            print("[FIX] Dropping lowercase 'vwap' to prevent conflict with computed VWAP")
+            df.drop(columns=['vwap'], inplace=True)
+
         df['ATR_14'] = ta.atr(df['high'], df['low'], df['close'], length=14)
         df['VWAP_upper'] = df['VWAP'] + df['ATR_14']
         df['VWAP_lower'] = df['VWAP'] - df['ATR_14']
@@ -472,8 +461,20 @@ class VWAPAgent:
         df['ema_bias_filter'] = df['EMA_9'] > df['EMA_20']
         print("[DEBUG] Existing cols after join befor cross over", df.columns)
         df['dmi_crossover'] = df['DMP_14'] > df['DMN_14']
+        # --- Place immediately after enrichment ---
+        required = ["VWAP", "VWAP_upper", "VWAP_lower", "EMA_9", "EMA_20", "DMP_14", "DMN_14", "ADX_14",
+                    "volume_zscore"]
 
-        return df
+        valid_mask = df[required].notna().all(axis=1) & (df[required] != 0.0).all(axis=1)
+        first_valid_idx = valid_mask[valid_mask].index.min()
+
+        if pd.isna(first_valid_idx):
+            raise ValueError("No valid rows found with all indicators present!")
+
+        df_cleaned = df.loc[first_valid_idx:]
+        print(f"[CLEANUP] Trimmed df_5m_enriched to start at first valid indicator row: {first_valid_idx}. leaving with {len(df_cleaned)} bars for testing...")
+
+        return df_cleaned
 
     def display_top_results_grid_and_metrics(self, summary_df, top_n=5, show_trades=True):
         """
@@ -522,6 +523,7 @@ class VWAPAgent:
         # Step 0: Normalize columns and enrich DataFrame with all required VWAP indicators
         df_5m_norm = self.normalize_ohlcv_columns(df_5m)
         df_5m_enriched = self.enrich_with_all_vwap_indicators(df_5m_norm)
+
         new_cols = set(df_5m_enriched.columns) - set(df_5m_norm.columns)
         print(f"[VWAPAgent] [DEBUG] Enriched DataFrame with VWAP indicators. New columns: {list(new_cols)}")
 
@@ -529,9 +531,6 @@ class VWAPAgent:
         llm_result = self.call_llm_with_images(images, user_params=user_params)
         raw_response_text = llm_result.get("llm_raw_response")
         llm_structured = self.parse_llm_response_text(raw_response_text)
-
-        # === Option A SL/TP Translator Integration ===
-        self.translate_risk_blocks_option_a(llm_structured)
 
         # Step 2: Build grid
         grid_df = self.build_grid_from_llm_response(llm_structured)
@@ -588,3 +587,11 @@ class VWAPAgent:
             "final_strategy": final_strategy
         }
 
+    def filter_strategy_params(self, config: dict) -> dict:
+        """
+        Filters the config dict to only include params declared in VWAPScalpingStrategy.params.
+        Prevents Backtrader from breaking due to unknown kwargs.
+        """
+
+        allowed_keys = [k for k, _ in VWAPBounceStrategy.params._getitems()]
+        return {k: v for k, v in config.items() if k in allowed_keys}

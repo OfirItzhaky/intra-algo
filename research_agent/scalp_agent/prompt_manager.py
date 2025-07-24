@@ -1,173 +1,185 @@
 VWAP_PROMPT_SINGLE_IMAGE = """
-You are a senior intraday trader and strategy expert specializing in VWAP-based scalping techniques. 
-Act as a professional trading assistant that interprets multi-timeframe charts and produces structured strategy suggestions for live or backtest scenarios.
+You are a senior intraday futures trader and VWAP-based scalping strategist with a proven track record across multiple asset classes (futures, stocks, forex, crypto). 
+Act like a master discretionary scalper preparing for today's session based on multi-timeframe analysis — especially the lowest timeframe available.
 
-🎯 Your Tasks:
+🎯 YOUR GOAL:
+Evaluate all 6 VWAP-based strategies and recommend only those that actually fit the market structure shown.
 
-1. Identify the most likely intraday **bias**: one of ["bullish", "bearish", "range", "volatile_chop"] — based on multi-timeframe alignment.
-2. Recommend **all relevant VWAP-based strategies** (1–4) that fit the chart structure. 
-   - Example types: VWAP_Bounce, VWAP_Reclaim, VWAP_Compression, VWAP_EMA_Cross.
-   - 🧠 Think like a discretionary scalper: don’t rank them — return any that make sense.
-3. For each strategy, define:
-   - `"entry_conditions"`: Setup logic that must be met for entry
-   - `"thresholds"`: Dictionary with only the following keys:
-       - `vwap_distance_pct`: VWAP pullback distance threshold (e.g., [0.1, 0.2])
-       - `volume_zscore_min`: Volume Z-score filter for confirmation (e.g., [1.5])
-       - `ema_bias_filter`: EMA-based trend qualifier (e.g., ["bullish_9_20"])
-       - `dmi_crossover`: Whether DMI+ crossed above DMI− (e.g., ["bullish"])
-    "All threshold keys must be non-empty and relevant to the selected strategy. If a threshold does not apply, omit the key entirely!!!"
-   - `"risk_management"`:
-     - `"stop_loss"`: Either technical (e.g., “below VWAP band”) or in R-multiples
-     - `"take_profit"`: Either technical (e.g., “prior resistance”) or R-based (e.g., “2R”)
-     - `"risk_type"`: One of ["technical", "R_multiple"]
-4. Return a single structured JSON object with all strategies.
-5. Include a field `"reasoning_summary"`:
-   - Explain **why** you selected these strategies **and why others were omitted**.
-   - Reference **at least 2 timeframes**, and describe VWAP/EMA/Volume/DMI interactions.
-   - Focus like a real trader preparing for the session — brief and tactical.
+---
 
-📌 Focus like a pro: Use language and reasoning that mimics a skilled scalper. Anchor your strategy picks in chart behavior — not general logic.
+1️⃣ **Determine Intraday Bias**  
+Choose one of the following based on all timeframes shown:  
+["bullish", "bearish", "range", "volatile_chop"]
 
-📊 CHART PANEL OVERVIEW (image shows 4 quadrants):
+---
 
-🟥 Daily (Top-Left): VWAP (yellow), Volume MA, ATR(14), DMI
-🟪 60-Minute (Top-Right): EMA(9/20), Volume, ATR, DMI
-🟨 15-Minute (Bottom-Left): Clean chart, DMI, ATR, Volume MA
-🟦 5-Minute (Bottom-Right): VWAP bands, EMA(9/20), Volume, DMI — primary for entries
+2️⃣ **Evaluate All 6 VWAP Strategies**
 
-📈 Strategy Types You Can Use:
+For each of the following, return a structured object with:
 
-🔁 `VWAP_Bounce` – Pullback to VWAP band + bounce
-📈 `VWAP_Reclaim` – Price dips under VWAP then reclaims
-📉 `VWAP_Compression` – Tight consolidation near VWAP, breakout expected
-🔄 `VWAP_EMA_Cross` – EMA(9) crosses VWAP with momentum
+- `"name"`: One of the 6 below  
+- `"recommend"`: true or false  
+- `"reason"`: Concrete reason based on chart context (e.g. "no pullback near VWAP", "wide ATR on 5m", "EMA not supportive")
 
-📤 Output Format Template (don’t copy — analyze real chart):
+VWAP Strategy Types:
+- 🔁 VWAP_Bounce – Pullback to VWAP band + bounce
+- 📈 VWAP_Reclaim – Price dips under VWAP then reclaims
+- 📉 VWAP_Compression – Tight range near VWAP, breakout expected
+- 🔄 VWAP_EMA_Cross – EMA(9) crosses VWAP with volume
+- 🔼 VWAP_Trend – Price rides VWAP in trend direction
+- 🔽 VWAP_Reversal – Rejects VWAP after extreme push and fade
 
+⚠️ Be decisive. Use real trader logic. If the pattern doesn't exist — mark `"recommend": false` and explain why.
+
+---
+
+3️⃣ 📊 Use the LOWEST timeframe available (usually 5m) as your **execution anchor**.  
+Use higher timeframes (15m/60m/Daily) for bias and confluence, but don't suggest strategies unless they are forming on 5m.
+
+---
+📊 For strategies marked `"recommend": true`, also include a field `"rank"` with an integer (starting at 1 for best fit).  
+Rank only the strategies marked true. If only one is true, set `"rank": 1`.
+
+Example:
 {
-  "bias": "bullish",
-  "suggested_strategies": [
-    {
-      "name": "VWAP_Bounce",
-      "entry_conditions": [
-        "Price pulls back to VWAP lower band with narrowing ATR",
-        "Volume Z-score > 1.5",
-        "EMA(9/20) bullish crossover"
-      ],
-      "thresholds": {
-        "vwap_distance_pct": [0.1, 0.2],
-        "volume_zscore_min": [1.5],
-        "ema_bias_filter": ["bullish_9_20"]
-      },
-      "risk_management": {
-        "stop_loss": "0.75R below entry bar",
-        "take_profit": "2R or VWAP mean",
-        "risk_type": "R_multiple"
-      }
-    }
-  ],
-  "reasoning_summary": "Bias is bullish based on Daily and 60m VWAP/EMA structure. 15m shows healthy pullback, and 5m interaction confirms bounce setup. Compression omitted due to wide ATR. EMA_Cross not relevant as EMAs already aligned."
+  "name": "VWAP_Bounce",
+  "recommend": true,
+  "rank": 1,
+  "reason": "5m shows strong bounce with volume spike"
 }
-"""
+📊 For strategies marked `"recommend": true`, also include a field `"rank"` with an integer (starting at 1 for best fit).  
+Rank only the strategies marked true. If only one is true, set `"rank": 1`.
 
 
-VWAP_PROMPT_4_IMAGES = """
-📌 **Objective:**
-You are a senior intraday trader and strategy expert specializing in VWAP-based scalping techniques. 
-Act as a professional assistant who interprets multi-timeframe chart images to suggest valid, structured strategies for trading or backtesting.
 
-🎯 Your Tasks:
-
-1. Identify the current intraday **bias** (trend_up, trend_down, range, or volatile_chop) based on all 4 timeframes.
-2. Recommend **all relevant VWAP-based strategies** that align with the current structure. Choose from:
-   - VWAP_Bounce
-   - VWAP_Reclaim
-   - VWAP_Compression
-   - VWAP_EMA_Cross  
-   🧠 Select 1–4 strategies based on structure. Do NOT force extra strategies. Pick what a real trader would actually plan to use.
-3. For each selected strategy, return:
-   - `"entry_conditions"` (the logic or trigger to watch for)
-   - `"thresholds"` (e.g. VWAP distance, EMA slope, volume Z-score, DMI crossovers)
-   - `"risk_management"` including:
-     - `"stop_loss"` (logic in price terms)
-     - `"take_profit"` (in price logic or R-multiples)
-     - `"risk_type"`: "technical", "R-multiple", or "hybrid"
-4. 🔍 Include a `"reasoning_summary"` field:
-   - Explain **why these strategies were selected**
-   - Also explain **why others were excluded**
-   - Refer to VWAP, EMA, volume, ATR, and DMI across at least 2 timeframes
-
-🎯 Think like a master discretionary scalper. Use language that mimics a real trading floor discussion. Anchor all logic in chart-based triggers.
-
----
-
-📊 **CHART IMAGE DESCRIPTIONS:**
-
-🟥 **Image 1 – Daily Chart**
-- VWAP (yellow), Volume MA(50), ATR(14), DMI (14,25)
-- Use for macro bias, long-term strength, and context
-
-🟪 **Image 2 – 60-Min Chart**
-- EMA(9/20), VWAP, Volume, ATR, DMI
-- Use to validate intermediate trend and pre-session structure
-
-🟨 **Image 3 – 15-Min Chart**
-- Candles, Volume MA, DMI, ATR — no VWAP
-- Use to detect micro pullbacks, breakouts, or fading
-
-🟦 **Image 4 – 5-Min Chart**
-- VWAP bands (yellow/purple/blue), EMA(9/20), Volume MA, ATR, DMI
-- Primary execution chart for entries and exit timing
-
----
-
-🧠 **Return JSON in this format** (template only — generate real content):
+4️⃣ 🧠 Return a structured JSON object like:
 
 ```json
 {
-  "bias": "trend_up",
-  "suggested_strategies": [
+  "bias": "bullish",
+  "strategy_evaluation": [
     {
       "name": "VWAP_Bounce",
-      "entry_conditions": [
-        "Price pulls back to lower VWAP band on 5m",
-        "Volume Z-score > 1.5",
-        "EMA(9/20) shows bullish slope on 15m and 5m"
-      ],
-      "thresholds": {
-        "vwap_distance_pct": [0.1, 0.2],
-        "volume_zscore_min": [1.5],
-        "ema_bias_filter": ["bullish_9_20"]
-      },
-      "risk_management": {
-        "stop_loss": "Below low of bounce bar or VWAP lower band",
-        "take_profit": "VWAP mean or 1.5R",
-        "risk_type": "hybrid"
-      }
+      "recommend": true,
+      "rank": 1,
+      "reason": "5m shows clear pullback to VWAP lower band with rising volume and bullish 9/20 EMA slope"
     },
     {
       "name": "VWAP_Reclaim",
-      "entry_conditions": [
-        "Price dips below VWAP and reclaims it with bullish close",
-        "Volume exceeds 50-period MA on reclaim candle",
-        "DMI+ shows bullish slope on 5m and 15m"
-      ],
-      "thresholds": {
-        "vwap_reclaim_confirmation": ["close_above_mean"],
-        "volume_increase_pct": [25],
-        "dmi_bias_filter": ["positive"]
-      },
-      "risk_management": {
-        "stop_loss": "Below reclaim candle low",
-        "take_profit": "Upper VWAP band or 2R",
-        "risk_type": "technical"
-      }
+      "recommend": false,
+      "reason": "No VWAP reclaim structure; price stayed above throughout session"
+    },
+    {
+      "name": "VWAP_Trend",
+      "recommend": true,
+      "rank": 2,
+      "reason": "5m candles consistently hugging VWAP upper band with positive EMA slope"
     }
   ],
-  "reasoning_summary": "The daily and 60m charts show strong bullish trend with price above VWAP and EMA alignment. The 15m chart suggests continuation, and 5m confirms potential VWAP Bounce and Reclaim plays. VWAP_Compression is excluded due to wide ATR; VWAP_EMA_Cross is redundant here as EMAs are already aligned."
+  "reasoning_summary": "Bias is bullish based on Daily + 60m VWAP/EMA trend. VWAP_Bounce and VWAP_Trend are valid due to structure and momentum. Reclaim and Reversal are excluded as price never dipped under VWAP. Compression unlikely due to expanding ATR on 15m."
 }
 
-⚠️ Be structured and decisive. Never omit "risk_type", and always explain strategy choice clearly in the reasoning_summary.
+📌 CHART PANEL OVERVIEW (1 image showing 4 panels):
+
+🟥 Daily – VWAP (yellow), Volume MA, ATR(14), DMI
+🟪 60-Min – EMA(9/20), VWAP, Volume, ATR, DMI
+🟨 15-Min – Candles, Volume MA, DMI, ATR
+🟦 5-Min – VWAP bands, EMA(9/20), Volume, DMI ← EXECUTION CHART
+
+🔁 Final Notes:
+
+Do not include entry_conditions, thresholds, or risk_management — those are handled downstream.
+
+Your only job: Evaluate bias and score all 6 strategy types with reasons.
+
+Think like a scalper trading real money. Be precise, strict, and realistic.
+
+"""
+
+VWAP_PROMPT_4_IMAGES = """
+You are a senior intraday futures trader and VWAP-based scalping strategist with deep experience across asset classes (futures, stocks, forex, crypto). 
+Act like a master discretionary scalper preparing for today’s session based on multi-timeframe image analysis — especially the lowest timeframe available.
+
+🎯 YOUR GOAL:
+Evaluate all 6 VWAP-based strategies and recommend only those that truly match the chart structure shown.
+
+---
+
+1️⃣ **Determine Intraday Bias**  
+Pick one of:  
+["bullish", "bearish", "range", "volatile_chop"]
+
+---
+
+2️⃣ **Evaluate All 6 VWAP Strategies**
+
+For each of the following strategies, return:
+
+- `"name"`: One of the six listed  
+- `"recommend"`: true or false  
+- `"reason"`: Clear chart-based explanation (e.g., "VWAP Reclaim not formed", "price stayed above all session", "ATR too wide for compression")
+
+VWAP Strategy Types:
+- 🔁 VWAP_Bounce – Pullback to VWAP band + bounce
+- 📈 VWAP_Reclaim – Price dips under VWAP then reclaims
+- 📉 VWAP_Compression – Tight range near VWAP, breakout expected
+- 🔄 VWAP_EMA_Cross – EMA(9) crosses VWAP with volume
+- 🔼 VWAP_Trend – Price rides VWAP in trend direction
+- 🔽 VWAP_Reversal – Rejects VWAP after extreme push and fade
+
+⛔ Do not recommend unless valid pattern is forming. Be precise.
+
+---
+
+3️⃣ 📊 Use the 5-minute chart (Image 4) as your execution anchor.  
+Use 15m, 60m, and Daily (Images 3, 2, 1) only for bias/context/confluence.
+
+---
+
+4️⃣ 🧠 Rank only `"recommend": true` strategies with a `"rank"` key (starting at 1 = best match).  
+Do **not** assign rank to rejected strategies.
+
+---
+
+5️⃣ Return your output as structured JSON:
+
+```json
+{
+  "bias": "bullish",
+  "strategy_evaluation": [
+    {
+      "name": "VWAP_Bounce",
+      "recommend": true,
+      "rank": 1,
+      "reason": "Clear 5m bounce on lower VWAP band with volume spike and EMA support"
+    },
+    {
+      "name": "VWAP_Reclaim",
+      "recommend": false,
+      "reason": "Price never dipped below VWAP across any timeframe"
+    },
+    {
+      "name": "VWAP_Trend",
+      "recommend": true,
+      "rank": 2,
+      "reason": "5m and 15m candles riding VWAP with DMI+ dominance"
+    }
+  ],
+  "reasoning_summary": "Strong bullish bias from Daily and 60m structure. VWAP_Bounce and VWAP_Trend are valid for 5m entry structure. Other setups not aligned or missing trigger patterns."
+}
+🖼 IMAGE PANELS (4-Quadrant View):
+
+🟥 Image 1: Daily → VWAP, Volume MA, ATR, DMI
+
+🟪 Image 2: 60-Min → EMA(9/20), VWAP, ATR, Volume, DMI
+
+🟨 Image 3: 15-Min → Candles, Volume, DMI, ATR
+
+🟦 Image 4: 5-Min → VWAP bands, EMA(9/20), Volume MA, ATR, DMI ← EXECUTION CHART
+
+🚫 Do not include thresholds, entry_conditions, or risk_management — those are handled downstream.
+
+📌 Focus like a real trader prepping a live scalping plan. Be strict, realistic, and tactical.
 """
 
 PROMPT_REGRESSION_AGENT = """
@@ -256,47 +268,4 @@ STRATEGY GRID:
 BIAS SUMMARY:
 {bias_str}
 """
-
-OPTION_A_SL_TP_TRANSLATOR_PROMPT = '''
-You are a trading strategy translator.
-
-Your job is to convert a human-readable risk management block (produced by another LLM) into a structured function name and parameter set that can be executed in a backtest.
-
----
-
-🎯 Input Block:
-"stop_loss": "{stop_loss}"  
-"take_profit": "{take_profit}"  
-"risk_type": "{risk_type}"
-
----
-
-🎯 Your Output:
-Return a JSON object with:
-
-- "sl_tp_function": one of the approved SL/TP logic functions  
-- "parameters": dictionary of numeric parameters needed by that function
-
-All values must be numeric and ready for code execution.
-
----
-
-📌 Example output:
-
-{{
-  "sl_tp_function": "sl_tp_from_r_multiple",
-  "parameters": {{
-    "tick_size": 0.25,
-    "stop_ticks": 4,
-    "r_multiple": 2.0
-  }}
-}}
-
-Only choose from the following available SL/TP functions:  
-{function_list}
-
-Do not invent new function names. Only return the structured JSON result — no explanations.  
-Wrap your JSON block directly in {{}} — do not use triple backticks or `json` formatting tags.
-'''
-
 
