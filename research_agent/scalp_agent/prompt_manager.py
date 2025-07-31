@@ -80,23 +80,30 @@ VWAP_STRATEGY_OPTIMIZATION_PARAMS = {
 
 VWAP_STRATEGY_OPTIMIZATION_PARAMS_NO_VALUES = {
   "vwap_bounce_01_sl_candle_low_tp_2R": ["VWAPDistancePct", "VolumeZScoreThreshold"],
-  "vwap_bounce_02_sl_1.2atr14_tp_2R": ["VWAPDistancePct", "VolumeZScoreThreshold"],
+  "vwap_bounce_02_sl_1.2atr14_tp_2R": ["VWAPDistancePct", "VolumeZScoreThreshold", "StopATRMultiplier"],
   "vwap_bounce_03_sl_candle_low_tp_ema9": ["VWAPDistancePct", "VolumeZScoreThreshold"],
-  "vwap_bounce_04_sl_1.2atr14_tp_ema9": ["VWAPDistancePct", "VolumeZScoreThreshold"],
-  "vwap_reclaim_05_sl_candle_low_tp_2R": ["VWAPCrossBackPct", "VolumeZScoreThreshold"],
-  "vwap_reclaim_06_sl_entry_zone_tp_vwaploss": ["VWAPCrossBackPct", "VolumeZScoreThreshold"],
-  "vwap_reclaim_07_sl_atr_tp_1.5R": ["VWAPCrossBackPct", "VolumeZScoreThreshold"],
-  "vwap_compression_08_sl_range_tp_fade_exit": ["RangePctLast3", "ATRDropRatio"],
-  "vwap_compression_09_sl_atr_tp_fade_exit": ["RangePctLast3", "ATRDropRatio"],
-  "vwap_ema_cross_10_sl_candle_low_tp_2R": ["EmaCrossStrengthLong", "EmaSlopeThresholdLong", "VolumeZScoreThresholdLong"],
-  "vwap_ema_cross_11_sl_atr_tp_1.5R": ["EmaCrossStrengthLong", "EmaSlopeThresholdLong", "VolumeZScoreThresholdLong"],
-  "vwap_ema_cross_12_sl_candle_low_tp_trail": ["EmaCrossStrengthLong", "EmaSlopeThresholdLong", "VolumeZScoreThresholdLong"],
-  "vwap_trend_13_sl_candle_low_tp_2R": ["EMABiasPct", "PullbackDepthPct"],
-  "vwap_trend_14_sl_ema20_tp_1.5R": ["EMABiasPct", "PullbackDepthPct"],
-  "vwap_trend_15_sl_candle_low_tp_trail_vwap": ["EMABiasPct", "PullbackDepthPct"],
+  "vwap_bounce_04_sl_1.2atr14_tp_ema9": ["VWAPDistancePct", "VolumeZScoreThreshold", "StopATRMultiplier"],
+  "vwap_reclaim_05_sl_candle_low_tp_2R": ["VWAPCrossBackPct", "VolumeZScoreThreshold", "LookbackBars"],
+    "vwap_reclaim_06_sl_entry_zone_tp_vwaploss": ["VWAPCrossBackPct", "VolumeZScoreThreshold"],
+    "vwap_reclaim_07_sl_atr_tp_1.5R": ["VWAPCrossBackPct", "VolumeZScoreThreshold"],
+
+  "vwap_compression_08_sl_range_tp_fade_exit": ["RangePctThreshold", "ATRDropRatio", "VolumeZScoreThreshold", "ExitVolumeZScoreFade"],
+"vwap_compression_09_sl_atr_tp_fade_exit": ["ATRStopMultiplier", "ATRDropRatio", "VolumeZScoreThreshold", "ExitVolumeZScoreFade"],
+
+    "vwap_ema_cross_10_sl_candle_low_tp_2R": ["EmaCrossStrengthLong", "EmaSlopeThresholdLong",
+                                              "VolumeZScoreThresholdLong"],
+    "vwap_ema_cross_11_sl_atr_tp_1.5R": ["EmaCrossStrengthLong", "EmaSlopeThresholdLong", "VolumeZScoreThresholdLong"],
+    "vwap_ema_cross_12_sl_candle_low_tp_trail": ["EmaCrossStrengthLong", "EmaSlopeThresholdLong",
+                                                 "VolumeZScoreThresholdLong"],
+
+    "vwap_trend_13_sl_candle_low_tp_2R": ["EMA9SlopeThreshold", "MaxPullbackPct"],
+"vwap_trend_14_sl_ema20_tp_1.5R": ["EMA9SlopeThreshold", "MaxPullbackPct"],
+"vwap_trend_15_sl_candle_low_tp_trail_vwap": ["EMA9SlopeThreshold", "MaxPullbackPct"],
+
   "vwap_fade_16_sl_wick_tp_2R": ["WickRatioThreshold", "VolumeZScoreThreshold"],
-  "vwap_breakfail_17_sl_atr_tp_vwap": ["FailureRangePct", "VolumeZScoreThreshold"],
-  "vwap_magnet_18_sl_range_tp_vwapband": ["RangeCoilPct", "MeanReversionStrength"]
+"vwap_breakfail_17_sl_atr_tp_vwap": ["WickRatioThreshold", "VWAPBufferPct"],
+"vwap_magnet_18_sl_range_tp_vwapband": ["MaxRangeConversionTicks", "VWAPBufferPct"]
+
 }
 
 
@@ -219,6 +226,8 @@ For each valid strategy, also suggest optimization parameters to tune for today'
 ---
 
 1️⃣ **Determine Intraday Bias**  
+Start with the smallest time frame one (for example 5 min), then work backwards for bias confirmation.
+
 Pick one of: ["bullish", "bearish", "range", "volatile_chop"]
 
 ---
@@ -237,6 +246,7 @@ You have access to the full strategy library, grouped as follows:
 
 Each strategy uses a unique stop-loss and target method (e.g., fixed R, trailing EMA, VWAP band), embedded in its name (e.g., sl_1.2atr14_tp_2R).
 
+Only include a strategy if the 5m chart clearly supports the entry conditions. Other timeframes are secondary!!!
 ---
 
 3️⃣ **Suggest Parameter Ranges**
@@ -282,6 +292,8 @@ Example:
     "volume_zscore": {{{{"min": 0.5, "max": 1.5, "step": 0.25}}}}
   }}
 }}
+
+⚠️ When in doubt, adjust parameters to fit the microstructure on the 5m chart — that’s the chart to trade.
 
 🧠 Return a full JSON like:
 
