@@ -82,21 +82,45 @@ def calc_exit_by_trailing_ema_vwap(
     return {"sl": sl, "tp": None}  # TP managed by other logic or manual
 
 
-def calc_exit_on_vwap_loss(
-    df: pd.DataFrame,
-    entry_index: int,
-    entry_price: float,
-    side: str,
-) -> Dict[str, float]:
+def calc_exit_on_vwap_loss(df, entry_index, entry_price, side):
     """
-    Exit if VWAP is lost. Used in reclaim-fail strategies.
+    Exit on VWAP break for reclaim strategy.
+
+    Args:
+        df (pd.DataFrame): Full OHLCV dataframe with VWAP.
+        entry_index (int): Index of trade entry.
+        entry_price (float): Entry price.
+        side (str): 'long' or 'short'.
+
+    Returns:
+        dict: {'sl': ..., 'tp': ...}
     """
-    current_vwap = df["VWAP"].iloc[-1]
-    if side == "long":
-        sl = current_vwap * 0.999
-    else:
-        sl = current_vwap * 1.001
-    return {"sl": sl, "tp": None}
+    max_lookahead = 40  # Bars to monitor for VWAP break
+    vwap_col = "VWAP"
+
+    try:
+        for i in range(entry_index + 1, min(entry_index + max_lookahead, len(df))):
+            row = df.iloc[i]
+            close = row["Close"]
+            vwap = row[vwap_col]
+            ts = row.name
+
+            if side == "long" and close < vwap:
+                print(f"[EXIT FOUND] VWAP loss for LONG at index {i} ({ts}): Close={close:.2f} < VWAP={vwap:.2f}")
+                return {"sl": close, "tp": None, "exit_index":i}
+
+            elif side == "short" and close > vwap:
+                print(f"[EXIT FOUND] VWAP loss for SHORT at index {i} ({ts}): Close={close:.2f} > VWAP={vwap:.2f}")
+                return {"sl": close, "tp": None, "exit_index":i}
+
+        # === No VWAP loss detected in window ===
+        print(f"[DEBUG] No VWAP loss exit found for {side.upper()} trade starting at index {entry_index} ({df.index[entry_index]})")
+        fallback_exit = df.iloc[min(entry_index + max_lookahead, len(df)-1)]["Close"]
+        return {"sl": fallback_exit, "tp": None}
+
+    except Exception as e:
+        print(f"[ERROR] VWAP loss calculation failed: {e}")
+        return {"sl": None, "tp": None}
 
 
 def calc_exit_on_fade_from_range(

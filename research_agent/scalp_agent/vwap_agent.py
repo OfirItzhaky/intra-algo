@@ -17,21 +17,6 @@ import json
 import plotly.graph_objects as go
 from backend.analyzer.analyzer_dashboard import AnalyzerDashboard
 
-SLTP_FUNCTIONS_WITH_PARAMS = {
-    "sl_tp_from_r_multiple": ["tick_size", "stop_ticks", "r_multiple"],
-    "sl_tp_fixed_dollar": ["stop_dollar", "tp_dollar"],
-    "sl_tp_swing_low_high": ["lookback", "r_multiple"],
-    "sl_tp_dynamic_atr": ["atr_period", "atr_mult_sl", "atr_mult_tp"],
-    "sl_tp_bar_by_bar_trailing": ["trail_lookback"],
-    "sl_tp_vwap_bands": ["vwap_std_mult"],
-    "sl_tp_custom_zscore": ["z_threshold", "mean", "std_dev"],
-    "sl_tp_pivot_level_trailing": ["pivot_level", "trailing_offset"],
-    "sl_tp_volume_spike": ["vol_threshold", "drop_pct"],
-    "sl_tp_dmi_bias": ["dmi_bias"],
-    "sl_tp_bias_based": ["bias_strength"],
-    "sl_tp_trailing_update": ["trail_lookback"],
-    "sl_tp_ema_cross": ["fast_period", "slow_period"]
-}
 
 
 class VWAPAgent:
@@ -138,6 +123,8 @@ class VWAPAgent:
                 llm_cost_usd = None
         else:
             return {"error": f"Unknown or unsupported model_name '{model_name}'."}
+        print(f"[VWAPAgent] Provider: {provider}, Model: {model_name}, Tokens: {llm_token_usage}, Cost: ${llm_cost_usd}")
+
         return {
             "llm_raw_response": raw_response_text,
             "model_name": model_name,
@@ -516,61 +503,101 @@ class VWAPAgent:
             trade_df = pd.DataFrame(trades) if isinstance(trades, list) else trades
             dashboard.plot_trades_and_predictions_regression_agent(trade_df, max_trades=50)
 
+    @staticmethod
+    def camel_to_snake(name):
+        import re
+        s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+        s2 = re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1)
+        return s2.lower()
+
+    def normalize_params_dict(self, params_dict):
+        normalized = {}
+        for original, value in params_dict.items():
+            normalized_key = self.camel_to_snake(original)
+            print(f"[VWAPAgent] Normalized param key: {original}  {normalized_key}")
+            normalized[normalized_key] = value
+        return normalized
+
     def run(self, images, df_5m, user_params=None, top_n=5, df_1m=None):
         """
         Full pipeline: LLM call, grid build, backtest, rule generation, with debug prints after each major step.
         """
-        # Step 0: Normalize columns and enrich DataFrame with all required VWAP indicators
-        df_5m_norm = self.normalize_ohlcv_columns(df_5m)
-        df_5m_enriched = self.enrich_with_all_vwap_indicators(df_5m_norm)
-
-        new_cols = set(df_5m_enriched.columns) - set(df_5m_norm.columns)
-        print(f"[VWAPAgent] [DEBUG] Enriched DataFrame with VWAP indicators. New columns: {list(new_cols)}")
+        # # Step 0: Normalize columns and enrich DataFrame with all required VWAP indicators
+        # df_5m_norm = self.normalize_ohlcv_columns(df_5m)
+        # df_5m_enriched = self.enrich_with_all_vwap_indicators(df_5m_norm)
+        #
+        # new_cols = set(df_5m_enriched.columns) - set(df_5m_norm.columns)
+        # print(f"[VWAPAgent] [DEBUG] Enriched DataFrame with VWAP indicators. New columns: {list(new_cols)}")
 
         # Step 1: LLM call
         llm_result = self.call_llm_with_images(images, user_params=user_params)
         raw_response_text = llm_result.get("llm_raw_response")
         llm_structured = self.parse_llm_response_text(raw_response_text)
-
-        # Step 2: Build grid
-        grid_df = self.build_grid_from_llm_response(llm_structured)
-        print(f"[VWAPAgent] [DEBUG] Parameter grid length: {len(grid_df)}")
-        if not grid_df.empty:
-            print(f"[VWAPAgent] [DEBUG] Parameter grid head(3):\n{grid_df.head(3).to_string(index=False)}")
-        else:
-            print("[VWAPAgent] [DEBUG] Parameter grid is empty!")
-
-        # Step 3: Run backtests
-        all_results, summary_df = self.run_backtests_from_grid(grid_df, df_5m_enriched, df_1m)
-        self.summary_df = summary_df
-        if not summary_df.empty:
-            print(f"[VWAPAgent] [DEBUG] Backtest summary describe():\n{summary_df.describe(include='all').to_string()}")
-            # Print top strategy metrics
-            sort_col = 'PnL' if 'PnL' in summary_df.columns else ('win_rate' if 'win_rate' in summary_df.columns else None)
-            if sort_col:
-                top_row = summary_df.sort_values(sort_col, ascending=False).head(1)
-                print(f"[VWAPAgent] [DEBUG] Top strategy metrics:\n{top_row.to_string(index=False)}")
-        else:
-            print("[VWAPAgent] [DEBUG] Backtest summary is empty!")
-
-        # Step 4: Generate rules
-        rules = self.generate_natural_language_rules(top_n=top_n)
-        if rules:
-            print("[VWAPAgent] [DEBUG] Natural language rules (line by line):")
-            for line in str(rules).splitlines():
-                print(f"    {line}")
-        else:
-            print("[VWAPAgent] [DEBUG] No rules generated.")
-        # === Display top results and metrics ===
-        self.display_top_results_grid_and_metrics(self.summary_df)
-
-        # === Extract final top strategy ===
-        final_strategy = None
-        sort_col = 'PnL' if 'PnL' in summary_df.columns else ('win_rate' if 'win_rate' in summary_df.columns else None)
-        if sort_col:
-            top_row = summary_df.sort_values(sort_col, ascending=False).head(1)
-            if not top_row.empty:
-                final_strategy = top_row.iloc[0].to_dict()
+        # Debug: print number of strategies received
+        recommendations = llm_structured.get("strategy_recommendations", []) if llm_structured else []
+        print(f"[VWAPAgent] Parsed {len(recommendations)} strategy recommendations")
+        # Normalize param keys in all strategies and warn if missing params_to_optimize
+        if recommendations:
+            for rec in recommendations:
+                if "params_to_optimize" in rec:
+                    rec["params_to_optimize"] = self.normalize_params_dict(rec["params_to_optimize"])
+                else:
+                    print(f"[WARN] Strategy {rec.get('name')} missing 'params_to_optimize'")
+        #
+        # # Step 2: Build grid
+        # grid_df = self.build_grid_from_llm_response(llm_structured)
+        # print(f"[VWAPAgent] [DEBUG] Parameter grid length: {len(grid_df)}")
+        # if not grid_df.empty:
+        #     print(f"[VWAPAgent] [DEBUG] Parameter grid head(3):\n{grid_df.head(3).to_string(index=False)}")
+        # else:
+        #     print("[VWAPAgent] [DEBUG] Parameter grid is empty!")
+        #
+        # # Step 3: Run backtests
+        # all_results, summary_df = self.run_backtests_from_grid(grid_df, df_5m_enriched, df_1m)
+        # self.summary_df = summary_df
+        # if not summary_df.empty:
+        #     print(f"[VWAPAgent] [DEBUG] Backtest summary describe():\n{summary_df.describe(include='all').to_string()}")
+        #     # Print top strategy metrics
+        #     sort_col = 'PnL' if 'PnL' in summary_df.columns else ('win_rate' if 'win_rate' in summary_df.columns else None)
+        #     if sort_col:
+        #         top_row = summary_df.sort_values(sort_col, ascending=False).head(1)
+        #         print(f"[VWAPAgent] [DEBUG] Top strategy metrics:\n{top_row.to_string(index=False)}")
+        # else:
+        #     print("[VWAPAgent] [DEBUG] Backtest summary is empty!")
+        #
+        # # Step 4: Generate rules
+        # rules = self.generate_natural_language_rules(top_n=top_n)
+        # if rules:
+        #     print("[VWAPAgent] [DEBUG] Natural language rules (line by line):")
+        #     for line in str(rules).splitlines():
+        #         print(f"    {line}")
+        # else:
+        #     print("[VWAPAgent] [DEBUG] No rules generated.")
+        # # === Display top results and metrics ===
+        # self.display_top_results_grid_and_metrics(self.summary_df)
+        #
+        # # === Extract final top strategy ===
+        # final_strategy = None
+        # sort_col = 'PnL' if 'PnL' in summary_df.columns else ('win_rate' if 'win_rate' in summary_df.columns else None)
+        # if sort_col:
+        #     top_row = summary_df.sort_values(sort_col, ascending=False).head(1)
+        #     if not top_row.empty:
+        #         final_strategy = top_row.iloc[0].to_dict()
+        #
+        # return {
+        #     "llm_raw_response": llm_result.get("llm_raw_response"),
+        #     "llm_structured": llm_structured,
+        #     "model_name": llm_result.get("model_name"),
+        #     "provider": llm_result.get("provider"),
+        #     "llm_cost_usd": llm_result.get("llm_cost_usd"),
+        #     "llm_token_usage": llm_result.get("llm_token_usage"),
+        #     "num_images": llm_result.get("num_images"),
+        #     "prompt_type": llm_result.get("prompt_type"),
+        #     "parameter_grid": grid_df.to_dict(orient="records"),
+        #     "backtest_summary": summary_df.to_dict(orient="records"),
+        #     "natural_language_rules": rules,
+        #     "final_strategy": final_strategy
+        # }
 
         return {
             "llm_raw_response": llm_result.get("llm_raw_response"),
@@ -579,12 +606,11 @@ class VWAPAgent:
             "provider": llm_result.get("provider"),
             "llm_cost_usd": llm_result.get("llm_cost_usd"),
             "llm_token_usage": llm_result.get("llm_token_usage"),
-            "num_images": llm_result.get("num_images"),
-            "prompt_type": llm_result.get("prompt_type"),
-            "parameter_grid": grid_df.to_dict(orient="records"),
-            "backtest_summary": summary_df.to_dict(orient="records"),
-            "natural_language_rules": rules,
-            "final_strategy": final_strategy
+            "num_images": len(images),
+            "parameter_grid": [],
+            "backtest_summary": [],
+            "natural_language_rules": None,
+            "final_strategy": None
         }
 
     def filter_strategy_params(self, config: dict) -> dict:

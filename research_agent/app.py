@@ -1505,12 +1505,13 @@ def run_vwap_agent():
             return jsonify({"error": "No valid images found."}), 400
 
         csv_file = request.files.get('csv_file')
-        if not csv_file or csv_file.filename == '':
-            return jsonify({"error": "No CSV file uploaded for VWAP Agent."}), 400
-        df_ohlcv = pd.read_csv(csv_file)
-
+        if csv_file and csv_file.filename:
+            df_ohlcv = pd.read_csv(csv_file)
+        else:
+            df_ohlcv = None
         vwap_agent = VWAPAgent()
         result = vwap_agent.run(images=image_bytes_list, df_5m=df_ohlcv)
+
         return jsonify(result)
 
     except Exception as e:
