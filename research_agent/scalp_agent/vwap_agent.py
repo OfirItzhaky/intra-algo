@@ -522,12 +522,6 @@ class VWAPAgent:
         """
         Full pipeline: LLM call, grid build, backtest, rule generation, with debug prints after each major step.
         """
-        # # Step 0: Normalize columns and enrich DataFrame with all required VWAP indicators
-        # df_5m_norm = self.normalize_ohlcv_columns(df_5m)
-        # df_5m_enriched = self.enrich_with_all_vwap_indicators(df_5m_norm)
-        #
-        # new_cols = set(df_5m_enriched.columns) - set(df_5m_norm.columns)
-        # print(f"[VWAPAgent] [DEBUG] Enriched DataFrame with VWAP indicators. New columns: {list(new_cols)}")
 
         # Step 1: LLM call
         llm_result = self.call_llm_with_images(images, user_params=user_params)
@@ -543,39 +537,7 @@ class VWAPAgent:
                     rec["params_to_optimize"] = self.normalize_params_dict(rec["params_to_optimize"])
                 else:
                     print(f"[WARN] Strategy {rec.get('name')} missing 'params_to_optimize'")
-        #
-        # # Step 2: Build grid
-        # grid_df = self.build_grid_from_llm_response(llm_structured)
-        # print(f"[VWAPAgent] [DEBUG] Parameter grid length: {len(grid_df)}")
-        # if not grid_df.empty:
-        #     print(f"[VWAPAgent] [DEBUG] Parameter grid head(3):\n{grid_df.head(3).to_string(index=False)}")
-        # else:
-        #     print("[VWAPAgent] [DEBUG] Parameter grid is empty!")
-        #
-        # # Step 3: Run backtests
-        # all_results, summary_df = self.run_backtests_from_grid(grid_df, df_5m_enriched, df_1m)
-        # self.summary_df = summary_df
-        # if not summary_df.empty:
-        #     print(f"[VWAPAgent] [DEBUG] Backtest summary describe():\n{summary_df.describe(include='all').to_string()}")
-        #     # Print top strategy metrics
-        #     sort_col = 'PnL' if 'PnL' in summary_df.columns else ('win_rate' if 'win_rate' in summary_df.columns else None)
-        #     if sort_col:
-        #         top_row = summary_df.sort_values(sort_col, ascending=False).head(1)
-        #         print(f"[VWAPAgent] [DEBUG] Top strategy metrics:\n{top_row.to_string(index=False)}")
-        # else:
-        #     print("[VWAPAgent] [DEBUG] Backtest summary is empty!")
-        #
-        # # Step 4: Generate rules
-        # rules = self.generate_natural_language_rules(top_n=top_n)
-        # if rules:
-        #     print("[VWAPAgent] [DEBUG] Natural language rules (line by line):")
-        #     for line in str(rules).splitlines():
-        #         print(f"    {line}")
-        # else:
-        #     print("[VWAPAgent] [DEBUG] No rules generated.")
-        # # === Display top results and metrics ===
-        # self.display_top_results_grid_and_metrics(self.summary_df)
-        #
+
         # # === Extract final top strategy ===
         # final_strategy = None
         # sort_col = 'PnL' if 'PnL' in summary_df.columns else ('win_rate' if 'win_rate' in summary_df.columns else None)
@@ -584,20 +546,30 @@ class VWAPAgent:
         #     if not top_row.empty:
         #         final_strategy = top_row.iloc[0].to_dict()
         #
-        # return {
-        #     "llm_raw_response": llm_result.get("llm_raw_response"),
-        #     "llm_structured": llm_structured,
-        #     "model_name": llm_result.get("model_name"),
-        #     "provider": llm_result.get("provider"),
-        #     "llm_cost_usd": llm_result.get("llm_cost_usd"),
-        #     "llm_token_usage": llm_result.get("llm_token_usage"),
-        #     "num_images": llm_result.get("num_images"),
-        #     "prompt_type": llm_result.get("prompt_type"),
-        #     "parameter_grid": grid_df.to_dict(orient="records"),
-        #     "backtest_summary": summary_df.to_dict(orient="records"),
-        #     "natural_language_rules": rules,
-        #     "final_strategy": final_strategy
-        # }
+
+        # --- Optimization file flow (if present) ---
+        if hasattr(self, 'analyzer_dashboard') and hasattr(self, 'call_llm'):
+            optimization_files = getattr(self, 'optimization_files', None)
+            if optimization_files:
+                # 1. Parse optimization files
+                opt_result = self.analyzer_dashboard.parse_optimization_reports_from_tradestation_to_df(optimization_files)
+                grid_df = opt_result['grid_df']
+                # 2. Prepare for LLM
+                llm_input_df = self.prepare_optimization_results_for_llm(grid_df)
+                # 3. Retrieve session bias (assume self.session_bias or similar)
+                session_bias = getattr(self, 'session_bias', None)
+                # 4. Format prompt
+                prompt_template = """
+                [VWAP OPTIMIZATION]
+                Bias: {{BIAS}}
+                Top parameter sets:
+                {llm_input}
+                """
+                llm_input = llm_input_df.to_string(index=False)
+                prompt_text = prompt_template.replace("{{BIAS}}", str(session_bias)).replace("{llm_input}", llm_input)
+                # 5. Call LLM and log
+                llm_response = self.call_llm(prompt_text)
+                print("[VWAPAgent] LLM optimization response:\n", llm_response)
 
         return {
             "llm_raw_response": llm_result.get("llm_raw_response"),
@@ -621,3 +593,28 @@ class VWAPAgent:
 
         allowed_keys = [k for k, _ in VWAPBounceStrategy.params._getitems()]
         return {k: v for k, v in config.items() if k in allowed_keys}
+
+    def prepare_optimization_results_for_llm(self, grid_df):
+        """
+        Filter and prepare TradeStation optimization results for LLM input.
+        Args:
+            grid_df (pd.DataFrame): Combined DataFrame from parse_optimization_reports_from_tradestation_to_df.
+        Returns:
+            pd.DataFrame: Filtered and sorted DataFrame ready for LLM.
+        """
+        import pandas as pd
+        df = grid_df.copy()
+        # === Per-line filters (toggle on/off as needed) ===
+        if 'ProfitFactor' in df.columns:
+            df = df[df['ProfitFactor'] > 1.5]
+        if 'MaxStrategyDrawdown' in df.columns:
+            df = df[df['MaxStrategyDrawdown'] < 20]
+        if 'TotalNumberOfTrades' in df.columns:
+            df = df[df['TotalNumberOfTrades'] > 10]
+        if 'PercentProfitable' in df.columns:
+            df = df[df['PercentProfitable'] > 50]
+        # === Sort and take top 5 per strategy ===
+        if 'strategy' in df.columns and 'NetProfit' in df.columns:
+            df = df.sort_values(['strategy', 'NetProfit'], ascending=[True, False])
+            df = df.groupby('strategy').head(5).reset_index(drop=True)
+        return df

@@ -322,6 +322,61 @@ Do not include entry/exit logic — only evaluate structure and recommend strate
 Act like a scalper trading live capital. Be strict, context-aware, and technically accurate.
 """
 
+LLM_PROMPT_OPTIMIZATION_SELECTION = f"""
+You are a senior VWAP scalping expert reviewing TradeStation optimization results from a live intraday session.
+
+📊 These results come from different VWAP strategies that were backtested on the most recent market session using candidate parameter grids.
+
+Your goal: 
+👉 For each strategy, **select up to 2 optimal parameter configurations** that best fit the current market bias and show solid risk-adjusted performance.
+
+---
+
+📈 **Session Bias**: "{{BIAS}}"  
+This bias was detected using 5m/15m/60m charts and confirms the overall structure of the session (bullish, bearish, range, or volatile).
+
+---
+
+🏁 **Selection Criteria** (you may prioritize these as needed):
+• High ProfitFactor (>1.5)
+• Win rate above 50%
+• Lower drawdowns (MaxStrategyDrawdown)
+• Solid NetProfit but not at the expense of deep risk
+• Reasonable trade count (avoid 1-off lucky setups)
+
+---
+
+🧪 **What You Get**:
+You'll receive a table (per strategy) with:
+• Parameter values tested (e.g. VWAPDistancePct, VolumeZScoreThreshold, etc.)  
+• Performance metrics (ProfitFactor, NetProfit, WinRate, etc.)  
+• Strategy name for each row
+
+---
+
+📤 **What You Should Return**:
+Return a JSON structure like:
+
+{{
+  "strategy_picks": [
+    {{
+      "strategy": "vwap_bounce_01_sl_candle_low_tp_2R",
+      "rank": 1,
+      "reason": "Strong profit factor, 68% win rate, fits bullish bounce context",
+      "params": {{
+        "VWAPDistancePct": 0.2,
+        "VolumeZScoreThreshold": 1.0
+      }}
+    }},
+    ...
+  ]
+}}
+• Return up to 2 configs per strategy (sorted by preference).
+• Do NOT fabricate values. Only select from the provided grid.
+• If no config meets criteria, skip that strategy.
+
+Think like a real trader — you’re managing live capital in a fast session. Be realistic, not theoretical.
+"""
 
 
 PROMPT_REGRESSION_AGENT = """
