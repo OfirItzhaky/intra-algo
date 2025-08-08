@@ -63,6 +63,10 @@ UPLOAD_FOLDER = os.path.abspath("uploaded_csvs")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 symbol_data = {}  # global store
 
+# Five Star Agent uploads folder
+FIVESTAR_UPLOAD_FOLDER = os.path.abspath("uploaded_5star_images")
+os.makedirs(FIVESTAR_UPLOAD_FOLDER, exist_ok=True)
+
 # === Prepare context ===
 def prepare_daily_context():
     news_aggregator = NewsAggregator(config=CONFIG)
@@ -428,7 +432,8 @@ def index():
         image_outputs=image_results,
         file_info=file_info,
         upload_error=upload_error,
-        scalp_agent_url=url_for('scalp_agent')
+        scalp_agent_url=url_for('scalp_agent'),
+        five_star_agent_url=url_for('five_star_agent')
     )
 
 @app.route("/daily_analysis", methods=["POST"])
@@ -1004,6 +1009,144 @@ def scalp_agent():
             )
     # GET or initial load
     return render_template("scalp_agent.html", result=None, csv_request_info=None, show_csv_upload=False, validation_result=None, trade_idea_result=None, max_risk_per_trade=None)
+
+
+# =============================
+# Five Star Agent (Swing) Routes
+# =============================
+
+def _get_fivestar_chat_history():
+    return session.get('five_star_agent_chat', [])
+
+
+from typing import Optional, List
+import importlib
+
+
+def _append_fivestar_message(role: str, content: str, images: Optional[List[str]] = None):
+    from datetime import datetime as _dt
+    chat = session.get('five_star_agent_chat', [])
+    chat.append({
+        'role': role,
+        'content': content or '',
+        'images': images or [],
+        'timestamp': _dt.utcnow().isoformat() + 'Z'
+    })
+    session['five_star_agent_chat'] = chat
+
+
+@app.route("/five-star-agent", methods=["GET", "POST"])
+def five_star_agent():
+    """Five Star Agent placeholder UI and backend handler.
+
+    - GET: Render chat UI with history
+    - POST: Accept images + instructions, store to session, return placeholder response
+    """
+    # Dynamically import controller by file path (directory name starts with a digit)
+    import importlib.util as _ilu
+    controller_path = os.path.join(os.path.dirname(__file__), "5_star_agent", "five_star_agent_controller.py")
+    spec = _ilu.spec_from_file_location("fivestar_controller", controller_path)
+    module = _ilu.module_from_spec(spec)
+    assert spec and spec.loader, "Failed to load FiveStarAgentController spec"
+    spec.loader.exec_module(module)
+    FiveStarAgentController = getattr(module, "FiveStarAgentController")
+
+    if request.method == 'POST':
+        instructions = request.form.get('instructions', '')
+        model_choice = request.form.get('model_choice', '')
+        uploaded_files = request.files.getlist('images') if 'images' in request.files or hasattr(request.files, 'getlist') else []
+
+        saved_images = []
+        for f in uploaded_files:
+            if not f or not getattr(f, 'filename', ''):
+                continue
+            filename = f.filename
+            # Only accept images
+            lower = filename.lower()
+            if not (lower.endswith('.png') or lower.endswith('.jpg') or lower.endswith('.jpeg')):
+                continue
+            save_path = os.path.join(FIVESTAR_UPLOAD_FOLDER, filename)
+            # Ensure unique filename to avoid overwrite
+            base, ext = os.path.splitext(filename)
+            counter = 1
+            while os.path.exists(save_path):
+                filename = f"{base}_{counter}{ext}"
+                save_path = os.path.join(FIVESTAR_UPLOAD_FOLDER, filename)
+                counter += 1
+            f.save(save_path)
+            saved_images.append({'filename': filename, 'path': save_path})
+
+        # Append user message
+        _append_fivestar_message('user', instructions, images=[img['filename'] for img in saved_images])
+
+        # Call placeholder controller to generate response
+        controller = FiveStarAgentController()
+        agent_reply = controller.generate_placeholder_response(instructions=instructions, images=[img['filename'] for img in saved_images])
+        _append_fivestar_message('agent', agent_reply)
+
+    chat_history = _get_fivestar_chat_history()
+    # Render dedicated template
+    return render_template("5star_agent.html", chat_history=chat_history)
+
+
+@app.route("/five_star/analyze", methods=["POST"])
+def five_star_analyze():
+    """API endpoint to analyze uploaded charts + instructions via LLM.
+
+    Saves images, appends the user message to session chat, calls the Five Star
+    Agent controller (OpenAI-backed), appends the agent message, and returns
+    JSON with success/error.
+    """
+    # Dynamically import controller by file path (directory name starts with a digit)
+    import importlib.util as _ilu
+    controller_path = os.path.join(os.path.dirname(__file__), "5_star_agent", "five_star_agent_controller.py")
+    spec = _ilu.spec_from_file_location("fivestar_controller", controller_path)
+    module = _ilu.module_from_spec(spec)
+    assert spec and spec.loader, "Failed to load FiveStarAgentController spec"
+    spec.loader.exec_module(module)
+    FiveStarAgentController = getattr(module, "FiveStarAgentController")
+
+    try:
+        instructions = request.form.get('instructions', '')
+        model_choice = request.form.get('model_choice', '')
+        files = request.files.getlist('images') if 'images' in request.files or hasattr(request.files, 'getlist') else []
+
+        saved_filepaths = []
+        saved_names = []
+        for f in files:
+            if not f or not getattr(f, 'filename', ''):
+                continue
+            filename = f.filename
+            lower = filename.lower()
+            if not (lower.endswith('.png') or lower.endswith('.jpg') or lower.endswith('.jpeg')):
+                continue
+            save_path = os.path.join(FIVESTAR_UPLOAD_FOLDER, filename)
+            base, ext = os.path.splitext(filename)
+            counter = 1
+            while os.path.exists(save_path):
+                filename = f"{base}_{counter}{ext}"
+                save_path = os.path.join(FIVESTAR_UPLOAD_FOLDER, filename)
+                counter += 1
+            f.save(save_path)
+            saved_filepaths.append(save_path)
+            saved_names.append(filename)
+
+        # Append user message to chat history
+        _append_fivestar_message('user', instructions, images=saved_names)
+
+        # Call controller with LLM
+        controller = FiveStarAgentController()
+        if model_choice:
+            agent_reply, model_used = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice=model_choice)
+        else:
+            agent_reply, model_used = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice="gpt-4o-mini")
+        # Append to chat including model used (already appended in reply, but keep metadata minimal)
+        _append_fivestar_message('agent', agent_reply)
+
+        print(f"[FiveStar] Model used: {model_used}")
+        return jsonify({"ok": True, "agent_reply": agent_reply, "model_used": model_used})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 @app.route("/dual_agent_scalp_analysis", methods=["POST"])
 def dual_agent_scalp_analysis():

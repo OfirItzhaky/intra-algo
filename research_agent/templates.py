@@ -196,8 +196,13 @@ HTML_TEMPLATE = '''
         </div>
       </div>
     </div>
-    <!-- Scalping Agent Button Row -->
+    <!-- Agents Button Row -->
     <div class="row mb-4">
+      <div class="col-12 mb-2">
+        <a href="{{ five_star_agent_url }}" class="btn btn-warning btn-lg w-100">
+          <i class="me-2">🌟</i> Open 5 Star Agent
+        </a>
+      </div>
       <div class="col-12">
         <a href="{{ scalp_agent_url }}" class="btn btn-success btn-lg w-100">
           <i class="me-2">📈</i> Open Scalping Agent
