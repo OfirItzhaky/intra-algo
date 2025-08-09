@@ -5,6 +5,13 @@ import json
 import os
 from typing import List, Optional, Tuple, Dict, Any
 from research_agent.five_star_agent.prompt_manager_5_star import MAIN_SYSTEM_PROMPT, NEWS_AND_REPORT_BIAS as BIAS_TEMPLATE
+try:
+    # Optional: LangChain integration for future memory/agents
+    from langchain_openai import ChatOpenAI
+    from langchain_core.messages import HumanMessage, SystemMessage
+    LANGCHAIN_AVAILABLE = True
+except Exception:
+    LANGCHAIN_AVAILABLE = False
 
 class FiveStarAgentController:
     """Controller for the Five Star swing-trading agent.
@@ -69,6 +76,7 @@ class FiveStarAgentController:
             if requested_model not in vision_defaults:
                 # Fallback for non-vision choices (e.g., 3.5, 4.1)
                 model_used = "gpt-4o" #todo:TEMP HARD CODED
+            # For now we still call native OpenAI path to preserve image support
             reply, usage = self._openai_call(instructions, image_paths, model_used)
             reply = f"{reply}\n🤖 Model: {usage.get('model_used', model_used)}\n💰 Tokens: {usage.get('total_tokens', 'N/A')} | Est. Cost: ${usage.get('estimated_cost_usd', 0):.6f}"
             return reply, usage.get('model_used', model_used), usage
@@ -125,7 +133,11 @@ class FiveStarAgentController:
             attached_names.append(os.path.basename(p))
 
         if not attached_names:
-            return "Please paste or upload at least one weekly chart image to analyze."
+            # Allow text-only follow-ups
+            return (
+                "Please paste or upload at least one weekly chart image to analyze.",
+                {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
+            )
 
         system_prompt = (
             MAIN_SYSTEM_PROMPT
@@ -210,7 +222,7 @@ class FiveStarAgentController:
                 parts.append(
                     "📌 Instructions acknowledged: " + (instructions[:140] + ("..." if len(instructions) > 140 else ""))
                 )
-            return "\n".join(parts)
+            return "\n".join(parts), usage_dict
 
         # If parsing failed, return raw text in our wrapper
         ack = (instructions[:140] + ("..." if instructions and len(instructions) > 140 else "")) if instructions else ""
@@ -258,7 +270,11 @@ class FiveStarAgentController:
                 continue
 
         if not attached_names:
-            return "Please paste or upload at least one weekly chart image to analyze."
+            # Allow text-only follow-ups
+            return (
+                "Please paste or upload at least one weekly chart image to analyze.",
+                {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
+            )
 
         system_prompt = (
             "You are a swing trading assistant. Analyze the uploaded weekly charts and give a score out of 5 with reasoning. "

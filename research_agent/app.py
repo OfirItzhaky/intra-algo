@@ -1146,8 +1146,29 @@ def five_star_analyze():
             saved_names.append(filename)
         print(f"[FiveStar] saved files: {saved_names}")
 
-        # Append user message to chat history
+        # Reuse prior images if none uploaded this turn
+        prior_filepaths = session.get('five_star_agent_images', [])
+        prior_names = [os.path.basename(p) for p in prior_filepaths]
+        if len(saved_filepaths) == 0 and prior_filepaths:
+            print(f"[FiveStar] no new images uploaded; reusing prior {len(prior_filepaths)} images")
+            saved_filepaths = prior_filepaths
+            saved_names = prior_names
+
+        # If still none, return helpful error
+        if len(saved_filepaths) == 0:
+            msg = "Please paste or upload at least one weekly chart image to analyze."
+            print(f"[FiveStar][WARN] {msg}")
+            return jsonify({"ok": False, "error": msg, "code": "NO_IMAGES"}), 400
+
+        # Append user message to chat history only if we can proceed
         _append_fivestar_message('user', instructions, images=saved_names)
+
+        # Update session image context (union of previous and new)
+        try:
+            merged = list({*prior_filepaths, *saved_filepaths}) if prior_filepaths else list(saved_filepaths)
+            session['five_star_agent_images'] = merged
+        except Exception as _e:
+            print(f"[FiveStar][WARN] failed to merge image context: {_e}")
 
         # Call controller with LLM
         try:
