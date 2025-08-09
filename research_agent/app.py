@@ -1137,16 +1137,47 @@ def five_star_analyze():
         # Call controller with LLM
         controller = FiveStarAgentController()
         if model_choice:
-            agent_reply, model_used = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice=model_choice)
+            agent_reply, model_used, usage = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice=model_choice)
         else:
-            agent_reply, model_used = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice="gpt-4o-mini")
+            agent_reply, model_used, usage = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice="gpt-4o-mini")
         # Append to chat including model used (already appended in reply, but keep metadata minimal)
         _append_fivestar_message('agent', agent_reply)
 
         print(f"[FiveStar] Model used: {model_used}")
-        return jsonify({"ok": True, "agent_reply": agent_reply, "model_used": model_used})
+        return jsonify({
+            "ok": True,
+            "agent_reply": agent_reply,
+            "model_used": model_used,
+            "usage": usage
+        })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/five_star/reset", methods=["POST"])
+def five_star_reset():
+    """Clear Five Star Agent session memory and uploaded images only.
+
+    Does not affect other agents or global app state.
+    """
+    try:
+        # Clear chat memory for Five Star Agent
+        session['five_star_agent_chat'] = []
+
+        # Remove uploaded images for Five Star Agent
+        try:
+            for filename in os.listdir(FIVESTAR_UPLOAD_FOLDER):
+                file_path = os.path.join(FIVESTAR_UPLOAD_FOLDER, filename)
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+        except Exception as cleanup_err:
+            print(f"[FiveStar] Reset cleanup error: {cleanup_err}")
+
+        # Redirect back to the agent page
+        return redirect(url_for('five_star_agent'))
+    except Exception as e:
+        print(f"[FiveStar] Reset error: {e}")
+        return redirect(url_for('five_star_agent'))
 
 @app.route("/dual_agent_scalp_analysis", methods=["POST"])
 def dual_agent_scalp_analysis():

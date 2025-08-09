@@ -22,7 +22,10 @@
   <div class="container py-3">
     <div class="d-flex align-items-center mb-3">
       <a href="/" class="btn btn-outline-secondary me-2">← Back</a>
-      <h2 class="mb-0">🌟 Five Star Agent</h2>
+      <h2 class="mb-0 me-3">🌟 Five Star Agent</h2>
+      <form method="POST" action="/five_star/reset" class="ms-auto">
+        <button type="submit" class="btn btn-danger">Reset Session</button>
+      </form>
     </div>
 
     <div class="row g-3">
@@ -41,27 +44,27 @@
                 <div class="d-flex flex-wrap gap-3">
                   <div class="form-check">
                     <input class="form-check-input" type="radio" name="model_choice" id="m-4o" value="gpt-4o" checked>
-                    <label class="form-check-label" for="m-4o">GPT-4o</label>
+                    <label class="form-check-label" for="m-4o">gpt-4o</label>
                   </div>
                   <div class="form-check">
                     <input class="form-check-input" type="radio" name="model_choice" id="m-4o-mini" value="gpt-4o-mini">
-                    <label class="form-check-label" for="m-4o-mini">GPT-4o mini</label>
+                    <label class="form-check-label" for="m-4o-mini">gpt-4o-mini</label>
                   </div>
                   <div class="form-check">
                     <input class="form-check-input" type="radio" name="model_choice" id="m-4.1" value="gpt-4.1">
-                    <label class="form-check-label" for="m-4.1">GPT-4.1</label>
+                    <label class="form-check-label" for="m-4.1">gpt-4.1</label>
                   </div>
                   <div class="form-check">
                     <input class="form-check-input" type="radio" name="model_choice" id="m-3.5" value="gpt-3.5-turbo">
-                    <label class="form-check-label" for="m-3.5">GPT-3.5</label>
+                    <label class="form-check-label" for="m-3.5">gpt-3.5-turbo</label>
                   </div>
                   <div class="form-check">
-                    <input class="form-check-input" type="radio" name="model_choice" id="m-g-pro" value="gemini-1.5-pro">
-                    <label class="form-check-label" for="m-g-pro">Gemini 1.5 Pro</label>
+                    <input class="form-check-input" type="radio" name="model_choice" id="m-g-pro" value="gemini-1.5-pro-latest">
+                    <label class="form-check-label" for="m-g-pro">gemini-1.5-pro-latest</label>
                   </div>
                   <div class="form-check">
-                    <input class="form-check-input" type="radio" name="model_choice" id="m-g-flash" value="gemini-1.5-flash">
-                    <label class="form-check-label" for="m-g-flash">Gemini 1.5 Flash</label>
+                    <input class="form-check-input" type="radio" name="model_choice" id="m-g-flash" value="gemini-1.5-flash-latest">
+                    <label class="form-check-label" for="m-g-flash">gemini-1.5-flash-latest</label>
                   </div>
                 </div>
               </div>
@@ -185,6 +188,13 @@
         }
         const res = await fetch('/five_star/analyze', { method: 'POST', body: fd });
         if (!res.ok) throw new Error('Request failed');
+        // If response contains usage, optionally show a toast before reload
+        try {
+          const data = await res.json();
+          if (data && data.usage) {
+            console.log('Model used:', data.usage.model_used, 'Tokens:', data.usage.total_tokens, 'Est. Cost:', data.usage.estimated_cost_usd);
+          }
+        } catch {}
         // Reload to render updated chat history
         window.location.href = '/five-star-agent';
       } catch (err) {

@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
-from typing import List, Optional
+from typing import List, Optional, Tuple, Dict, Any
 
 
 class FiveStarAgentController:
@@ -51,8 +51,8 @@ class FiveStarAgentController:
         reply, _ = self.analyze_with_model(instructions=instructions, image_paths=image_paths, model_choice="gpt-4o-mini")
         return reply
 
-    def analyze_with_model(self, instructions: str, image_paths: List[str], model_choice: str) -> tuple[str, str]:
-        """Analyze with chosen model; returns (reply_text, model_used).
+    def analyze_with_model(self, instructions: str, image_paths: List[str], model_choice: str) -> Tuple[str, str, Dict[str, Any]]:
+        """Analyze with chosen model; returns (reply_text, model_used, usage).
 
         Supports OpenAI (gpt-4o family) and Gemini (1.5 pro/flash). Falls back to a
         multimodal-capable model if a non-vision model is selected while images are present.
@@ -69,33 +69,41 @@ class FiveStarAgentController:
             if requested_model not in vision_defaults:
                 # Fallback for non-vision choices (e.g., 3.5, 4.1)
                 model_used = "gpt-4o"
-            reply = self._openai_call(instructions, image_paths, model_used)
-            # Append model used line
-            reply = f"{reply}\n🤖 Model: {model_used}"
-            return reply, model_used
+            reply, usage = self._openai_call(instructions, image_paths, model_used)
+            reply = f"{reply}\n🤖 Model: {usage.get('model_used', model_used)}\n💰 Tokens: {usage.get('total_tokens', 'N/A')} | Est. Cost: ${usage.get('estimated_cost_usd', 0):.6f}"
+            return reply, usage.get('model_used', model_used), usage
         else:
-            # Gemini models (1.5 pro / 1.5 flash)
-            allowed = ["gemini-1.5-pro", "gemini-1.5-flash"]
-            model_used = requested_model if requested_model in allowed else "gemini-1.5-flash"
-            reply = self._gemini_call(instructions, image_paths, model_used)
-            reply = f"{reply}\n🤖 Model: {model_used}"
-            return reply, model_used
+            # Gemini models (1.5 pro / 1.5 flash) including -latest aliases
+            allowed = [
+                "gemini-1.5-pro",
+                "gemini-1.5-flash",
+                "gemini-1.5-pro-latest",
+                "gemini-1.5-flash-latest",
+            ]
+            model_used = requested_model if requested_model in allowed else "gemini-1.5-flash-latest"
+            reply, usage = self._gemini_call(instructions, image_paths, model_used)
+            reply = f"{reply}\n🤖 Model: {usage.get('model_used', model_used)}\n💰 Tokens: {usage.get('total_tokens', 'N/A')} | Est. Cost: ${usage.get('estimated_cost_usd', 0):.6f}"
+            return reply, usage.get('model_used', model_used), usage
 
     # --- Provider implementations ---
-    def _openai_call(self, instructions: str, image_paths: List[str], model_used: str) -> str:
-        """OpenAI implementation using chat.completions (GPT-4o family)."""
+    def _openai_call(self, instructions: str, image_paths: List[str], model_used: str) -> Tuple[str, Dict[str, Any]]:
+        """OpenAI implementation using chat.completions (GPT-4o family).
+
+        Returns: (reply_text, usage_dict)
+        usage_dict keys: prompt_tokens, completion_tokens, total_tokens, model_used, estimated_cost_usd
+        """
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             return (
                 "❌ Missing OpenAI API key. Set environment variable OPENAI_API_KEY to enable analysis.\n"
                 "You can still upload charts, but responses will be placeholders."
-            )
+            ), {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
 
         # Lazily import to avoid dependency issues elsewhere
         try:
             from openai import OpenAI
         except Exception:
-            return "❌ OpenAI client not available. Ensure 'openai' is installed."
+            return "❌ OpenAI client not available. Ensure 'openai' is installed.", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
 
         client = OpenAI(api_key=api_key)
 
@@ -134,9 +142,17 @@ class FiveStarAgentController:
                 max_tokens=400,
             )
         except Exception as e:
-            return f"❌ LLM call failed: {e}"
+            return f"❌ LLM call failed: {e}", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
 
         raw_text = (response.choices[0].message.content or "").strip()
+
+        # Gather usage and estimate cost
+        openai_model_returned = getattr(response, 'model', None) or model_used
+        usage_obj = getattr(response, 'usage', None) or {}
+        prompt_tokens = getattr(usage_obj, 'prompt_tokens', None) if hasattr(usage_obj, 'prompt_tokens') else usage_obj.get('prompt_tokens') if isinstance(usage_obj, dict) else None
+        completion_tokens = getattr(usage_obj, 'completion_tokens', None) if hasattr(usage_obj, 'completion_tokens') else usage_obj.get('completion_tokens') if isinstance(usage_obj, dict) else None
+        total_tokens = getattr(usage_obj, 'total_tokens', None) if hasattr(usage_obj, 'total_tokens') else usage_obj.get('total_tokens') if isinstance(usage_obj, dict) else None
+        usage_dict = self._estimate_cost(openai_model_returned, prompt_tokens, completion_tokens)
 
         # Try to parse JSON from the response
         parsed = None
@@ -199,7 +215,7 @@ class FiveStarAgentController:
             "✅ Received charts: " + ", ".join(attached_names) + "\n" +
             (f"📝 Model Response: {raw_text}\n" if raw_text else "📝 Model Response: (empty)\n") +
             (f"📌 Instructions acknowledged: {ack}" if ack else "")
-        )
+        ), usage_dict
 
     def _guess_mime(self, path: str) -> str:
         ext = os.path.splitext(path.lower())[1]
@@ -210,16 +226,16 @@ class FiveStarAgentController:
             ".webp": "image/webp",
         }.get(ext, "image/png")
 
-    def _gemini_call(self, instructions: str, image_paths: List[str], model_used: str) -> str:
+    def _gemini_call(self, instructions: str, image_paths: List[str], model_used: str) -> Tuple[str, Dict[str, Any]]:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             return (
                 "❌ Missing Gemini API key. Set environment variable GEMINI_API_KEY to enable analysis."
-            )
+            ), {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
         try:
             import google.generativeai as genai
         except Exception:
-            return "❌ Gemini client not available. Ensure 'google-generativeai' is installed."
+            return "❌ Gemini client not available. Ensure 'google-generativeai' is installed.", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
 
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(model_used)
@@ -252,7 +268,13 @@ class FiveStarAgentController:
             resp = model.generate_content(parts)
             raw_text = (resp.text or "").strip()
         except Exception as e:
-            return f"❌ LLM call failed: {e}"
+            return f"❌ LLM call failed: {e}", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
+
+        # Usage and cost
+        um = getattr(resp, 'usage_metadata', None)
+        prompt_tokens = getattr(um, 'prompt_token_count', None) if um else None
+        completion_tokens = getattr(um, 'candidates_token_count', None) if um else None
+        usage_dict = self._estimate_cost(model_used, prompt_tokens, completion_tokens)
 
         # Try to parse JSON from the response
         parsed = None
@@ -301,12 +323,36 @@ class FiveStarAgentController:
                 parts_out.append(
                     "📌 Instructions acknowledged: " + (instructions[:140] + ("..." if len(instructions) > 140 else ""))
                 )
-            return "\n".join(parts_out)
+            return "\n".join(parts_out), usage_dict
 
         ack = (instructions[:140] + ("..." if instructions and len(instructions) > 140 else "")) if instructions else ""
         return (
             "✅ Received charts: " + ", ".join(attached_names) + "\n" +
             (f"📝 Model Response: {raw_text}\n" if raw_text else "📝 Model Response: (empty)\n") +
             (f"📌 Instructions acknowledged: {ack}" if ack else "")
-        )
+        ), usage_dict
+
+    # --- Cost estimation ---
+    def _estimate_cost(self, model_used: str, prompt_tokens: Optional[int], completion_tokens: Optional[int]) -> Dict[str, Any]:
+        # Prices per 1K tokens (approximate; adjust as needed)
+        pricing = {
+            # OpenAI
+            "gpt-4o": {"input_per_1k": 0.005, "output_per_1k": 0.015},
+            "gpt-4o-mini": {"input_per_1k": 0.00015, "output_per_1k": 0.00060},
+            "gpt-4.1": {"input_per_1k": 0.005, "output_per_1k": 0.015},
+            "gpt-3.5-turbo": {"input_per_1k": 0.0005, "output_per_1k": 0.0015},
+            # Gemini
+            "gemini-1.5-pro": {"input_per_1k": 0.0035, "output_per_1k": 0.0100},
+            "gemini-1.5-flash": {"input_per_1k": 0.00035, "output_per_1k": 0.00105},
+            "gemini-1.5-pro-latest": {"input_per_1k": 0.0035, "output_per_1k": 0.0100},
+            "gemini-1.5-flash-latest": {"input_per_1k": 0.00035, "output_per_1k": 0.00105},
+        }
+        price = pricing.get(model_used) or pricing.get(model_used.split(":")[0], None)
+        pt = int(prompt_tokens or 0)
+        ct = int(completion_tokens or 0)
+        total = pt + ct
+        if not price:
+            return {"prompt_tokens": pt, "completion_tokens": ct, "total_tokens": total, "model_used": model_used, "estimated_cost_usd": 0.0}
+        cost = (pt / 1000.0) * price["input_per_1k"] + (ct / 1000.0) * price["output_per_1k"]
+        return {"prompt_tokens": pt, "completion_tokens": ct, "total_tokens": total, "model_used": model_used, "estimated_cost_usd": round(cost, 6)}
 
