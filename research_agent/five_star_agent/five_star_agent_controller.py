@@ -60,7 +60,7 @@ class FiveStarAgentController:
         reply, _ = self.analyze_with_model(instructions=instructions, image_paths=image_paths, model_choice="gpt-4o-mini")
         return reply
 
-    def analyze_with_model(self, instructions: str, image_paths: List[str], model_choice: str, session_id: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
+    def analyze_with_model(self, instructions: str, image_paths: List[str], model_choice: str, session_id: Optional[str] = None, image_summary: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
         """Analyze with chosen model; returns (reply_text, model_used, usage).
 
         Supports OpenAI (gpt-4o family) and Gemini (1.5 pro/flash). Falls back to a
@@ -76,10 +76,10 @@ class FiveStarAgentController:
             model_used = requested_model
             # Prefer LangChain (if available) to enable conversation memory
             if LANGCHAIN_AVAILABLE:
-                reply, usage = self._openai_call_langchain(instructions, image_paths, model_used, session_id or "default")
+                reply, usage = self._openai_call_langchain(instructions, image_paths, model_used, session_id or "default", image_summary=image_summary)
             else:
                 # Fallback to native SDK path
-                reply, usage = self._openai_call(instructions, image_paths, model_used)
+                reply, usage = self._openai_call(instructions, image_paths, model_used, image_summary=image_summary)
             reply = f"{reply}\n🤖 Model: {usage.get('model_used', model_used)}\n💰 Tokens: {usage.get('total_tokens', 'N/A')} | Est. Cost: ${usage.get('estimated_cost_usd', 0):.6f}"
             return reply, usage.get('model_used', model_used), usage
         else:
@@ -91,7 +91,7 @@ class FiveStarAgentController:
                 "gemini-1.5-flash-latest",
             ]
             model_used = requested_model if requested_model in allowed else "gemini-1.5-flash-latest"
-            reply, usage = self._gemini_call(instructions, image_paths, model_used)
+            reply, usage = self._gemini_call(instructions, image_paths, model_used, image_summary=image_summary)
             reply = f"{reply}\n🤖 Model: {usage.get('model_used', model_used)}\n💰 Tokens: {usage.get('total_tokens', 'N/A')} | Est. Cost: ${usage.get('estimated_cost_usd', 0):.6f}"
             return reply, usage.get('model_used', model_used), usage
 
@@ -105,7 +105,7 @@ class FiveStarAgentController:
             self._history_store[session_id] = hist
         return hist
 
-    def _openai_call_langchain(self, instructions: str, image_paths: List[str], model_used: str, session_id: str) -> Tuple[str, Dict[str, Any]]:
+    def _openai_call_langchain(self, instructions: str, image_paths: List[str], model_used: str, session_id: str, image_summary: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
         """OpenAI via LangChain with message history. Supports images using image_url blocks.
 
         Returns (reply_text, usage_dict) like the native path.
@@ -127,6 +127,8 @@ class FiveStarAgentController:
         human_content: List[Dict[str, Any]] = []
         if (instructions or "").strip():
             human_content.append({"type": "text", "text": instructions})
+        if image_summary:
+            human_content.append({"type": "text", "text": f"Context from previous chart analysis (summary):\n{image_summary}"})
         attached_names: List[str] = []
         for p in image_paths:
             try:
@@ -228,7 +230,7 @@ class FiveStarAgentController:
             (f"📝 Model Response: {raw_text}\n" if raw_text else "📝 Model Response: (empty)\n") +
             (f"📌 Instructions acknowledged: {ack}" if ack else "")
         ), usage_dict
-    def _openai_call(self, instructions: str, image_paths: List[str], model_used: str) -> Tuple[str, Dict[str, Any]]:
+    def _openai_call(self, instructions: str, image_paths: List[str], model_used: str, image_summary: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
         """OpenAI implementation using chat.completions (GPT-4o family).
 
         Returns: (reply_text, usage_dict)
@@ -254,6 +256,8 @@ class FiveStarAgentController:
         user_text = instructions or ""
         if user_text.strip():
             content.append({"type": "text", "text": user_text})
+        if image_summary:
+            content.append({"type": "text", "text": f"Context from previous chart analysis (summary):\n{image_summary}"})
 
         attached_names = []
         for p in image_paths:
@@ -270,7 +274,7 @@ class FiveStarAgentController:
         except Exception:
             pass
 
-        if not attached_names:
+        if not attached_names and not image_summary:
             # Allow text-only follow-ups
             return (
                 "Please paste or upload at least one weekly chart image to analyze.",
@@ -379,7 +383,7 @@ class FiveStarAgentController:
             ".webp": "image/webp",
         }.get(ext, "image/png")
 
-    def _gemini_call(self, instructions: str, image_paths: List[str], model_used: str) -> Tuple[str, Dict[str, Any]]:
+    def _gemini_call(self, instructions: str, image_paths: List[str], model_used: str, image_summary: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             return (
@@ -396,6 +400,8 @@ class FiveStarAgentController:
         parts = []
         if instructions and instructions.strip():
             parts.append(instructions)
+        if image_summary:
+            parts.append(f"Context from previous chart analysis (summary):\n{image_summary}")
         attached_names = []
         for p in image_paths:
             try:
@@ -411,8 +417,8 @@ class FiveStarAgentController:
         except Exception:
             pass
 
-        if not attached_names:
-            # Allow text-only follow-ups
+        if not attached_names and not image_summary:
+            # Allow text-only follow-ups without images only if summary exists; otherwise ask for reupload
             return (
                 "Please paste or upload at least one weekly chart image to analyze.",
                 {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}

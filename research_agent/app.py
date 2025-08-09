@@ -1190,10 +1190,30 @@ def five_star_analyze():
             return jsonify({"ok": False, "error": f"Failed to init controller: {e}"}), 500
         try:
             session_id = session.get('_id') or request.cookies.get('session') or 'fivestar'
+            # Build image summary injection policy
+            image_summary = session.get('five_star_agent_image_summary')
+            inject_summary = False
+            if reused_from_session and image_summary:
+                inject_summary = True
+                print(f"[FiveStar][OPT] Reusing summary instead of images. words={len(str(image_summary).split())}")
+            elif reused_from_session and not image_summary:
+                print("[FiveStar][OPT] No summary available; images will be sent to preserve context.")
             if model_choice:
-                agent_reply, model_used, usage = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice=model_choice, session_id=session_id)
+                agent_reply, model_used, usage = controller.analyze_with_model(
+                    instructions=instructions,
+                    image_paths=([] if inject_summary else saved_filepaths),
+                    model_choice=model_choice,
+                    session_id=session_id,
+                    image_summary=(image_summary if inject_summary else None)
+                )
             else:
-                agent_reply, model_used, usage = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice="gpt-4o-mini", session_id=session_id)
+                agent_reply, model_used, usage = controller.analyze_with_model(
+                    instructions=instructions,
+                    image_paths=([] if inject_summary else saved_filepaths),
+                    model_choice="gpt-4o-mini",
+                    session_id=session_id,
+                    image_summary=(image_summary if inject_summary else None)
+                )
 
             # If we reused images, strip the explicit filename echo from the top of reply
             if reused_from_session and isinstance(agent_reply, str) and agent_reply.startswith("✅ Received charts:"):
@@ -1201,6 +1221,12 @@ def five_star_analyze():
                     agent_reply = "\n".join(agent_reply.splitlines()[1:])
                 except Exception:
                     pass
+
+            # If this is the first turn with actual images, cache a summary for future follow-ups
+            if not reused_from_session and len(saved_filepaths) > 0:
+                # Store the full reply as summary (simple heuristic)
+                session['five_star_agent_image_summary'] = agent_reply
+                print(f"[FiveStar][OPT] Cached summary from first image turn. words={len(agent_reply.split())}")
         except Exception as e:
             provider = 'Gemini' if (model_choice or '').lower().startswith('gemini') else 'OpenAI'
             print(f"[FiveStar][ERROR] analyze_with_model failed ({provider}): {e}")
