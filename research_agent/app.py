@@ -1042,15 +1042,6 @@ def five_star_agent():
     - GET: Render chat UI with history
     - POST: Accept images + instructions, store to session, return placeholder response
     """
-    # Dynamically import controller by file path (directory name starts with a digit)
-    import importlib.util as _ilu
-    controller_path = os.path.join(os.path.dirname(__file__), "5_star_agent", "five_star_agent_controller.py")
-    spec = _ilu.spec_from_file_location("fivestar_controller", controller_path)
-    module = _ilu.module_from_spec(spec)
-    assert spec and spec.loader, "Failed to load FiveStarAgentController spec"
-    spec.loader.exec_module(module)
-    FiveStarAgentController = getattr(module, "FiveStarAgentController")
-
     if request.method == 'POST':
         instructions = request.form.get('instructions', '')
         model_choice = request.form.get('model_choice', '')
@@ -1079,9 +1070,13 @@ def five_star_agent():
         # Append user message
         _append_fivestar_message('user', instructions, images=[img['filename'] for img in saved_images])
 
-        # Call placeholder controller to generate response
-        controller = FiveStarAgentController()
-        agent_reply = controller.generate_placeholder_response(instructions=instructions, images=[img['filename'] for img in saved_images])
+        # Local placeholder (UI-only path; real calls use /five_star/analyze)
+        received = ", ".join([img['filename'] for img in saved_images]) or "(no images)"
+        agent_reply = (
+            f"✅ Received charts: {received}\n"
+            f"📝 Placeholder reply (use the Send to Agent button to analyze with model).\n"
+            f"📌 Instructions acknowledged: {instructions[:140] + ('...' if len(instructions) > 140 else '') if instructions else ''}"
+        )
         _append_fivestar_message('agent', agent_reply)
 
     chat_history = _get_fivestar_chat_history()
@@ -1097,19 +1092,38 @@ def five_star_analyze():
     Agent controller (OpenAI-backed), appends the agent message, and returns
     JSON with success/error.
     """
-    # Dynamically import controller by file path (directory name starts with a digit)
+    print("[FiveStar] /five_star/analyze called")
+    # Dynamically import controller (support both folder names: five_star_agent / 5_star_agent)
     import importlib.util as _ilu
-    controller_path = os.path.join(os.path.dirname(__file__), "5_star_agent", "five_star_agent_controller.py")
-    spec = _ilu.spec_from_file_location("fivestar_controller", controller_path)
-    module = _ilu.module_from_spec(spec)
-    assert spec and spec.loader, "Failed to load FiveStarAgentController spec"
-    spec.loader.exec_module(module)
-    FiveStarAgentController = getattr(module, "FiveStarAgentController")
+    base_dir = os.path.dirname(__file__)
+    candidate_paths = [
+        os.path.join(base_dir, "five_star_agent", "five_star_agent_controller.py"),
+        os.path.join(base_dir, "5_star_agent", "five_star_agent_controller.py"),
+    ]
+    module = None
+    chosen_path = None
+    for controller_path in candidate_paths:
+        if os.path.exists(controller_path):
+            chosen_path = controller_path
+            spec = _ilu.spec_from_file_location("fivestar_controller", controller_path)
+            module = _ilu.module_from_spec(spec)
+            assert spec and spec.loader, "Failed to load FiveStarAgentController spec"
+            spec.loader.exec_module(module)
+            break
+    if module is None:
+        print("[FiveStar][ERROR] Controller not found in:", candidate_paths)
+        return jsonify({"ok": False, "error": "FiveStarAgent controller not found."}), 500
+    FiveStarAgentController = getattr(module, "FiveStarAgentController", None)
+    if FiveStarAgentController is None:
+        print(f"[FiveStar][ERROR] FiveStarAgentController class missing in {chosen_path}")
+        return jsonify({"ok": False, "error": "Controller class missing."}), 500
 
     try:
         instructions = request.form.get('instructions', '')
         model_choice = request.form.get('model_choice', '')
+        print(f"[FiveStar] model_choice={model_choice!r}")
         files = request.files.getlist('images') if 'images' in request.files or hasattr(request.files, 'getlist') else []
+        print(f"[FiveStar] received {len(files)} files")
 
         saved_filepaths = []
         saved_names = []
@@ -1130,16 +1144,25 @@ def five_star_analyze():
             f.save(save_path)
             saved_filepaths.append(save_path)
             saved_names.append(filename)
+        print(f"[FiveStar] saved files: {saved_names}")
 
         # Append user message to chat history
         _append_fivestar_message('user', instructions, images=saved_names)
 
         # Call controller with LLM
-        controller = FiveStarAgentController()
-        if model_choice:
-            agent_reply, model_used, usage = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice=model_choice)
-        else:
-            agent_reply, model_used, usage = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice="gpt-4o-mini")
+        try:
+            controller = FiveStarAgentController()
+        except Exception as e:
+            print(f"[FiveStar][ERROR] Failed to init controller: {e}")
+            return jsonify({"ok": False, "error": f"Failed to init controller: {e}"}), 500
+        try:
+            if model_choice:
+                agent_reply, model_used, usage = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice=model_choice)
+            else:
+                agent_reply, model_used, usage = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice="gpt-4o-mini")
+        except Exception as e:
+            print(f"[FiveStar][ERROR] analyze_with_model failed: {e}")
+            return jsonify({"ok": False, "error": f"analyze_with_model failed: {e}"}), 500
         # Append to chat including model used (already appended in reply, but keep metadata minimal)
         _append_fivestar_message('agent', agent_reply)
 
@@ -1151,6 +1174,7 @@ def five_star_analyze():
             "usage": usage
         })
     except Exception as e:
+        print(f"[FiveStar][ERROR] Unexpected: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 

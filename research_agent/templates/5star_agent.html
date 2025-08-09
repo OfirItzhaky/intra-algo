@@ -15,7 +15,8 @@
     .chat-area { max-height: 55vh; overflow-y: auto; background:#fff; border:1px solid #e0e0e0; border-radius:8px; padding:12px; }
     .msg-user { background:#e7f1ff; border-radius:8px; padding:10px 12px; margin:6px 0; }
     .msg-agent { background:#f1f3f5; border-radius:8px; padding:10px 12px; margin:6px 0; }
-    .file-pill { display:inline-block; background:#f8f9fa; border:1px solid #e0e0e0; border-radius:999px; padding:4px 10px; margin:3px; font-size:0.92rem; }
+    .file-pill { display:inline-flex; align-items:center; gap:8px; background:#f8f9fa; border:1px solid #e0e0e0; border-radius:999px; padding:4px 10px; margin:3px; font-size:0.92rem; }
+    .thumb { width:36px; height:24px; object-fit:cover; border-radius:4px; border:1px solid #ddd; }
   </style>
 </head>
 <body>
@@ -87,7 +88,8 @@
           <div class="card-header fw-semibold">📜 Conversation</div>
           <div class="card-body">
             <div class="chat-area" id="chat-area">
-              {% if chat_history and chat_history|length > 0 %}
+              {% set show_history = request.args.get('show') == '1' %}
+              {% if show_history and chat_history and chat_history|length > 0 %}
                 {% for m in chat_history %}
                   <div class="{{ 'msg-user' if m.role == 'user' else 'msg-agent' }}">
                     <div class="small text-muted mb-1">{{ m.role|capitalize }} • {{ m.timestamp }}</div>
@@ -130,8 +132,17 @@
       const fileListDiv = $('#file-list');
       fileListDiv.empty();
       if (selectedFiles.length === 0) return;
-      selectedFiles.forEach(f => {
-        const pill = $('<span>').addClass('file-pill').text('🖼️ ' + f.name + ' (' + Math.round(f.size/1024) + ' KB)');
+      selectedFiles.forEach(async f => {
+        const pill = $('<span>').addClass('file-pill');
+        const name = $('<span>').text(f.name + ' (' + Math.round(f.size/1024) + ' KB)');
+        // Build thumbnail
+        try {
+          const url = URL.createObjectURL(f);
+          const img = $('<img>').addClass('thumb').attr('src', url);
+          pill.append(img);
+        } catch {}
+        pill.prepend($('<span>').text('🖼️'));
+        pill.append(name);
         fileListDiv.append(pill);
       });
     }
@@ -195,8 +206,8 @@
             console.log('Model used:', data.usage.model_used, 'Tokens:', data.usage.total_tokens, 'Est. Cost:', data.usage.estimated_cost_usd);
           }
         } catch {}
-        // Reload to render updated chat history
-        window.location.href = '/five-star-agent';
+        // Reload to render updated chat history (explicitly enable rendering)
+        window.location.href = '/five-star-agent?show=1';
       } catch (err) {
         console.error(err);
         alert('Failed to send. Please try again.');

@@ -4,7 +4,7 @@ import base64
 import json
 import os
 from typing import List, Optional, Tuple, Dict, Any
-
+from research_agent.five_star_agent.prompt_manager_5_star import MAIN_SYSTEM_PROMPT, NEWS_AND_REPORT_BIAS as BIAS_TEMPLATE
 
 class FiveStarAgentController:
     """Controller for the Five Star swing-trading agent.
@@ -60,7 +60,7 @@ class FiveStarAgentController:
         # Determine provider and model
         selection = (model_choice or "").strip() or "gpt-4o-mini"
         provider = "openai" if not selection.lower().startswith("gemini") else "gemini"
-        requested_model = selection
+        requested_model = "gpt-4o" #todo:TEMP HARD CODED
 
         if provider == "openai":
             # OpenAI image-capable defaults
@@ -68,7 +68,7 @@ class FiveStarAgentController:
             model_used = requested_model
             if requested_model not in vision_defaults:
                 # Fallback for non-vision choices (e.g., 3.5, 4.1)
-                model_used = "gpt-4o"
+                model_used = "gpt-4o" #todo:TEMP HARD CODED
             reply, usage = self._openai_call(instructions, image_paths, model_used)
             reply = f"{reply}\n🤖 Model: {usage.get('model_used', model_used)}\n💰 Tokens: {usage.get('total_tokens', 'N/A')} | Est. Cost: ${usage.get('estimated_cost_usd', 0):.6f}"
             return reply, usage.get('model_used', model_used), usage
@@ -128,8 +128,11 @@ class FiveStarAgentController:
             return "Please paste or upload at least one weekly chart image to analyze."
 
         system_prompt = (
-            "ANSWER ACCURAETLY! "
+            MAIN_SYSTEM_PROMPT
         )
+        # Inject real-time bias string dynamically
+        bias_text = "Currently No Bias for this Stock"  # you define this
+        MAIN_PROMPT_WITH_BIAS = MAIN_SYSTEM_PROMPT.replace(BIAS_TEMPLATE, bias_text)
 
         try:
             response = client.chat.completions.create(
