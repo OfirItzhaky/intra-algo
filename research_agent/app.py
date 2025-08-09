@@ -1177,10 +1177,11 @@ def five_star_analyze():
             print(f"[FiveStar][ERROR] Failed to init controller: {e}")
             return jsonify({"ok": False, "error": f"Failed to init controller: {e}"}), 500
         try:
+            session_id = session.get('_id') or request.cookies.get('session') or 'fivestar'
             if model_choice:
-                agent_reply, model_used, usage = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice=model_choice)
+                agent_reply, model_used, usage = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice=model_choice, session_id=session_id)
             else:
-                agent_reply, model_used, usage = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice="gpt-4o-mini")
+                agent_reply, model_used, usage = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice="gpt-4o-mini", session_id=session_id)
         except Exception as e:
             print(f"[FiveStar][ERROR] analyze_with_model failed: {e}")
             return jsonify({"ok": False, "error": f"analyze_with_model failed: {e}"}), 500

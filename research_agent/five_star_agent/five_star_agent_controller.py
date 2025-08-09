@@ -6,9 +6,11 @@ import os
 from typing import List, Optional, Tuple, Dict, Any
 from research_agent.five_star_agent.prompt_manager_5_star import MAIN_SYSTEM_PROMPT, NEWS_AND_REPORT_BIAS as BIAS_TEMPLATE
 try:
-    # Optional: LangChain integration for future memory/agents
+    # Optional: LangChain integration for OpenAI with conversation memory
     from langchain_openai import ChatOpenAI
     from langchain_core.messages import HumanMessage, SystemMessage
+    from langchain_core.chat_history import InMemoryChatMessageHistory
+    from langchain_core.runnables import RunnableWithMessageHistory
     LANGCHAIN_AVAILABLE = True
 except Exception:
     LANGCHAIN_AVAILABLE = False
@@ -58,7 +60,7 @@ class FiveStarAgentController:
         reply, _ = self.analyze_with_model(instructions=instructions, image_paths=image_paths, model_choice="gpt-4o-mini")
         return reply
 
-    def analyze_with_model(self, instructions: str, image_paths: List[str], model_choice: str) -> Tuple[str, str, Dict[str, Any]]:
+    def analyze_with_model(self, instructions: str, image_paths: List[str], model_choice: str, session_id: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
         """Analyze with chosen model; returns (reply_text, model_used, usage).
 
         Supports OpenAI (gpt-4o family) and Gemini (1.5 pro/flash). Falls back to a
@@ -76,8 +78,12 @@ class FiveStarAgentController:
             if requested_model not in vision_defaults:
                 # Fallback for non-vision choices (e.g., 3.5, 4.1)
                 model_used = "gpt-4o" #todo:TEMP HARD CODED
-            # For now we still call native OpenAI path to preserve image support
-            reply, usage = self._openai_call(instructions, image_paths, model_used)
+            # Prefer LangChain (if available) to enable conversation memory
+            if LANGCHAIN_AVAILABLE:
+                reply, usage = self._openai_call_langchain(instructions, image_paths, model_used, session_id or "default")
+            else:
+                # Fallback to native SDK path
+                reply, usage = self._openai_call(instructions, image_paths, model_used)
             reply = f"{reply}\n🤖 Model: {usage.get('model_used', model_used)}\n💰 Tokens: {usage.get('total_tokens', 'N/A')} | Est. Cost: ${usage.get('estimated_cost_usd', 0):.6f}"
             return reply, usage.get('model_used', model_used), usage
         else:
@@ -94,6 +100,138 @@ class FiveStarAgentController:
             return reply, usage.get('model_used', model_used), usage
 
     # --- Provider implementations ---
+    _history_store: Dict[str, InMemoryChatMessageHistory] = {}
+
+    def _get_history(self, session_id: str) -> InMemoryChatMessageHistory:
+        hist = self._history_store.get(session_id)
+        if hist is None:
+            hist = InMemoryChatMessageHistory()
+            self._history_store[session_id] = hist
+        return hist
+
+    def _openai_call_langchain(self, instructions: str, image_paths: List[str], model_used: str, session_id: str) -> Tuple[str, Dict[str, Any]]:
+        """OpenAI via LangChain with message history. Supports images using image_url blocks.
+
+        Returns (reply_text, usage_dict) like the native path.
+        """
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return (
+                "❌ Missing OpenAI API key. Set environment variable OPENAI_API_KEY to enable analysis.",
+                {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
+            )
+
+        try:
+            llm = ChatOpenAI(model=model_used, temperature=0.2)
+        except Exception as e:
+            # Fallback to native path if LC model init fails
+            return self._openai_call(instructions, image_paths, model_used)
+
+        # Compose human content blocks (text + image urls)
+        human_content: List[Dict[str, Any]] = []
+        if (instructions or "").strip():
+            human_content.append({"type": "text", "text": instructions})
+        attached_names: List[str] = []
+        for p in image_paths:
+            try:
+                with open(p, "rb") as f:
+                    data = f.read()
+                b64 = base64.b64encode(data).decode("utf-8")
+                human_content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+                attached_names.append(os.path.basename(p))
+            except Exception:
+                continue
+
+        if not human_content:
+            # No content – mirror native behavior
+            return (
+                "Please paste or upload at least one weekly chart image to analyze.",
+                {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
+            )
+
+        messages = [
+            SystemMessage(content=MAIN_SYSTEM_PROMPT),
+            HumanMessage(content=human_content),
+        ]
+
+        chain = RunnableWithMessageHistory(
+            llm,
+            get_session_history=self._get_history,
+            input_messages_key="messages",
+        )
+
+        try:
+            resp = chain.invoke({"messages": messages}, config={"configurable": {"session_id": session_id}})
+        except Exception:
+            # Fallback to native path on any LC runtime issue
+            return self._openai_call(instructions, image_paths, model_used)
+
+        # Extract text
+        raw_text = getattr(resp, "content", "") or ""
+
+        # Usage metadata (best-effort: handle multiple LC/OpenAI schema variants)
+        meta = getattr(resp, "response_metadata", {}) or {}
+        token_usage = meta.get("token_usage", {}) or {}
+        # Try common keys
+        prompt_tokens = token_usage.get("prompt_tokens") or meta.get("prompt_tokens")
+        completion_tokens = token_usage.get("completion_tokens") or meta.get("completion_tokens")
+        # Some responses expose usage under additional_kwargs
+        if prompt_tokens is None or completion_tokens is None:
+            ak = getattr(resp, "additional_kwargs", {}) or {}
+            usage = ak.get("usage") or ak.get("token_usage") or {}
+            prompt_tokens = prompt_tokens or usage.get("prompt_tokens")
+            completion_tokens = completion_tokens or usage.get("completion_tokens")
+        usage_dict = self._estimate_cost(model_used, prompt_tokens, completion_tokens)
+
+        # Try parse JSON block as before
+        parsed = None
+        try:
+            txt = raw_text
+            if "```" in txt:
+                txt = txt.split("```", 2)[1]
+                txt = "\n".join(line for line in txt.splitlines() if not line.strip().lower().startswith("json"))
+            parsed = json.loads(txt)
+        except Exception:
+            parsed = None
+
+        score = recommendation = reasoning = close_note = None
+        if isinstance(parsed, dict):
+            score = parsed.get("score")
+            recommendation = parsed.get("recommendation")
+            reasoning = parsed.get("reasoning")
+            close_note = parsed.get("close_note")
+
+        def to_int_0_5(val):
+            try:
+                n = int(val)
+                return 0 if n < 0 else 5 if n > 5 else n
+            except Exception:
+                return None
+
+        score = to_int_0_5(score)
+        if recommendation:
+            rec = str(recommendation).strip().lower()
+            recommendation = "Yes" if rec in ["yes", "y", "true", "1"] else ("No" if rec else None)
+
+        if score is not None and recommendation and reasoning:
+            parts = [
+                "✅ Received charts: " + ", ".join(attached_names) if attached_names else "✅ Received charts",
+                f"📊 Score: {score}/5",
+                f"🟢 Swing-Trade Recommendation: {recommendation}",
+                f"📝 Reasoning: {reasoning}",
+            ]
+            if close_note:
+                parts.append(f"ℹ️ Close: {close_note}")
+            if instructions:
+                parts.append("📌 Instructions acknowledged: " + (instructions[:140] + ("..." if len(instructions) > 140 else "")))
+            return "\n".join(parts), usage_dict
+
+        ack = (instructions[:140] + ("..." if instructions and len(instructions) > 140 else "")) if instructions else ""
+        return (
+            ("✅ Received charts: " + ", ".join(attached_names) + "\n" if attached_names else "") +
+            (f"📝 Model Response: {raw_text}\n" if raw_text else "📝 Model Response: (empty)\n") +
+            (f"📌 Instructions acknowledged: {ack}" if ack else "")
+        ), usage_dict
     def _openai_call(self, instructions: str, image_paths: List[str], model_used: str) -> Tuple[str, Dict[str, Any]]:
         """OpenAI implementation using chat.completions (GPT-4o family).
 
@@ -355,7 +493,7 @@ class FiveStarAgentController:
     def _estimate_cost(self, model_used: str, prompt_tokens: Optional[int], completion_tokens: Optional[int]) -> Dict[str, Any]:
         # Prices per 1K tokens (approximate; adjust as needed)
         pricing = {
-            # OpenAI
+            # OpenAI (baseline public list prices; update as needed)
             "gpt-4o": {"input_per_1k": 0.005, "output_per_1k": 0.015},
             "gpt-4o-mini": {"input_per_1k": 0.00015, "output_per_1k": 0.00060},
             "gpt-4.1": {"input_per_1k": 0.005, "output_per_1k": 0.015},
@@ -366,7 +504,32 @@ class FiveStarAgentController:
             "gemini-1.5-pro-latest": {"input_per_1k": 0.0035, "output_per_1k": 0.0100},
             "gemini-1.5-flash-latest": {"input_per_1k": 0.00035, "output_per_1k": 0.00105},
         }
-        price = pricing.get(model_used) or pricing.get(model_used.split(":")[0], None)
+
+        # Normalize model string to a pricing key
+        key = model_used or ""
+        key_lower = key.lower()
+        if key_lower.startswith("gpt-4o-mini"):
+            norm = "gpt-4o-mini"
+        elif key_lower.startswith("gpt-4o"):
+            norm = "gpt-4o"
+        elif key_lower.startswith("gpt-4.1"):
+            norm = "gpt-4.1"
+        elif key_lower.startswith("gpt-3.5-turbo"):
+            norm = "gpt-3.5-turbo"
+        elif key_lower.startswith("gemini-1.5-pro"):
+            norm = "gemini-1.5-pro"
+        elif key_lower.startswith("gemini-1.5-flash"):
+            norm = "gemini-1.5-flash"
+        else:
+            # Fallback for prefixes like "models/gemini-..." or vendor-style names
+            if "gemini-1.5-pro" in key_lower:
+                norm = "gemini-1.5-pro"
+            elif "gemini-1.5-flash" in key_lower:
+                norm = "gemini-1.5-flash"
+            else:
+                norm = key
+
+        price = pricing.get(norm)
         pt = int(prompt_tokens or 0)
         ct = int(completion_tokens or 0)
         total = pt + ct
