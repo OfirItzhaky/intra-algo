@@ -1144,15 +1144,26 @@ def five_star_analyze():
             f.save(save_path)
             saved_filepaths.append(save_path)
             saved_names.append(filename)
-        print(f"[FiveStar] saved files: {saved_names}")
+        print(f"[FiveStar][IMAGES] New uploaded files: {saved_filepaths}")
 
-        # Reuse prior images if none uploaded this turn
-        prior_filepaths = session.get('five_star_agent_images', [])
+        # Determine prior session paths (if any), and sanitize to those that still exist
+        prior_filepaths = session.get('five_star_agent_images', []) or []
+        prior_filepaths = [p for p in prior_filepaths if os.path.exists(p)]
         prior_names = [os.path.basename(p) for p in prior_filepaths]
+
+        # If no new images this turn, reuse prior (already sanitized)
+        reused_from_session = False
         if len(saved_filepaths) == 0 and prior_filepaths:
             print(f"[FiveStar] no new images uploaded; reusing prior {len(prior_filepaths)} images")
             saved_filepaths = prior_filepaths
             saved_names = prior_names
+            reused_from_session = True
+            print(f"[FiveStar][IMAGES] Reused from session: {prior_filepaths}")
+
+        # Final sanitize for current set (only store/keep paths that exist)
+        saved_filepaths = [p for p in saved_filepaths if os.path.exists(p)]
+        saved_names = [os.path.basename(p) for p in saved_filepaths]
+        print(f"[FiveStar][IMAGES] Sent to LLM: {saved_filepaths}")
 
         # If still none, return helpful error
         if len(saved_filepaths) == 0:
@@ -1161,14 +1172,15 @@ def five_star_analyze():
             return jsonify({"ok": False, "error": msg, "code": "NO_IMAGES"}), 400
 
         # Append user message to chat history only if we can proceed
-        _append_fivestar_message('user', instructions, images=saved_names)
+        # Suppress reused filenames in the UI (they are still used internally)
+        _append_fivestar_message('user', instructions, images=([] if reused_from_session else saved_names))
 
-        # Update session image context (union of previous and new)
+        # Override session image context with only the current, existing paths
         try:
-            merged = list({*prior_filepaths, *saved_filepaths}) if prior_filepaths else list(saved_filepaths)
-            session['five_star_agent_images'] = merged
+            session['five_star_agent_images'] = list(saved_filepaths)
+            print(f"[FiveStar] session images set: {session['five_star_agent_images']}")
         except Exception as _e:
-            print(f"[FiveStar][WARN] failed to merge image context: {_e}")
+            print(f"[FiveStar][WARN] failed setting session images: {_e}")
 
         # Call controller with LLM
         try:
@@ -1182,9 +1194,17 @@ def five_star_analyze():
                 agent_reply, model_used, usage = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice=model_choice, session_id=session_id)
             else:
                 agent_reply, model_used, usage = controller.analyze_with_model(instructions=instructions, image_paths=saved_filepaths, model_choice="gpt-4o-mini", session_id=session_id)
+
+            # If we reused images, strip the explicit filename echo from the top of reply
+            if reused_from_session and isinstance(agent_reply, str) and agent_reply.startswith("✅ Received charts:"):
+                try:
+                    agent_reply = "\n".join(agent_reply.splitlines()[1:])
+                except Exception:
+                    pass
         except Exception as e:
-            print(f"[FiveStar][ERROR] analyze_with_model failed: {e}")
-            return jsonify({"ok": False, "error": f"analyze_with_model failed: {e}"}), 500
+            provider = 'Gemini' if (model_choice or '').lower().startswith('gemini') else 'OpenAI'
+            print(f"[FiveStar][ERROR] analyze_with_model failed ({provider}): {e}")
+            return jsonify({"ok": False, "error": f"{provider} inference failed: {e}"}), 500
         # Append to chat including model used (already appended in reply, but keep metadata minimal)
         _append_fivestar_message('agent', agent_reply)
 
@@ -1200,30 +1220,33 @@ def five_star_analyze():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-@app.route("/five_star/reset", methods=["POST"])
-def five_star_reset():
-    """Clear Five Star Agent session memory and uploaded images only.
+import os
+from flask import session, redirect
 
-    Does not affect other agents or global app state.
-    """
+@app.route('/five_star/reset', methods=['POST'])
+def reset_five_star_session():
+    print("[FiveStar][RESET] Clearing session memory and uploaded images")
     try:
-        # Clear chat memory for Five Star Agent
-        session['five_star_agent_chat'] = []
+        print(f"[FiveStar][RESET] Current session paths: {session.get('five_star_agent_images', [])}")
+    except Exception:
+        pass
 
-        # Remove uploaded images for Five Star Agent
+    # Remove saved image files
+    image_paths = session.pop('five_star_agent_images', [])
+    for path in image_paths:
         try:
-            for filename in os.listdir(FIVESTAR_UPLOAD_FOLDER):
-                file_path = os.path.join(FIVESTAR_UPLOAD_FOLDER, filename)
-                if os.path.isfile(file_path):
-                    os.unlink(file_path)
-        except Exception as cleanup_err:
-            print(f"[FiveStar] Reset cleanup error: {cleanup_err}")
+            os.remove(path)
+            print(f"[FiveStar][RESET] Deleted file: {path}")
+        except Exception as e:
+            print(f"[FiveStar][RESET] Failed to delete file {path}: {e}")
 
-        # Redirect back to the agent page
-        return redirect(url_for('five_star_agent'))
-    except Exception as e:
-        print(f"[FiveStar] Reset error: {e}")
-        return redirect(url_for('five_star_agent'))
+    # Clear chat memory
+    session.pop('five_star_agent_chat', None)
+    session['five_star_agent_images'] = []
+
+    # After reset, send user back with a confirmation flag
+    return redirect('/five-star-agent?reset=1')
+
 
 @app.route("/dual_agent_scalp_analysis", methods=["POST"])
 def dual_agent_scalp_analysis():

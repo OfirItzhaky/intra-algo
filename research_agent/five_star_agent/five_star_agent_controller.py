@@ -67,17 +67,13 @@ class FiveStarAgentController:
         multimodal-capable model if a non-vision model is selected while images are present.
         """
         # Determine provider and model
-        selection = (model_choice or "").strip() or "gpt-4o-mini"
+        selection = (model_choice or "").strip() or "gpt-4o"
         provider = "openai" if not selection.lower().startswith("gemini") else "gemini"
-        requested_model = "gpt-4o" #todo:TEMP HARD CODED
+        requested_model = selection
 
         if provider == "openai":
             # OpenAI image-capable defaults
-            vision_defaults = ["gpt-4o", "gpt-4o-mini"]
             model_used = requested_model
-            if requested_model not in vision_defaults:
-                # Fallback for non-vision choices (e.g., 3.5, 4.1)
-                model_used = "gpt-4o" #todo:TEMP HARD CODED
             # Prefer LangChain (if available) to enable conversation memory
             if LANGCHAIN_AVAILABLE:
                 reply, usage = self._openai_call_langchain(instructions, image_paths, model_used, session_id or "default")
@@ -269,6 +265,10 @@ class FiveStarAgentController:
                 "image_url": {"url": data_url}
             })
             attached_names.append(os.path.basename(p))
+        try:
+            print(f"[FiveStar][IMAGES] OpenAI payload includes image blocks: {len(attached_names) > 0}")
+        except Exception:
+            pass
 
         if not attached_names:
             # Allow text-only follow-ups
@@ -406,6 +406,10 @@ class FiveStarAgentController:
                 attached_names.append(os.path.basename(p))
             except Exception:
                 continue
+        try:
+            print(f"[FiveStar][IMAGES] Gemini payload includes image parts: {len(attached_names) > 0}")
+        except Exception:
+            pass
 
         if not attached_names:
             # Allow text-only follow-ups
@@ -494,6 +498,7 @@ class FiveStarAgentController:
         # Prices per 1K tokens (approximate; adjust as needed)
         pricing = {
             # OpenAI (baseline public list prices; update as needed)
+            "gpt-5": {"input_per_1k": 0.015, "output_per_1k": 0.045},
             "gpt-4o": {"input_per_1k": 0.005, "output_per_1k": 0.015},
             "gpt-4o-mini": {"input_per_1k": 0.00015, "output_per_1k": 0.00060},
             "gpt-4.1": {"input_per_1k": 0.005, "output_per_1k": 0.015},
@@ -508,7 +513,9 @@ class FiveStarAgentController:
         # Normalize model string to a pricing key
         key = model_used or ""
         key_lower = key.lower()
-        if key_lower.startswith("gpt-4o-mini"):
+        if key_lower.startswith("gpt-5"):
+            norm = "gpt-5"
+        elif key_lower.startswith("gpt-4o-mini"):
             norm = "gpt-4o-mini"
         elif key_lower.startswith("gpt-4o"):
             norm = "gpt-4o"

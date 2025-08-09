@@ -2,6 +2,9 @@
 <html>
 <head>
   <meta charset="utf-8" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>🌟 Five Star Agent</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -21,6 +24,11 @@
 </head>
 <body>
   <div class="container py-3">
+    {% if request.args.get('reset') == '1' %}
+    <div class="alert alert-success" role="alert">
+      ✅ Session cleared. Memory and uploaded files were deleted.
+    </div>
+    {% endif %}
     <div class="d-flex align-items-center mb-3">
       <a href="/" class="btn btn-outline-secondary me-2">← Back</a>
       <h2 class="mb-0 me-3">🌟 Five Star Agent</h2>
@@ -42,37 +50,31 @@
               </div>
               <div class="mb-3">
                 <label class="form-label fw-semibold">🤖 Model</label>
+                {% set selected_model = request.args.get('model', 'gpt-4o') %}
                 <div class="d-flex flex-wrap gap-3">
                   <div class="form-check">
-                    <input class="form-check-input" type="radio" name="model_choice" id="m-4o" value="gpt-4o" checked>
+                    <input class="form-check-input" type="radio" name="model_choice" id="m-5" value="gpt-5-2025-08" {% if selected_model.startswith('gpt-5') %}checked{% endif %}>
+                    <label class="form-check-label" for="m-5">gpt-5-2025-08</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="model_choice" id="m-4o" value="gpt-4o" {% if selected_model.startswith('gpt-4o') %}checked{% endif %}>
                     <label class="form-check-label" for="m-4o">gpt-4o</label>
                   </div>
                   <div class="form-check">
-                    <input class="form-check-input" type="radio" name="model_choice" id="m-4o-mini" value="gpt-4o-mini">
-                    <label class="form-check-label" for="m-4o-mini">gpt-4o-mini</label>
-                  </div>
-                  <div class="form-check">
-                    <input class="form-check-input" type="radio" name="model_choice" id="m-4.1" value="gpt-4.1">
-                    <label class="form-check-label" for="m-4.1">gpt-4.1</label>
-                  </div>
-                  <div class="form-check">
-                    <input class="form-check-input" type="radio" name="model_choice" id="m-3.5" value="gpt-3.5-turbo">
-                    <label class="form-check-label" for="m-3.5">gpt-3.5-turbo</label>
-                  </div>
-                  <div class="form-check">
-                    <input class="form-check-input" type="radio" name="model_choice" id="m-g-pro" value="gemini-1.5-pro-latest">
+                    <input class="form-check-input" type="radio" name="model_choice" id="m-g-pro" value="gemini-1.5-pro-latest" {% if selected_model.startswith('gemini-1.5-pro') %}checked{% endif %}>
                     <label class="form-check-label" for="m-g-pro">gemini-1.5-pro-latest</label>
                   </div>
                   <div class="form-check">
-                    <input class="form-check-input" type="radio" name="model_choice" id="m-g-flash" value="gemini-1.5-flash-latest">
+                    <input class="form-check-input" type="radio" name="model_choice" id="m-g-flash" value="gemini-1.5-flash-latest" {% if selected_model.startswith('gemini-1.5-flash') %}checked{% endif %}>
                     <label class="form-check-label" for="m-g-flash">gemini-1.5-flash-latest</label>
                   </div>
                 </div>
+                <!-- TODO: When OpenAI releases an image-capable GPT-5, add it here. -->
               </div>
               <div id="file-list" class="mb-3"></div>
               <div class="mb-3">
                 <label for="instructions" class="form-label fw-semibold">💬 Instructions (HE/EN)</label>
-                <textarea id="instructions" name="instructions" rows="4" class="form-control" placeholder="e.g., בדוק אם יש טרנד עולה ברור... / Check for strong uptrend..."></textarea>
+                <textarea id="instructions" name="instructions" rows="4" class="form-control" placeholder="e.g., בדוק אם יש טרנד עולה ברור... / Check for strong uptrend..." autocomplete="off"></textarea>
               </div>
               <div class="d-flex gap-2">
                 <button id="send-btn" type="submit" class="btn btn-primary">Send to Agent</button>
@@ -114,6 +116,16 @@
   </div>
 
   <script>
+    // Clear UI state on load
+    window.addEventListener('load', () => {
+      try {
+        // Clear any retained file list / pills
+        selectedFiles.length = 0;
+        $('#file-list').empty();
+        // Clear form fields
+        $('#instructions').val('');
+      } catch {}
+    });
     // In-memory file store (supports drag/drop + paste + picker)
     const selectedFiles = [];
 
@@ -206,8 +218,9 @@
             console.log('Model used:', data.usage.model_used, 'Tokens:', data.usage.total_tokens, 'Est. Cost:', data.usage.estimated_cost_usd);
           }
         } catch {}
-        // Reload to render updated chat history (explicitly enable rendering)
-        window.location.href = '/five-star-agent?show=1';
+        // Reload to render updated chat history (explicitly enable rendering and keep model selection)
+        const qModel = encodeURIComponent(model || 'gpt-4o');
+        window.location.href = '/five-star-agent?show=1&model=' + qModel;
       } catch (err) {
         console.error(err);
         alert('Failed to send. Please try again.');
