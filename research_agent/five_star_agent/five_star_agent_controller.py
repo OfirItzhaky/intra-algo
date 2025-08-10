@@ -71,7 +71,7 @@ class FiveStarAgentController:
             return None
 
 
-    def analyze_with_model(self, instructions: str, image_paths: List[str], model_choice: str, session_id: Optional[str] = None, image_summary: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
+    def analyze_with_model(self, instructions: str, image_paths: List[str], model_choice: str, session_id: Optional[str] = None, image_summary: Optional[str] = None, active_user: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
         """Analyze with chosen model; returns (reply_text, model_used, usage).
 
         Supports OpenAI (gpt-4o family) and Gemini (1.5 pro/flash). Falls back to a
@@ -107,10 +107,10 @@ class FiveStarAgentController:
             model_used = requested_model
             # Prefer LangChain (if available) to enable conversation memory
             if LANGCHAIN_AVAILABLE:
-                reply, usage = self._openai_call_langchain(instructions, image_paths, model_used, session_id or "default", image_summary=image_summary)
+                reply, usage = self._openai_call_langchain(instructions, image_paths, model_used, session_id or "default", image_summary=image_summary, active_user=active_user)
             else:
                 # Fallback to native SDK path
-                reply, usage = self._openai_call(instructions, image_paths, model_used, image_summary=image_summary)
+                reply, usage = self._openai_call(instructions, image_paths, model_used, image_summary=image_summary, active_user=active_user)
             reply = f"{reply}\n🤖 Model: {usage.get('model_used', model_used)}\n💰 Tokens: {usage.get('total_tokens', 'N/A')} | Est. Cost: ${usage.get('estimated_cost_usd', 0):.6f}"
             return reply, usage.get('model_used', model_used), usage
         else:
@@ -153,12 +153,20 @@ class FiveStarAgentController:
             self._history_store[session_id] = hist
         return hist
 
-    def _openai_call_langchain(self, instructions: str, image_paths: List[str], model_used: str, session_id: str, image_summary: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+    def _openai_call_langchain(self, instructions: str, image_paths: List[str], model_used: str, session_id: str, image_summary: Optional[str] = None, active_user: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
         """OpenAI via LangChain with message history. Supports images using image_url blocks.
 
         Returns (reply_text, usage_dict) like the native path.
         """
-        api_key = os.getenv("OPENAI_API_KEY")
+        # Select OpenAI key based on active user (supports itz01 override)
+        active_user = (active_user or os.getenv("RESEARCH_AGENT_ACTIVE_USER") or os.getenv("USERNAME") or "").strip().lower()
+        api_key = None
+        if active_user == "itz01":
+            api_key = os.getenv("ITZ_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+            print("[FiveStar][KEY] Using ITZ_OPENAI_API_KEY for user itz01")
+        else:
+            api_key = os.getenv("OPENAI_API_KEY")
+            print("[FiveStar][KEY] Using OPENAI_API_KEY for user", active_user or "(unknown)")
         if not api_key:
             return (
                 "❌ Missing OpenAI API key. Set environment variable OPENAI_API_KEY to enable analysis.",
@@ -166,10 +174,12 @@ class FiveStarAgentController:
             )
 
         try:
-            llm = ChatOpenAI(model=model_used, temperature=0.2)
+            # Pass through key for LC as well
+            llm = ChatOpenAI(model=model_used, temperature=0.2, api_key=api_key)
         except Exception as e:
             # Fallback to native path if LC model init fails
-            return self._openai_call(instructions, image_paths, model_used)
+            print(f"[FiveStar][FALLBACK] OpenAI LC init failed → native path. err={e}")
+            return self._openai_call(instructions, image_paths, model_used, image_summary=image_summary, active_user=active_user)
 
         # Compose human content blocks (text + image urls)
         human_content: List[Dict[str, Any]] = []
@@ -231,7 +241,8 @@ class FiveStarAgentController:
             resp = chain.invoke({"messages": messages}, config={"configurable": {"session_id": session_id}})
         except Exception as e:
             # Fallback to native path on any LC runtime issue
-            return self._openai_call(instructions, image_paths, model_used)
+            print(f"[FiveStar][FALLBACK] OpenAI LC invoke failed → native path. err={e}")
+            return self._openai_call(instructions, image_paths, model_used, image_summary=image_summary, active_user=active_user)
 
         # Extract text
         raw_text = getattr(resp, "content", "") or ""
@@ -348,13 +359,21 @@ class FiveStarAgentController:
             (f"📝 Model Response: {raw_text}\n" if raw_text else "📝 Model Response: (empty)\n") +
             (f"📌 Instructions acknowledged: {ack}" if ack else "")
         ), usage_dict
-    def _openai_call(self, instructions: str, image_paths: List[str], model_used: str, image_summary: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+
+    def _openai_call(self, instructions: str, image_paths: List[str], model_used: str, image_summary: Optional[str] = None, active_user: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
         """OpenAI implementation using chat.completions (GPT-4o family).
 
         Returns: (reply_text, usage_dict)
         usage_dict keys: prompt_tokens, completion_tokens, total_tokens, model_used, estimated_cost_usd
         """
-        api_key = os.getenv("OPENAI_API_KEY")
+        # Choose API key based on active user (passed from app) with safe fallback
+        active_user_lc = (active_user or os.getenv("RESEARCH_AGENT_ACTIVE_USER") or os.getenv("USERNAME") or "").strip().lower()
+        if active_user_lc == "itz01":
+            api_key = os.getenv("ITZ_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+            print("[FiveStar][KEY] Using ITZ_OPENAI_API_KEY for user itz01")
+        else:
+            api_key = os.getenv("OPENAI_API_KEY")
+            print(f"[FiveStar][KEY] Using OPENAI_API_KEY for user {active_user_lc or '(unknown)'}")
         if not api_key:
             return (
                 "❌ Missing OpenAI API key. Set environment variable OPENAI_API_KEY to enable analysis.\n"

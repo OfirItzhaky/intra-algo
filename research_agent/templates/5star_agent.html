@@ -60,6 +60,7 @@
                     <input class="form-check-input" type="radio" name="model_choice" id="m-4o" value="gpt-4o" {% if selected_model.startswith('gpt-4o') %}checked{% endif %}>
                     <label class="form-check-label" for="m-4o">gpt-4o</label>
                   </div>
+                  {% if active_user != 'itz01' %}
                   <div class="form-check">
                     <input class="form-check-input" type="radio" name="model_choice" id="m-g-pro" value="gemini-1.5-pro-latest" {% if selected_model.startswith('gemini-1.5-pro') %}checked{% endif %}>
                     <label class="form-check-label" for="m-g-pro">gemini-1.5-pro-latest</label>
@@ -68,6 +69,7 @@
                     <input class="form-check-input" type="radio" name="model_choice" id="m-g-flash" value="gemini-1.5-flash-latest" {% if selected_model.startswith('gemini-1.5-flash') %}checked{% endif %}>
                     <label class="form-check-label" for="m-g-flash">gemini-1.5-flash-latest</label>
                   </div>
+                  {% endif %}
                 </div>
                 <!-- TODO: When OpenAI releases an image-capable GPT-5, add it here. -->
               </div>

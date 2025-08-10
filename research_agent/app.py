@@ -1177,8 +1177,9 @@ def five_star_agent():
         _append_fivestar_message('agent', agent_reply)
 
     chat_history = _get_fivestar_chat_history()
-    # Render dedicated template
-    return render_template("5star_agent.html", chat_history=chat_history)
+    # Active user for model gating
+    active_user = (session.get("username") or os.getenv("RESEARCH_AGENT_ACTIVE_USER") or "").strip().lower()
+    return render_template("5star_agent.html", chat_history=chat_history, active_user=active_user)
 
 
 @app.route("/five_star/analyze", methods=["POST"])
@@ -1302,7 +1303,8 @@ def five_star_analyze():
                     image_paths=([] if inject_summary else saved_filepaths),
                     model_choice=model_choice,
                     session_id=session_id,
-                    image_summary=(image_summary if inject_summary else None)
+                    image_summary=(image_summary if inject_summary else None),
+                    active_user=(session.get("username") or os.getenv("RESEARCH_AGENT_ACTIVE_USER") or "").strip().lower()
                 )
             else:
                 agent_reply, model_used, usage = controller.analyze_with_model(
@@ -1310,7 +1312,8 @@ def five_star_analyze():
                     image_paths=([] if inject_summary else saved_filepaths),
                     model_choice="gpt-4o-mini",
                     session_id=session_id,
-                    image_summary=(image_summary if inject_summary else None)
+                    image_summary=(image_summary if inject_summary else None),
+                    active_user=(session.get("username") or os.getenv("RESEARCH_AGENT_ACTIVE_USER") or "").strip().lower()
                 )
 
             # If we reused images, strip the explicit filename echo from the top of reply
