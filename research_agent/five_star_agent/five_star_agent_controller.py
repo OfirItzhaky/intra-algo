@@ -4,15 +4,18 @@ import base64
 import json
 import os
 from typing import List, Optional, Tuple, Dict, Any
+
+import tiktoken
+
 from research_agent.five_star_agent.prompt_manager_5_star import MAIN_SYSTEM_PROMPT, NEWS_AND_REPORT_BIAS as BIAS_TEMPLATE
 try:
     # Optional: LangChain integration for OpenAI with conversation memory
     from langchain_openai import ChatOpenAI
     from langchain_core.messages import HumanMessage, SystemMessage
     from langchain_core.chat_history import InMemoryChatMessageHistory
-    from langchain_core.runnables import RunnableWithMessageHistory
+    from langchain_core.runnables import RunnableWithMessageHistory, RunnableLambda
     LANGCHAIN_AVAILABLE = True
-except Exception:
+except Exception as e:
     LANGCHAIN_AVAILABLE = False
 
 class FiveStarAgentController:
@@ -24,6 +27,9 @@ class FiveStarAgentController:
     """
 
     REQUIRED_SOURCES = ["ProRealTime", "StockCharts", "Finviz"]
+
+    def _format_summary_block(self, summary: str) -> str:
+        return f"Context from previous chart analysis (summary):\n{summary}"
 
     def generate_placeholder_response(self, instructions: str, images: List[str]) -> str:
         """Return a mock agent response for the provided images + instructions."""
@@ -52,13 +58,9 @@ class FiveStarAgentController:
             b64 = base64.b64encode(data).decode("utf-8")
             # Default to PNG for data URL; browser/LLM will handle
             return f"data:image/png;base64,{b64}"
-        except Exception:
+        except Exception as e:
             return None
 
-    def analyze_with_llm(self, instructions: str, image_paths: List[str]) -> str:
-        """Call OpenAI model with charts and instructions; return formatted reply (legacy)."""
-        reply, _ = self.analyze_with_model(instructions=instructions, image_paths=image_paths, model_choice="gpt-4o-mini")
-        return reply
 
     def analyze_with_model(self, instructions: str, image_paths: List[str], model_choice: str, session_id: Optional[str] = None, image_summary: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
         """Analyze with chosen model; returns (reply_text, model_used, usage).
@@ -66,6 +68,26 @@ class FiveStarAgentController:
         Supports OpenAI (gpt-4o family) and Gemini (1.5 pro/flash). Falls back to a
         multimodal-capable model if a non-vision model is selected while images are present.
         """
+        try:
+            print(
+                f"[FiveStar][DEBUG] analyze_with_model: Session={session_id or 'default'} | "
+                f"Model selected={model_choice} | Images={image_paths} | Summary injected={bool(image_summary)}"
+            )
+        except Exception as e:
+            pass
+
+        # If we have a cached summary and no images for this turn, prepend the
+        # summary text to the instructions and avoid passing it separately to
+        # lower-level calls to prevent duplicate injection.
+        if image_summary and not image_paths:
+            try:
+                summary_block = self._format_summary_block(image_summary)
+                instructions = f"{summary_block}\n\n{instructions or ''}"
+                print(f"[FiveStar][OPT] Prepended summary to instructions (no images). words={len(summary_block.split())}")
+            except Exception as e:
+                pass
+            # Prevent duplicate injection in lower-level functions
+            image_summary = None
         # Determine provider and model
         selection = (model_choice or "").strip() or "gpt-4o"
         provider = "openai" if not selection.lower().startswith("gemini") else "gemini"
@@ -125,10 +147,11 @@ class FiveStarAgentController:
 
         # Compose human content blocks (text + image urls)
         human_content: List[Dict[str, Any]] = []
+        # Prepend summary if present
+        if image_summary:
+            human_content.append({"type": "text", "text": self._format_summary_block(image_summary)})
         if (instructions or "").strip():
             human_content.append({"type": "text", "text": instructions})
-        if image_summary:
-            human_content.append({"type": "text", "text": f"Context from previous chart analysis (summary):\n{image_summary}"})
         attached_names: List[str] = []
         for p in image_paths:
             try:
@@ -137,7 +160,7 @@ class FiveStarAgentController:
                 b64 = base64.b64encode(data).decode("utf-8")
                 human_content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
                 attached_names.append(os.path.basename(p))
-            except Exception:
+            except Exception as e:
                 continue
 
         if not human_content:
@@ -152,15 +175,35 @@ class FiveStarAgentController:
             HumanMessage(content=human_content),
         ]
 
+        # Diagnostics: LC mode inputs
+        try:
+            text_len = sum(len(block.get("text", "")) for block in human_content if isinstance(block, dict) and block.get("type") == "text")
+            print(
+                f"[FiveStar][OPT] LangChain Mode: Using image summary: {bool(image_summary)} | "
+                f"Image block count: {len([b for b in human_content if isinstance(b, dict) and b.get('type') == 'image_url'])} | "
+                f"Text size (chars): {text_len}"
+            )
+        except Exception as e:
+            pass
+
+        # Build LCEL: extract list[BaseMessage] from dict → chat model
+        extract_messages = RunnableLambda(lambda x: x["messages"])  # x is a dict with key 'messages'
+        pipeline = extract_messages | llm
         chain = RunnableWithMessageHistory(
-            llm,
+            pipeline,
             get_session_history=self._get_history,
             input_messages_key="messages",
         )
 
         try:
+            print("[FiveStar][DEBUG] Prompt breakdown:")
+            print("SystemMessage tokens:", len(tiktoken.encoding_for_model("gpt-4o").encode(MAIN_SYSTEM_PROMPT)))
+            print("HumanMessage tokens (summary + instruction):",
+                  len(tiktoken.encoding_for_model("gpt-4o").encode(str(human_content))))
+            print("Messages length:", len(messages))
+
             resp = chain.invoke({"messages": messages}, config={"configurable": {"session_id": session_id}})
-        except Exception:
+        except Exception as e:
             # Fallback to native path on any LC runtime issue
             return self._openai_call(instructions, image_paths, model_used)
 
@@ -181,6 +224,13 @@ class FiveStarAgentController:
             completion_tokens = completion_tokens or usage.get("completion_tokens")
         usage_dict = self._estimate_cost(model_used, prompt_tokens, completion_tokens)
 
+        try:
+            print(
+                f"[FiveStar][OPT] LC OpenAI call OK | Model={model_used} | prompt_tokens={prompt_tokens} | completion_tokens={completion_tokens} | total={usage_dict.get('total_tokens')}"
+            )
+        except Exception as e:
+            pass
+
         # Try parse JSON block as before
         parsed = None
         try:
@@ -189,7 +239,7 @@ class FiveStarAgentController:
                 txt = txt.split("```", 2)[1]
                 txt = "\n".join(line for line in txt.splitlines() if not line.strip().lower().startswith("json"))
             parsed = json.loads(txt)
-        except Exception:
+        except Exception as e:
             parsed = None
 
         score = recommendation = reasoning = close_note = None
@@ -203,7 +253,7 @@ class FiveStarAgentController:
             try:
                 n = int(val)
                 return 0 if n < 0 else 5 if n > 5 else n
-            except Exception:
+            except Exception as e:
                 return None
 
         score = to_int_0_5(score)
@@ -246,7 +296,7 @@ class FiveStarAgentController:
         # Lazily import to avoid dependency issues elsewhere
         try:
             from openai import OpenAI
-        except Exception:
+        except Exception as e:
             return "❌ OpenAI client not available. Ensure 'openai' is installed.", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
 
         client = OpenAI(api_key=api_key)
@@ -254,10 +304,10 @@ class FiveStarAgentController:
         # Build message content with text + images
         content = []
         user_text = instructions or ""
+        if image_summary:
+            content.append({"type": "text", "text": self._format_summary_block(image_summary)})
         if user_text.strip():
             content.append({"type": "text", "text": user_text})
-        if image_summary:
-            content.append({"type": "text", "text": f"Context from previous chart analysis (summary):\n{image_summary}"})
 
         attached_names = []
         for p in image_paths:
@@ -271,7 +321,7 @@ class FiveStarAgentController:
             attached_names.append(os.path.basename(p))
         try:
             print(f"[FiveStar][IMAGES] OpenAI payload includes image blocks: {len(attached_names) > 0}")
-        except Exception:
+        except Exception as e:
             pass
 
         if not attached_names and not image_summary:
@@ -311,6 +361,16 @@ class FiveStarAgentController:
         total_tokens = getattr(usage_obj, 'total_tokens', None) if hasattr(usage_obj, 'total_tokens') else usage_obj.get('total_tokens') if isinstance(usage_obj, dict) else None
         usage_dict = self._estimate_cost(openai_model_returned, prompt_tokens, completion_tokens)
 
+        try:
+            # Rough content size diagnostics
+            text_parts = [blk.get("text", "") for blk in content if isinstance(blk, dict) and blk.get("type") == "text"]
+            text_size = sum(len(t) for t in text_parts)
+            print(
+                f"[FiveStar][OPT] OpenAI call OK | Model={openai_model_returned} | prompt_tokens={prompt_tokens} | completion_tokens={completion_tokens} | total={usage_dict.get('total_tokens')} | text_size_chars={text_size} | image_blocks={len(attached_names)} | using_summary={bool(image_summary)}"
+            )
+        except Exception as e:
+            pass
+
         # Try to parse JSON from the response
         parsed = None
         try:
@@ -321,7 +381,7 @@ class FiveStarAgentController:
                 # Remove an optional language hint like ```json
                 txt = "\n".join(line for line in txt.splitlines() if not line.strip().lower().startswith("json"))
             parsed = json.loads(txt)
-        except Exception:
+        except Exception as e:
             parsed = None
 
         # Fallbacks
@@ -342,7 +402,7 @@ class FiveStarAgentController:
                 if n < 0: n = 0
                 if n > 5: n = 5
                 return n
-            except Exception:
+            except Exception as e:
                 return None
 
         score = to_int_0_5(score)
@@ -391,17 +451,17 @@ class FiveStarAgentController:
             ), {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
         try:
             import google.generativeai as genai
-        except Exception:
+        except Exception as e:
             return "❌ Gemini client not available. Ensure 'google-generativeai' is installed.", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
 
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(model_used)
 
         parts = []
+        if image_summary:
+            parts.append(self._format_summary_block(image_summary))
         if instructions and instructions.strip():
             parts.append(instructions)
-        if image_summary:
-            parts.append(f"Context from previous chart analysis (summary):\n{image_summary}")
         attached_names = []
         for p in image_paths:
             try:
@@ -410,11 +470,11 @@ class FiveStarAgentController:
                 mime = self._guess_mime(p)
                 parts.append({"mime_type": mime, "data": data})
                 attached_names.append(os.path.basename(p))
-            except Exception:
+            except Exception as e:
                 continue
         try:
             print(f"[FiveStar][IMAGES] Gemini payload includes image parts: {len(attached_names) > 0}")
-        except Exception:
+        except Exception as e:
             pass
 
         if not attached_names and not image_summary:
@@ -443,6 +503,14 @@ class FiveStarAgentController:
         completion_tokens = getattr(um, 'candidates_token_count', None) if um else None
         usage_dict = self._estimate_cost(model_used, prompt_tokens, completion_tokens)
 
+        try:
+            parts_text = "\n".join(p for p in parts if isinstance(p, str))
+            print(
+                f"[FiveStar][OPT] Gemini call OK | Model={model_used} | prompt_tokens={prompt_tokens} | completion_tokens={completion_tokens} | total={usage_dict.get('total_tokens')} | text_size_chars={len(parts_text)} | image_parts={len(attached_names)} | using_summary={bool(image_summary)}"
+            )
+        except Exception as e:
+            pass
+
         # Try to parse JSON from the response
         parsed = None
         try:
@@ -451,7 +519,7 @@ class FiveStarAgentController:
                 txt = txt.split("```", 2)[1]
                 txt = "\n".join(line for line in txt.splitlines() if not line.strip().lower().startswith("json"))
             parsed = json.loads(txt)
-        except Exception:
+        except Exception as e:
             parsed = None
 
         score = None
@@ -470,7 +538,7 @@ class FiveStarAgentController:
                 if n < 0: n = 0
                 if n > 5: n = 5
                 return n
-            except Exception:
+            except Exception as e:
                 return None
         score = to_int_0_5(score)
         if recommendation:
