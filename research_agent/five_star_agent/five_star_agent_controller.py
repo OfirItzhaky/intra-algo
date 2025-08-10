@@ -248,7 +248,49 @@ class FiveStarAgentController:
             usage = ak.get("usage") or ak.get("token_usage") or {}
             prompt_tokens = prompt_tokens or usage.get("prompt_tokens")
             completion_tokens = completion_tokens or usage.get("completion_tokens")
+        # Fallback: estimate tokens if LC wrapper provided none
+        if prompt_tokens is None or completion_tokens is None:
+            try:
+                human_text_len = sum(len(block.get("text", "")) for block in human_content if isinstance(block, dict) and block.get("type") == "text")
+                est_prompt_tokens = (len(MAIN_SYSTEM_PROMPT) + human_text_len) // 4
+                if prompt_tokens is None:
+                    prompt_tokens = max(1, est_prompt_tokens)
+                    print(f"[FiveStar][OPT] LC Gemini prompt_tokens rough-estimated from chars={len(MAIN_SYSTEM_PROMPT)+human_text_len} -> tokens~{prompt_tokens}")
+                if completion_tokens is None:
+                    completion_tokens = max(0, len(raw_text) // 4)
+                    print(f"[FiveStar][OPT] LC Gemini completion_tokens rough-estimated from chars={len(raw_text)} -> tokens~{completion_tokens}")
+            except Exception:
+                # Ensure integers
+                prompt_tokens = int(prompt_tokens or 0)
+                completion_tokens = int(completion_tokens or 0)
+
+        # Fallback: estimate tokens if LC wrapper provided none or zeros
+        if (prompt_tokens is None or int(prompt_tokens or 0) == 0) or (completion_tokens is None or int(completion_tokens or 0) == 0):
+            try:
+                human_text_len = sum(len(block.get("text", "")) for block in human_content if isinstance(block, dict) and block.get("type") == "text")
+                est_prompt_tokens = (len(MAIN_SYSTEM_PROMPT) + human_text_len) // 4
+                if prompt_tokens is None or int(prompt_tokens or 0) == 0:
+                    prompt_tokens = max(1, est_prompt_tokens)
+                    print(f"[FiveStar][OPT] LC Gemini prompt_tokens rough-estimated from chars={len(MAIN_SYSTEM_PROMPT)+human_text_len} -> tokens~{prompt_tokens}")
+                if completion_tokens is None or int(completion_tokens or 0) == 0:
+                    completion_tokens = max(0, len(raw_text) // 4)
+                    print(f"[FiveStar][OPT] LC Gemini completion_tokens rough-estimated from chars={len(raw_text)} -> tokens~{completion_tokens}")
+            except Exception:
+                # Ensure integers
+                prompt_tokens = int(prompt_tokens or 0)
+                completion_tokens = int(completion_tokens or 0)
+
         usage_dict = self._estimate_cost(model_used, prompt_tokens, completion_tokens)
+        try:
+            print(
+                f"[FiveStar][DEBUG][COST] provider=GeminiLC model={model_used} pt={prompt_tokens} ct={completion_tokens} total={usage_dict.get('total_tokens')} cost=${usage_dict.get('estimated_cost_usd')}"
+            )
+        except Exception:
+            pass
+        try:
+            print(f"[FiveStar][OPT] LC Gemini usage (final): prompt_tokens={prompt_tokens} completion_tokens={completion_tokens} est_cost=${usage_dict.get('estimated_cost_usd', 0)}")
+        except Exception:
+            pass
 
         try:
             print(
@@ -546,7 +588,27 @@ class FiveStarAgentController:
             prompt_tokens = prompt_tokens or um.get("prompt_token_count") or um.get("prompt_tokens")
             completion_tokens = completion_tokens or um.get("candidates_token_count") or um.get("completion_tokens")
 
+        # Fallback estimation for LC Gemini if usage missing or zero
+        try:
+            if prompt_tokens is None or int(prompt_tokens or 0) == 0:
+                human_text_len = sum(len(block.get("text", "")) for block in human_content if isinstance(block, dict) and block.get("type") == "text")
+                prompt_tokens = max(1, (len(MAIN_SYSTEM_PROMPT) + human_text_len) // 4)
+                print(f"[FiveStar][OPT] LC Gemini prompt_tokens rough-estimated from chars={len(MAIN_SYSTEM_PROMPT)+human_text_len} -> tokens~{prompt_tokens}")
+            if completion_tokens is None or int(completion_tokens or 0) == 0:
+                completion_tokens = max(0, len(raw_text) // 4)
+                print(f"[FiveStar][OPT] LC Gemini completion_tokens rough-estimated from chars={len(raw_text)} -> tokens~{completion_tokens}")
+        except Exception:
+            # Ensure integers
+            prompt_tokens = int(prompt_tokens or 0)
+            completion_tokens = int(completion_tokens or 0)
+
         usage_dict = self._estimate_cost(model_used, prompt_tokens, completion_tokens)
+        try:
+            print(
+                f"[FiveStar][DEBUG][COST] provider=GeminiLC model={model_used} pt={prompt_tokens} ct={completion_tokens} total={usage_dict.get('total_tokens')} cost=${usage_dict.get('estimated_cost_usd')}"
+            )
+        except Exception:
+            pass
 
         # Try to parse structured JSON
         parsed = None
