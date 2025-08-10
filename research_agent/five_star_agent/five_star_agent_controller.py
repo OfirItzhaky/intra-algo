@@ -695,6 +695,32 @@ class FiveStarAgentController:
         if (prompt_tokens is None or completion_tokens is None) and isinstance(um, dict):
             prompt_tokens = prompt_tokens or um.get('prompt_token_count') or um.get('promptTokens')
             completion_tokens = completion_tokens or um.get('candidates_token_count') or um.get('candidatesTokens')
+
+        # If SDK didn't return usage, estimate using model.count_tokens as a fallback
+        if prompt_tokens is None:
+            try:
+                ct = model.count_tokens(parts)
+                prompt_tokens = int(getattr(ct, 'total_tokens', None) or ct.get('total_tokens'))
+                print(f"[FiveStar][OPT] Gemini prompt_tokens estimated via count_tokens={prompt_tokens}")
+            except Exception:
+                try:
+                    # Rough fallback: sum text char lengths / 4
+                    est_chars = sum(len(prt.get('text', '')) for prt in parts if isinstance(prt, dict) and 'text' in prt)
+                    prompt_tokens = max(1, est_chars // 4)
+                    print(f"[FiveStar][OPT] Gemini prompt_tokens rough-estimated from chars={est_chars} -> tokens~{prompt_tokens}")
+                except Exception:
+                    prompt_tokens = 0
+        if completion_tokens is None:
+            try:
+                ct_out = model.count_tokens(raw_text)
+                completion_tokens = int(getattr(ct_out, 'total_tokens', None) or ct_out.get('total_tokens'))
+                print(f"[FiveStar][OPT] Gemini completion_tokens estimated via count_tokens={completion_tokens}")
+            except Exception:
+                try:
+                    completion_tokens = max(0, len(raw_text) // 4)
+                    print(f"[FiveStar][OPT] Gemini completion_tokens rough-estimated from chars={len(raw_text)} -> tokens~{completion_tokens}")
+                except Exception:
+                    completion_tokens = 0
         usage_dict = self._estimate_cost(model_used, prompt_tokens, completion_tokens)
 
         try:
