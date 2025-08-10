@@ -74,6 +74,63 @@ FIVESTAR_STORE: dict = {}
 
 from uuid import uuid4
 
+# --- Simple username login (case-insensitive) ---
+# Build allow-list from env or fallback to defaults so the gate is active by default
+_users_raw = os.getenv("RESEARCH_AGENT_USERS")
+if not _users_raw or not _users_raw.strip():
+    _users_raw = "ofir,itz01"
+ALLOWED_USERS = [u.strip().lower() for u in _users_raw.split(",") if u.strip()]
+
+# Force re-login on server restarts
+SERVER_BOOT_ID = uuid4().hex
+
+LOGIN_TEMPLATE = """
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Login</title></head><body style="font-family:system-ui,Segoe UI,Arial,sans-serif; padding:40px;">
+  <h2>Enter your username:</h2>
+  {% if error %}<div style="color:#b00020; font-weight:600; margin:8px 0 16px;">{{ error }}</div>{% endif %}
+  <form method="post" action="{{ url_for('login') }}">
+    <input name="username" autofocus style="padding:8px 12px; font-size:16px;" />
+    <button type="submit" style="padding:8px 14px; font-size:16px; margin-left:8px;">Continue</button>
+  </form>
+</body></html>
+"""
+
+@app.before_request
+def enforce_login():
+    # Allow static and login endpoints
+    endpoint = request.endpoint or ""
+    if endpoint in {"login", "static"}:
+        return
+    # If no allow-list configured, skip gate
+    if not ALLOWED_USERS:
+        return
+    # Check session
+    username = session.get("username")
+    boot_id = session.get("boot_id")
+    if username and username.strip().lower() in ALLOWED_USERS and boot_id == SERVER_BOOT_ID:
+        return
+    # Block anything else until login; preserve target for post-login redirect
+    if request.method == "GET":
+        login_url = url_for("login", next=request.path)
+        return redirect(login_url)
+    # For POSTs, redirect to login page
+    return redirect(url_for("login", next=request.path))
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        entered = (request.form.get("username") or "").strip().lower()
+        if entered and (entered in ALLOWED_USERS):
+            session["username"] = entered
+            session["boot_id"] = SERVER_BOOT_ID
+            # Redirect to originally requested path if present
+            next_url = request.args.get("next") or url_for("index")
+            return redirect(next_url)
+        return render_template_string(LOGIN_TEMPLATE, error="Access Denied: You are not authorized to use this tool.")
+    return render_template_string(LOGIN_TEMPLATE)
+
 def _get_session_id():
     """Return a short, stable server-side session id for FiveStar.
 
