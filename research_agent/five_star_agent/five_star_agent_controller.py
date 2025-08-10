@@ -124,9 +124,21 @@ class FiveStarAgentController:
             model_used = requested_model if requested_model in allowed else "gemini-1.5-flash-latest"
 
             # Prefer LangChain Gemini if available to mirror OpenAI LC flow
+            try:
+                print(f"[FiveStar][MODE] Gemini path selected | GOOGLE_LC_AVAILABLE={GOOGLE_LC_AVAILABLE}")
+            except Exception:
+                pass
             if GOOGLE_LC_AVAILABLE:
+                try:
+                    print("[FiveStar][MODE] Using Gemini LangChain path")
+                except Exception:
+                    pass
                 reply, usage = self._gemini_call_langchain(instructions, image_paths, model_used, session_id or "default", image_summary=image_summary)
             else:
+                try:
+                    print("[FiveStar][MODE] Using Gemini native SDK path")
+                except Exception:
+                    pass
                 reply, usage = self._gemini_call(instructions, image_paths, model_used, image_summary=image_summary)
             reply = f"{reply}\n🤖 Model: {usage.get('model_used', model_used)}\n💰 Tokens: {usage.get('total_tokens', 'N/A')} | Est. Cost: ${usage.get('estimated_cost_usd', 0):.6f}"
             return reply, usage.get('model_used', model_used), usage
@@ -649,11 +661,16 @@ class FiveStarAgentController:
             pass
 
         if not attached_names and not image_summary:
-            # Allow text-only follow-ups without images only if summary exists; otherwise ask for reupload
-            return (
-                "Please paste or upload at least one weekly chart image to analyze.",
-                {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
-            )
+            # If no images, allow text-only follow-ups as long as there is any instruction text
+            if not (instructions and instructions.strip()):
+                return (
+                    "Please paste or upload at least one weekly chart image to analyze.",
+                    {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
+                )
+            try:
+                print(f"[FiveStar][OPT] Proceeding with text-only follow-up (no image parts). instructions_chars={len(instructions)}")
+            except Exception:
+                pass
 
         # Use the full system prompt from prompt_manager to match OpenAI behavior
         parts = [{"text": MAIN_SYSTEM_PROMPT}] + parts
