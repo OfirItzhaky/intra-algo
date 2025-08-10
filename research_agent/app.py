@@ -67,6 +67,37 @@ symbol_data = {}  # global store
 FIVESTAR_UPLOAD_FOLDER = os.path.abspath("uploaded_5star_images")
 os.makedirs(FIVESTAR_UPLOAD_FOLDER, exist_ok=True)
 
+# In-memory server-side store for Five Star Agent session data to avoid
+# storing large blobs in client-side cookies.
+# Structure: { session_id: { 'images': List[str], 'image_summary': Optional[str] } }
+FIVESTAR_STORE: dict = {}
+
+from uuid import uuid4
+
+def _get_session_id():
+    """Return a short, stable server-side session id for FiveStar.
+
+    We avoid using the large Flask signed cookie; instead, we keep a tiny
+    identifier in `session['fivestar_sid']` and store heavy data in the
+    in-process FIVESTAR_STORE.
+    """
+    try:
+        sid = session.get('fivestar_sid')
+        if not sid:
+            sid = uuid4().hex
+            session['fivestar_sid'] = sid
+            print(f"[FiveStar][DEBUG] Issued new fivestar_sid={sid}")
+        return sid
+    except Exception:
+        return 'fivestar'
+
+def _get_store_entry(session_id: str) -> dict:
+    entry = FIVESTAR_STORE.get(session_id)
+    if entry is None:
+        entry = {'images': [], 'image_summary': None, 'chat': []}
+        FIVESTAR_STORE[session_id] = entry
+    return entry
+
 # === Prepare context ===
 def prepare_daily_context():
     news_aggregator = NewsAggregator(config=CONFIG)
@@ -1016,7 +1047,11 @@ def scalp_agent():
 # =============================
 
 def _get_fivestar_chat_history():
-    return session.get('five_star_agent_chat', [])
+    try:
+        sid = _get_session_id()
+        return list(_get_store_entry(sid).get('chat', []))
+    except Exception:
+        return []
 
 
 from typing import Optional, List
@@ -1025,14 +1060,19 @@ import importlib
 
 def _append_fivestar_message(role: str, content: str, images: Optional[List[str]] = None):
     from datetime import datetime as _dt
-    chat = session.get('five_star_agent_chat', [])
+    sid = _get_session_id()
+    entry = _get_store_entry(sid)
+    chat = entry.get('chat', [])
+    # Cap content for UI to prevent runaway mem (store shortened for UI only)
+    max_ui_chars = 8000
     chat.append({
         'role': role,
-        'content': content or '',
+        'content': (content or '')[:max_ui_chars],
         'images': images or [],
         'timestamp': _dt.utcnow().isoformat() + 'Z'
     })
-    session['five_star_agent_chat'] = chat
+    entry['chat'] = chat
+    FIVESTAR_STORE[sid] = entry
 
 
 @app.route("/five-star-agent", methods=["GET", "POST"])
@@ -1146,8 +1186,10 @@ def five_star_analyze():
             saved_names.append(filename)
         print(f"[FiveStar][IMAGES] New uploaded files: {saved_filepaths}")
 
-        # Determine prior session paths (if any), and sanitize to those that still exist
-        prior_filepaths = session.get('five_star_agent_images', []) or []
+        # Determine prior session paths (if any) from server store, and sanitize
+        sid = _get_session_id()
+        store_entry = _get_store_entry(sid)
+        prior_filepaths = store_entry.get('images', []) or []
         prior_filepaths = [p for p in prior_filepaths if os.path.exists(p)]
         prior_names = [os.path.basename(p) for p in prior_filepaths]
 
@@ -1176,11 +1218,10 @@ def five_star_analyze():
         _append_fivestar_message('user', instructions, images=([] if reused_from_session else saved_names))
 
         # Override session image context with only the current, existing paths
-        try:
-            session['five_star_agent_images'] = list(saved_filepaths)
-            print(f"[FiveStar] session images set: {session['five_star_agent_images']}")
-        except Exception as _e:
-            print(f"[FiveStar][WARN] failed setting session images: {_e}")
+        # Update server-side store (not client cookie)
+        store_entry['images'] = list(saved_filepaths)
+        FIVESTAR_STORE[sid] = store_entry
+        print(f"[FiveStar] server store images set: {store_entry['images']}")
 
         # Call controller with LLM
         try:
@@ -1189,9 +1230,9 @@ def five_star_analyze():
             print(f"[FiveStar][ERROR] Failed to init controller: {e}")
             return jsonify({"ok": False, "error": f"Failed to init controller: {e}"}), 500
         try:
-            session_id = session.get('_id') or request.cookies.get('session') or 'fivestar'
+            session_id = sid
             # Build image summary injection policy
-            image_summary = session.get('five_star_agent_image_summary')
+            image_summary = store_entry.get('image_summary')
             inject_summary = False
             if reused_from_session and image_summary:
                 inject_summary = True
@@ -1224,17 +1265,33 @@ def five_star_analyze():
 
             # If this is the first turn with actual images, cache a summary for future follow-ups
             if not reused_from_session and len(saved_filepaths) > 0:
-                # Store the full reply as summary (simple heuristic)
-                session['five_star_agent_image_summary'] = agent_reply
-                print(f"[FiveStar][OPT] Cached summary from first image turn. words={len(agent_reply.split())}")
+                # Store a capped summary server-side to control size
+                max_chars = 8000
+                store_entry['image_summary'] = agent_reply[:max_chars]
+                FIVESTAR_STORE[sid] = store_entry
+                try:
+                    print(f"[FiveStar][OPT] Cached summary (capped) from first image turn. words={len(agent_reply.split())} chars={len(agent_reply)} -> stored_chars={len(store_entry['image_summary'])}")
+                except Exception:
+                    pass
         except Exception as e:
             provider = 'Gemini' if (model_choice or '').lower().startswith('gemini') else 'OpenAI'
+            import traceback as _tb
             print(f"[FiveStar][ERROR] analyze_with_model failed ({provider}): {e}")
+            print(f"[FiveStar][TRACE] {_tb.format_exc()}")
             return jsonify({"ok": False, "error": f"{provider} inference failed: {e}"}), 500
         # Append to chat including model used (already appended in reply, but keep metadata minimal)
         _append_fivestar_message('agent', agent_reply)
 
         print(f"[FiveStar] Model used: {model_used}")
+        # Log response sizes; session cookie should remain small now that data is server-side
+        try:
+            import json as _json
+            payload_bytes = len(_json.dumps({"agent_reply": agent_reply, "usage": usage}, ensure_ascii=False).encode('utf-8'))
+            print(f"[FiveStar][DEBUG] Response payload (partial) size: {payload_bytes} bytes")
+            # We no longer store large data in Flask client-side session
+            print(f"[FiveStar][DEBUG] Session cookie remains minimal; large data kept server-side for sid={sid}")
+        except Exception as _e:
+            print(f"[FiveStar][WARN] Size logging failed: {_e}")
         return jsonify({
             "ok": True,
             "agent_reply": agent_reply,
@@ -1242,7 +1299,9 @@ def five_star_analyze():
             "usage": usage
         })
     except Exception as e:
+        import traceback as _tb
         print(f"[FiveStar][ERROR] Unexpected: {e}")
+        print(f"[FiveStar][TRACE] {_tb.format_exc()}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
@@ -1258,7 +1317,12 @@ def reset_five_star_session():
         pass
 
     # Remove saved image files
-    image_paths = session.pop('five_star_agent_images', [])
+    sid = _get_session_id()
+    image_paths = []
+    try:
+        image_paths = list(_get_store_entry(sid).get('images', []))
+    except Exception:
+        pass
     for path in image_paths:
         try:
             os.remove(path)
@@ -1266,9 +1330,13 @@ def reset_five_star_session():
         except Exception as e:
             print(f"[FiveStar][RESET] Failed to delete file {path}: {e}")
 
-    # Clear chat memory
+    # Clear chat memory and server-side store
     session.pop('five_star_agent_chat', None)
-    session['five_star_agent_images'] = []
+    try:
+        if sid in FIVESTAR_STORE:
+            FIVESTAR_STORE[sid] = {'images': [], 'image_summary': None, 'chat': []}
+    except Exception:
+        pass
 
     # After reset, send user back with a confirmation flag
     return redirect('/five-star-agent?reset=1')

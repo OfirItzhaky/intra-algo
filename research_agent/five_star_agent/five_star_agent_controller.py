@@ -6,6 +6,7 @@ import os
 from typing import List, Optional, Tuple, Dict, Any
 
 import tiktoken
+from mimetypes import guess_type
 
 from research_agent.five_star_agent.prompt_manager_5_star import MAIN_SYSTEM_PROMPT, NEWS_AND_REPORT_BIAS as BIAS_TEMPLATE
 try:
@@ -443,6 +444,24 @@ class FiveStarAgentController:
             ".webp": "image/webp",
         }.get(ext, "image/png")
 
+    def _to_gemini_inline_part(self, path: str) -> Optional[Dict[str, Any]]:
+        """Convert local file path to Gemini inlineData content part.
+
+        Returns None if file cannot be read or is empty.
+        """
+        try:
+            with open(path, "rb") as f:
+                raw = f.read()
+            if not raw:
+                return None
+            encoded = base64.b64encode(raw).decode("utf-8")
+            mime_type = guess_type(path)[0] or self._guess_mime(path)
+            # Gemini Python SDK expects snake_case keys: inline_data -> {mime_type, data}
+            return {"inline_data": {"mime_type": mime_type, "data": encoded}}
+        except Exception as e:
+            print(f"[FiveStar][ERROR] Failed to build Gemini inlineData for {path}: {e}")
+            return None
+
     def _gemini_call(self, instructions: str, image_paths: List[str], model_used: str, image_summary: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
@@ -457,21 +476,20 @@ class FiveStarAgentController:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(model_used)
 
-        parts = []
+        # Build a flat list of Part objects for Gemini generate_content
+        parts: List[Dict[str, Any]] = []
         if image_summary:
-            parts.append(self._format_summary_block(image_summary))
+            parts.append({"text": self._format_summary_block(image_summary)})
         if instructions and instructions.strip():
-            parts.append(instructions)
-        attached_names = []
+            parts.append({"text": instructions})
+        attached_names: List[str] = []
         for p in image_paths:
-            try:
-                with open(p, "rb") as f:
-                    data = f.read()
-                mime = self._guess_mime(p)
-                parts.append({"mime_type": mime, "data": data})
+            part = self._to_gemini_inline_part(p)
+            if part and part.get("inline_data", {}).get("data"):
+                parts.append(part)
                 attached_names.append(os.path.basename(p))
-            except Exception as e:
-                continue
+            else:
+                print(f"[FiveStar][WARN] Skipping empty/invalid Gemini inline_data for: {p}")
         try:
             print(f"[FiveStar][IMAGES] Gemini payload includes image parts: {len(attached_names) > 0}")
         except Exception as e:
@@ -488,10 +506,15 @@ class FiveStarAgentController:
             "You are a swing trading assistant. Analyze the uploaded weekly charts and give a score out of 5 with reasoning. "
             "Return a concise JSON with keys: score (0-5), recommendation ('Yes' or 'No'), reasoning (short paragraph), close_note (optional)."
         )
-        # Gemini uses system instruction via safety settings or first-turn; prepend as text
-        parts = [system_prompt] + parts
+        # Gemini accepts system text as just another Part at the start
+        parts = [{"text": system_prompt}] + parts
 
         try:
+            # Validate no empty inline_data blocks before call
+            for prt in parts:
+                if isinstance(prt, dict) and "inline_data" in prt:
+                    inline = prt["inline_data"]
+                    assert inline.get("data"), "Empty inline_data in Gemini part"
             resp = model.generate_content(parts)
             raw_text = (resp.text or "").strip()
         except Exception as e:
