@@ -3,8 +3,7 @@ from .scalp_base_agent import BaseAgent
 import os
 import requests
 import json
-from config import CONFIG
-
+from research_agent.config import CONFIG
 class MultiTimeframe3StrategiesAgent(BaseAgent):
     """
     An agent that first analyzes higher timeframe charts (15m, 60m, daily)
