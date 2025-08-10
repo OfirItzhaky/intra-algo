@@ -29,9 +29,9 @@ RUN pip install numpy==1.24.4
 RUN pip install pandas_ta==0.3.14b0
 
 # Optional: Check core package versions
-RUN python -c "import numpy; print('✅ Numpy version:', numpy.__version__)"
-RUN python -c "import pandas_ta; print('✅ Pandas_ta version:', pandas_ta.__version__)"
-RUN python -c "import requests; print('✅ Requests works!')"
+RUN python -c "import numpy; print('Numpy version:', numpy.__version__)"
+RUN python -c "import pandas_ta; print('Pandas_ta version:', pandas_ta.__version__)"
+RUN python -c "import requests; print('Requests works!')"
 
 # Copy full source code
 COPY . .
@@ -40,7 +40,7 @@ COPY . .
 RUN mkdir -p uploaded_csvs temp_uploads data && chmod 777 uploaded_csvs temp_uploads data
 
 # Verify pandas_ta patch if applicable
-RUN python -c "import fix_numpy; from pandas_ta.momentum.squeeze_pro import squeeze_pro; print('✅ squeeze_pro patch success')"
+RUN python -c "import fix_numpy; from pandas_ta.momentum.squeeze_pro import squeeze_pro; print('squeeze_pro patch success')"
 
 # Expose port expected by Cloud Run
 EXPOSE 8080
