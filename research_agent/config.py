@@ -44,6 +44,23 @@ CONFIG = {
     "date": today,
 }
 
+# --- LLM pricing (USD per 1K tokens) ---
+# Keys should be normalized model families; controller normalizes runtime names to these keys
+PRICING = {
+    # OpenAI
+    "gpt-5": {"input_per_1k": 0.015, "output_per_1k": 0.045},
+    "gpt-4o": {"input_per_1k": 0.005, "output_per_1k": 0.015},
+    "gpt-4o-mini": {"input_per_1k": 0.00015, "output_per_1k": 0.00060},
+    "gpt-4.1": {"input_per_1k": 0.005, "output_per_1k": 0.015},
+    "gpt-3.5-turbo": {"input_per_1k": 0.0005, "output_per_1k": 0.0015},
+    # Gemini
+    "gemini-1.5-pro": {"input_per_1k": 0.0035, "output_per_1k": 0.0100},
+    "gemini-1.5-flash": {"input_per_1k": 0.00035, "output_per_1k": 0.00105},
+    # Optional: include -latest aliases explicitly (controller also normalizes)
+    "gemini-1.5-pro-latest": {"input_per_1k": 0.0035, "output_per_1k": 0.0100},
+    "gemini-1.5-flash-latest": {"input_per_1k": 0.00035, "output_per_1k": 0.00105},
+}
+
 SUMMARY_CACHE = {}
 EVENT_CACHE = {}
 

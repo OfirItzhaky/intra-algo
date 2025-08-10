@@ -9,6 +9,7 @@ import tiktoken
 from mimetypes import guess_type
 
 from research_agent.five_star_agent.prompt_manager_5_star import MAIN_SYSTEM_PROMPT, NEWS_AND_REPORT_BIAS as BIAS_TEMPLATE
+from research_agent.config import PRICING
 try:
     # Optional: LangChain integration for OpenAI with conversation memory
     from langchain_openai import ChatOpenAI
@@ -18,6 +19,13 @@ try:
     LANGCHAIN_AVAILABLE = True
 except Exception as e:
     LANGCHAIN_AVAILABLE = False
+
+# Optional: LangChain integration for Gemini
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    GOOGLE_LC_AVAILABLE = True
+except Exception as e:
+    GOOGLE_LC_AVAILABLE = False
 
 class FiveStarAgentController:
     """Controller for the Five Star swing-trading agent.
@@ -114,7 +122,12 @@ class FiveStarAgentController:
                 "gemini-1.5-flash-latest",
             ]
             model_used = requested_model if requested_model in allowed else "gemini-1.5-flash-latest"
-            reply, usage = self._gemini_call(instructions, image_paths, model_used, image_summary=image_summary)
+
+            # Prefer LangChain Gemini if available to mirror OpenAI LC flow
+            if GOOGLE_LC_AVAILABLE:
+                reply, usage = self._gemini_call_langchain(instructions, image_paths, model_used, session_id or "default", image_summary=image_summary)
+            else:
+                reply, usage = self._gemini_call(instructions, image_paths, model_used, image_summary=image_summary)
             reply = f"{reply}\n🤖 Model: {usage.get('model_used', model_used)}\n💰 Tokens: {usage.get('total_tokens', 'N/A')} | Est. Cost: ${usage.get('estimated_cost_usd', 0):.6f}"
             return reply, usage.get('model_used', model_used), usage
 
@@ -435,6 +448,146 @@ class FiveStarAgentController:
             (f"📌 Instructions acknowledged: {ack}" if ack else "")
         ), usage_dict
 
+    def _gemini_call_langchain(self, instructions: str, image_paths: List[str], model_used: str, session_id: str, image_summary: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+        """Gemini via LangChain with message history. Mirrors OpenAI LC flow."""
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return (
+                "❌ Missing Gemini API key. Set environment variable GEMINI_API_KEY to enable analysis.",
+                {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
+            )
+
+        if not GOOGLE_LC_AVAILABLE:
+            return self._gemini_call(instructions, image_paths, model_used, image_summary=image_summary)
+
+        try:
+            llm = ChatGoogleGenerativeAI(
+                model=model_used,
+                temperature=0.2,
+                convert_system_message_to_human=True,
+                google_api_key=api_key,
+            )
+        except Exception:
+            return self._gemini_call(instructions, image_paths, model_used, image_summary=image_summary)
+
+        # Compose human content (text + images) using LC message format of dict blocks
+        human_content: List[Dict[str, Any]] = []
+        if image_summary:
+            human_content.append({"type": "text", "text": self._format_summary_block(image_summary)})
+        if (instructions or "").strip():
+            human_content.append({"type": "text", "text": instructions})
+        attached_names: List[str] = []
+        for p in image_paths:
+            try:
+                with open(p, "rb") as f:
+                    data = f.read()
+                b64 = base64.b64encode(data).decode("utf-8")
+                human_content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+                attached_names.append(os.path.basename(p))
+            except Exception:
+                continue
+
+        if not human_content:
+            return (
+                "Please paste or upload at least one weekly chart image to analyze.",
+                {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
+            )
+
+        messages = [
+            SystemMessage(content=MAIN_SYSTEM_PROMPT),
+            HumanMessage(content=human_content),
+        ]
+
+        # Diagnostics
+        try:
+            text_len = sum(len(block.get("text", "")) for block in human_content if isinstance(block, dict) and block.get("type") == "text")
+            print(
+                f"[FiveStar][OPT] LC Gemini: Using image summary={bool(image_summary)} | images={len([b for b in human_content if isinstance(b, dict) and b.get('type')=='image_url'])} | text_chars={text_len}"
+            )
+        except Exception:
+            pass
+
+        extract_messages = RunnableLambda(lambda x: x["messages"])  # x is dict with key 'messages'
+        pipeline = extract_messages | llm
+        chain = RunnableWithMessageHistory(
+            pipeline,
+            get_session_history=self._get_history,
+            input_messages_key="messages",
+        )
+
+        try:
+            resp = chain.invoke({"messages": messages}, config={"configurable": {"session_id": session_id}})
+        except Exception:
+            return self._gemini_call(instructions, image_paths, model_used, image_summary=image_summary)
+
+        raw_text = getattr(resp, "content", "") or ""
+
+        # Try to extract token usage from LC wrapper (response_metadata / additional_kwargs)
+        meta = getattr(resp, "response_metadata", {}) or {}
+        token_usage = meta.get("token_usage", {}) or {}
+        prompt_tokens = token_usage.get("prompt_tokens") or meta.get("prompt_token_count")
+        completion_tokens = token_usage.get("completion_tokens") or meta.get("candidates_token_count")
+        if prompt_tokens is None or completion_tokens is None:
+            ak = getattr(resp, "additional_kwargs", {}) or {}
+            # Some wrappers may pass through usage_metadata
+            um = ak.get("usage_metadata") or ak.get("usage") or {}
+            prompt_tokens = prompt_tokens or um.get("prompt_token_count") or um.get("prompt_tokens")
+            completion_tokens = completion_tokens or um.get("candidates_token_count") or um.get("completion_tokens")
+
+        usage_dict = self._estimate_cost(model_used, prompt_tokens, completion_tokens)
+
+        # Try to parse structured JSON
+        parsed = None
+        try:
+            txt = raw_text
+            if "```" in txt:
+                txt = txt.split("```", 2)[1]
+                txt = "\n".join(line for line in txt.splitlines() if not line.strip().lower().startswith("json"))
+            parsed = json.loads(txt)
+        except Exception:
+            parsed = None
+
+        score = recommendation = reasoning = close_note = None
+        if isinstance(parsed, dict):
+            score = parsed.get("score")
+            recommendation = parsed.get("recommendation")
+            reasoning = parsed.get("reasoning")
+            close_note = parsed.get("close_note")
+
+        def to_int_0_5(val):
+            try:
+                n = int(val)
+                if n < 0: n = 0
+                if n > 5: n = 5
+                return n
+            except Exception:
+                return None
+
+        score = to_int_0_5(score)
+        if recommendation:
+            rec = str(recommendation).strip().lower()
+            recommendation = "Yes" if rec in ["yes", "y", "true", "1"] else ("No" if rec else None)
+
+        if score is not None and recommendation and reasoning:
+            parts_out = [
+                "✅ Received charts: " + ", ".join(attached_names),
+                f"📊 Score: {score}/5",
+                f"🟢 Swing-Trade Recommendation: {recommendation}",
+                f"📝 Reasoning: {reasoning}",
+            ]
+            if close_note:
+                parts_out.append(f"ℹ️ Close: {close_note}")
+            if instructions:
+                parts_out.append("📌 Instructions acknowledged: " + (instructions[:140] + ("..." if len(instructions) > 140 else "")))
+            return "\n".join(parts_out), usage_dict
+
+        ack = (instructions[:140] + ("..." if instructions and len(instructions) > 140 else "")) if instructions else ""
+        return (
+            "✅ Received charts: " + ", ".join(attached_names) + "\n" +
+            (f"📝 Model Response: {raw_text}\n" if raw_text else "📝 Model Response: (empty)\n") +
+            (f"📌 Instructions acknowledged: {ack}" if ack else "")
+        ), usage_dict
+
     def _guess_mime(self, path: str) -> str:
         ext = os.path.splitext(path.lower())[1]
         return {
@@ -502,12 +655,8 @@ class FiveStarAgentController:
                 {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
             )
 
-        system_prompt = (
-            "You are a swing trading assistant. Analyze the uploaded weekly charts and give a score out of 5 with reasoning. "
-            "Return a concise JSON with keys: score (0-5), recommendation ('Yes' or 'No'), reasoning (short paragraph), close_note (optional)."
-        )
-        # Gemini accepts system text as just another Part at the start
-        parts = [{"text": system_prompt}] + parts
+        # Use the full system prompt from prompt_manager to match OpenAI behavior
+        parts = [{"text": MAIN_SYSTEM_PROMPT}] + parts
 
         try:
             # Validate no empty inline_data blocks before call
@@ -522,12 +671,18 @@ class FiveStarAgentController:
 
         # Usage and cost
         um = getattr(resp, 'usage_metadata', None)
+        # Google SDK may expose token counts as ints
         prompt_tokens = getattr(um, 'prompt_token_count', None) if um else None
         completion_tokens = getattr(um, 'candidates_token_count', None) if um else None
+        # Some SDK versions return dict-like usage
+        if (prompt_tokens is None or completion_tokens is None) and isinstance(um, dict):
+            prompt_tokens = prompt_tokens or um.get('prompt_token_count') or um.get('promptTokens')
+            completion_tokens = completion_tokens or um.get('candidates_token_count') or um.get('candidatesTokens')
         usage_dict = self._estimate_cost(model_used, prompt_tokens, completion_tokens)
 
         try:
-            parts_text = "\n".join(p for p in parts if isinstance(p, str))
+            # Compute text size across text parts
+            parts_text = "\n".join(prt.get("text", "") for prt in parts if isinstance(prt, dict) and "text" in prt)
             print(
                 f"[FiveStar][OPT] Gemini call OK | Model={model_used} | prompt_tokens={prompt_tokens} | completion_tokens={completion_tokens} | total={usage_dict.get('total_tokens')} | text_size_chars={len(parts_text)} | image_parts={len(attached_names)} | using_summary={bool(image_summary)}"
             )
@@ -592,21 +747,8 @@ class FiveStarAgentController:
 
     # --- Cost estimation ---
     def _estimate_cost(self, model_used: str, prompt_tokens: Optional[int], completion_tokens: Optional[int]) -> Dict[str, Any]:
-        # Prices per 1K tokens (approximate; adjust as needed)
-        pricing = {
-            # OpenAI (baseline public list prices; update as needed)
-            "gpt-5": {"input_per_1k": 0.015, "output_per_1k": 0.045},
-            "gpt-4o": {"input_per_1k": 0.005, "output_per_1k": 0.015},
-            "gpt-4o-mini": {"input_per_1k": 0.00015, "output_per_1k": 0.00060},
-            "gpt-4.1": {"input_per_1k": 0.005, "output_per_1k": 0.015},
-            "gpt-3.5-turbo": {"input_per_1k": 0.0005, "output_per_1k": 0.0015},
-            # Gemini
-            "gemini-1.5-pro": {"input_per_1k": 0.0035, "output_per_1k": 0.0100},
-            "gemini-1.5-flash": {"input_per_1k": 0.00035, "output_per_1k": 0.00105},
-            "gemini-1.5-pro-latest": {"input_per_1k": 0.0035, "output_per_1k": 0.0100},
-            "gemini-1.5-flash-latest": {"input_per_1k": 0.00035, "output_per_1k": 0.00105},
-        }
-
+        # Prices loaded from research_agent.config.PRICING
+        pricing = PRICING
         # Normalize model string to a pricing key
         key = model_used or ""
         key_lower = key.lower()
