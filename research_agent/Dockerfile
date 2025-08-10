@@ -44,5 +44,8 @@ RUN python -c "import fix_numpy; from pandas_ta.momentum.squeeze_pro import sque
 # Expose the port that Flask will run on
 EXPOSE 8080
 
+# Add PYTHONPATH so all imports from /app work
+ENV PYTHONPATH="${PYTHONPATH}:/app"
+
 # Run the app
 CMD ["python", "app.py"]
