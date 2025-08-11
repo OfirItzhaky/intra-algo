@@ -21,7 +21,7 @@ tqdm
 
 # ✅ TensorFlow / PyTorch
 tensorflow==2.10.0         # GPU-compatible pip version (do not upgrade)
-torch==2.0.1+cpu
+torch==2.8.0
 torchvision==0.15.2+cpu
 --find-links https://download.pytorch.org/whl/torch_stable.html
 
