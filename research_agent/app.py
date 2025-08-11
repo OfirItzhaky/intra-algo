@@ -124,6 +124,8 @@ def login():
         entered = (request.form.get("username") or "").strip().lower()
         if entered and (entered in ALLOWED_USERS):
             session["username"] = entered
+            session.permanent = False
+
             session["boot_id"] = SERVER_BOOT_ID
             # Redirect to originally requested path if present
             next_url = request.args.get("next") or url_for("index")

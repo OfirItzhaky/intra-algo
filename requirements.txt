@@ -37,3 +37,4 @@ Pillow
 pyperclip==1.8.2
 praw==7.7.1
 backtrader==1.9.78.123
+tiktoken==0.11.0

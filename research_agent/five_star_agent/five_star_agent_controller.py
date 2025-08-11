@@ -8,8 +8,8 @@ from typing import List, Optional, Tuple, Dict, Any
 import tiktoken
 from mimetypes import guess_type
 
-from .prompt_manager_5_star import MAIN_SYSTEM_PROMPT, NEWS_AND_REPORT_BIAS as BIAS_TEMPLATE
-from ..config import PRICING
+from research_agent.five_star_agent.prompt_manager_5_star import MAIN_SYSTEM_PROMPT, NEWS_AND_REPORT_BIAS as BIAS_TEMPLATE
+from research_agent.config import PRICING
 try:
     # Optional: LangChain integration for OpenAI with conversation memory
     from langchain_openai import ChatOpenAI
