@@ -97,7 +97,7 @@ LOGIN_TEMPLATE = """
 </body></html>
 """
 
-
+@app.before_request
 def enforce_login():
     # Allow static and login endpoints
     endpoint = request.endpoint or ""
@@ -552,7 +552,19 @@ def daily_analysis():
 
         symbol_summary = "\n".join(symbol_insights)
 
-        daily_results = [{"filename": "🧭 Daily Market Highlights", "text": f"**Bias:** {market_bias}\n**Focus Sectors:** {sectors}\n**Key Events:**\n{top_events}"}, {"filename": "📈 Symbol Insights", "text": symbol_summary}, {"filename": "📰 Full Daily Summary", "text": f"{CONFIG['summarized_news']}\n\n📅 Events:\n{CONFIG['summarized_events']}"}, {"filename": "💰 Cost Summary", "text": f"Total Estimated LLM Cost: ${cost:.6f}"}]
+        daily_results = [{
+            "filename": "🧭 Daily Market Highlights",
+            "text": f"**Bias:** {market_bias}\n**Focus Sectors:** {sectors}\n**Key Events:**\n{top_events}"
+        }, {
+            "filename": "📈 Symbol Insights",
+            "text": symbol_summary
+        }, {
+            "filename": "📰 Full Daily Summary",
+            "text": f"{CONFIG['summarized_news']}\n\n📅 Events:\n{CONFIG['summarized_events']}"
+        }, {
+            "filename": "💰 Cost Summary",
+            "text": f"Total Estimated LLM Cost: ${cost:.6f}"
+        }]
 
         return redirect(url_for("index", no_reset="true"))
         
@@ -562,7 +574,10 @@ def daily_analysis():
         print(error_message)  # Log to console/logs
         
         # Add error to daily_results
-        daily_results = [{"filename": "❌ Error in Daily Analysis", "text": error_message}]
+        daily_results = [{
+            "filename": "❌ Error in Daily Analysis",
+            "text": error_message
+        }]
         
         # Return both HTML display and JSON error
         return render_template_string(
@@ -778,7 +793,10 @@ def momentum_analysis():
         """
         
         # Save results for dashboard display
-        daily_results = [{"filename": "📊 Momentum Analysis", "text": f"Analysis completed for {len(results_df)} symbols.\nWeekly and daily trends calculated with SMA crossover detection.\n\nClick for full report."}]
+        daily_results = [{
+            "filename": "📊 Momentum Analysis",
+            "text": f"Analysis completed for {len(results_df)} symbols.\nWeekly and daily trends calculated with SMA crossover detection.\n\nClick for full report."
+        }]
         
         # Return the full HTML page with plots
         return html_page
@@ -789,7 +807,10 @@ def momentum_analysis():
         print(error_message)  # Log to console/logs
         
         # Add error to daily_results
-        daily_results = [{"filename": "❌ Error in Momentum Analysis", "text": error_message}]
+        daily_results = [{
+            "filename": "❌ Error in Momentum Analysis",
+            "text": error_message
+        }]
         
         # Return both HTML display and JSON error
         return render_template_string(
@@ -1318,7 +1339,7 @@ def five_star_analyze():
                     pass
         except Exception as e:
             provider = 'Gemini' if (model_choice or '').lower().startswith('gemini') else 'OpenAI'
-            import traceback
+            import traceback as _tb
             print(f"[FiveStar][ERROR] analyze_with_model failed ({provider}): {e}")
             print(f"[FiveStar][TRACE] {_tb.format_exc()}")
             return jsonify({"ok": False, "error": f"{provider} inference failed: {e}"}), 500
@@ -1342,7 +1363,7 @@ def five_star_analyze():
             "usage": usage
         })
     except Exception as e:
-        import traceback
+        import traceback as _tb
         print(f"[FiveStar][ERROR] Unexpected: {e}")
         print(f"[FiveStar][TRACE] {_tb.format_exc()}")
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -1393,7 +1414,7 @@ def dual_agent_scalp_analysis():
     """
     if 'chart_file' not in request.files or request.files['chart_file'].filename == '':
         return jsonify({"error": "No chart image uploaded."}),
-    
+
     chart_file = request.files['chart_file']
     image_bytes = chart_file.read()
     session_notes = request.form.get("session_notes")
@@ -1674,7 +1695,7 @@ def start_multitimeframe_agent():
         "llm_model_name": model_name,
         "llm_session_total_tokens": session_cost['llm_session_total_tokens'],
         "llm_session_total_cost": session_cost['llm_session_total_cost'],
-        "llm_session_model_name": session_cost['llm_session_model_name'],
+        "llm_session_model_name": session_cost['llm_model_name'],
         "bias_cost_metadata": bias_cost_metadata
     }
     return jsonify(result)
