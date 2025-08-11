@@ -4,7 +4,7 @@ FROM python:3.10-slim
 # Set working directory inside container
 WORKDIR /app
 
-# Install system dependencies (needed by Pillow, Tkinter, matplotlib, etc.)
+# Install system dependencies (needed by Pillow, matplotlib, Tkinter, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libc6-dev \
@@ -20,30 +20,35 @@ ENV PYTHONPATH="/app"
 # Copy and install dependencies
 COPY requirements.txt .
 
-# Split install for numpy/pandas_ta compatibility
+# Install all packages except numpy and pandas_ta (due to compatibility issues)
 RUN grep -v "^#\|pandas_ta\|numpy" requirements.txt | grep -v "^$" > cleaned_requirements.txt && \
     pip install --no-cache-dir -r cleaned_requirements.txt
 
-# Install numpy and pandas_ta separately to control versioning
+# Install numpy and pandas_ta in the correct order
 RUN pip install numpy==1.24.4
 RUN pip install pandas_ta==0.3.14b0
 
-# Optional: Check core package versions
+# ✅ PATCH for squeeze_pro bug (from numpy import NaN → nan)
+RUN sed -i 's/from numpy import NaN as npNaN/from numpy import nan as npNaN/' $(find / -type f -name squeeze_pro.py 2>/dev/null | head -n 1)
+
+# Optional: Verify critical packages
 RUN python -c "import numpy; print('Numpy version:', numpy.__version__)"
 RUN python -c "import pandas_ta; print('Pandas_ta version:', pandas_ta.__version__)"
-RUN python -c "import requests; print('Requests works!')"
+RUN python -c "import requests; print('Requests installed successfully')"
 
-# Copy full source code
-COPY . .
+# Copy source code (including app and research_agent folders)
+COPY research_agent/ research_agent/
+COPY backend/ backend/
+COPY frontend/ frontend/
+COPY requirements.txt .
+COPY *.py .  # If you have any top-level scripts
 
-# Ensure critical folders exist
+
+# Ensure folders exist
 RUN mkdir -p uploaded_csvs temp_uploads data && chmod 777 uploaded_csvs temp_uploads data
-
-# Verify pandas_ta patch if applicable
-RUN python -c "import fix_numpy; from pandas_ta.momentum.squeeze_pro import squeeze_pro; print('squeeze_pro patch success')"
 
 # Expose port expected by Cloud Run
 EXPOSE 8080
 
-# Entrypoint
-CMD ["python", "app.py"]
+# Entrypoint for Flask app (inside research_agent)
+CMD ["python", "research_agent/app.py"]

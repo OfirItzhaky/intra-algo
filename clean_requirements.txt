@@ -1,0 +1,43 @@
+# ✅ Web frameworks
+Flask
+fastapi==0.95.1
+uvicorn==0.21.1
+
+# ✅ Data processing
+pandas==2.2.2              # From intra-algo (newer version)
+numpy==1.24.4              # Explicit version preferred for pandas_ta
+pandas_ta==0.3.14b0
+
+# ✅ Visualization
+seaborn==0.13.2
+matplotlib==3.7.1
+plotly
+
+# ✅ ML & Modeling
+scikit-learn==1.3.2
+lightgbm
+xgboost
+tqdm
+
+# ✅ TensorFlow / PyTorch
+tensorflow==2.10.0         # GPU-compatible pip version (do not upgrade)
+torch==2.0.1+cpu
+torchvision==0.15.2+cpu
+--find-links https://download.pytorch.org/whl/torch_stable.html
+
+# ✅ Data sources
+yfinance==0.2.54
+feedparser==6.0.10
+alpha_vantage
+openpyxl==3.1.2
+
+# ✅ API Clients
+openai
+google-generativeai==0.4.1
+
+# ✅ Environment & Utilities
+python-dotenv==1.0.1
+requests
+Pillow
+pyperclip==1.8.2
+praw==7.7.1

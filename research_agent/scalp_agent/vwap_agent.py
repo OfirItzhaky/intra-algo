@@ -10,8 +10,8 @@ import pandas_ta as ta
 from copy import deepcopy
 
 from backend.analyzer.analyzer_blueprint_vwap_strategy import VWAPBounceStrategy
-from research_agent.scalp_agent.prompt_manager import VWAP_PROMPT_SINGLE_IMAGE, VWAP_PROMPT_4_IMAGES
-from research_agent.config import CONFIG, VWAP_STRATEGY_PARAM_TEMPLATE
+from .prompt_manager import VWAP_PROMPT_SINGLE_IMAGE, VWAP_PROMPT_4_IMAGES
+from ..config import CONFIG, VWAP_STRATEGY_PARAM_TEMPLATE
 import requests
 import json
 import plotly.graph_objects as go

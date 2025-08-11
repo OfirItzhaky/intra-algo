@@ -19,11 +19,6 @@ lightgbm
 xgboost
 tqdm
 
-#  TensorFlow / PyTorch
-tensorflow==2.10.0         # GPU-compatible pip version (do not upgrade)
-torch==2.0.1+cpu
-torchvision==0.15.2+cpu
---find-links https://download.pytorch.org/whl/torch_stable.html
 
 #  Data sources
 yfinance==0.2.54
@@ -41,3 +36,4 @@ requests
 Pillow
 pyperclip==1.8.2
 praw==7.7.1
+backtrader==1.9.78.123

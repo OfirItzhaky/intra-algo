@@ -7,18 +7,18 @@ from backend.analyzer.analyzer_dashboard import AnalyzerDashboard
 import os, json
 import requests
 
-from research_agent.config import CONFIG, REGRESSION_STRATEGY_DEFAULTS
+from ..config import CONFIG, REGRESSION_STRATEGY_DEFAULTS
 import traceback
 import math  # Ensure math is imported for isinf/isnan
 import re
 
-from research_agent.scalp_agent.prompt_manager import PROMPT_REGRESSION_AGENT
+from .prompt_manager import PROMPT_REGRESSION_AGENT
 
 try:
-    from research_agent.app import regression_backtest_tracker
+    from ..app import regression_backtest_tracker
 except ImportError:
     regression_backtest_tracker = None
-from research_agent.scalp_agent.scalp_base_agent import BaseAgent
+from .scalp_base_agent import BaseAgent
 
 class RegressionPredictorAgent:
     """
@@ -1041,7 +1041,7 @@ class RegressionPredictorAgent:
         Returns the raw JSON response from the LLM.
         """
         import json
-        from research_agent.config import CONFIG
+        from ..config import CONFIG
         print('[LLM] llm_select_top_strategies_from_grid called')
         print(f'[LLM] strategy_grid_df type: {type(strategy_grid_df)}, length: {len(strategy_grid_df) if hasattr(strategy_grid_df, "__len__") else "N/A"}')
         # Defensive: handle None or unexpected types

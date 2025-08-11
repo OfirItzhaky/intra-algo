@@ -5,23 +5,23 @@ from datetime import datetime
 import plotly.graph_objects as go
 import pandas_ta as ta
 
-from research_fetchers import ResearchFetchers, summarize_with_cache, summarize_economic_events_with_cache
-from research_analyzer import ResearchAnalyzer
-from news_aggregator import NewsAggregator
+from research_agent.research_fetchers import ResearchFetchers, summarize_with_cache, summarize_economic_events_with_cache
+from research_agent.research_analyzer import ResearchAnalyzer
+from research_agent.news_aggregator import NewsAggregator
 import os
 import pandas as pd
 
-from scalp_agent.multitimeframe3strategies_agent import MultiTimeframe3StrategiesAgent
-from templates import HTML_TEMPLATE
+from research_agent.scalp_agent.multitimeframe3strategies_agent import MultiTimeframe3StrategiesAgent
+from research_agent.templates import HTML_TEMPLATE
 import traceback
-from scalp_agent.scalp_agent_session import ScalpAgentSession
-from scalp_agent.scalp_agent_controller import ScalpAgentController
-from scalp_agent.input_container import InputContainer
-from scalp_agent.agent_handler import AgentHandler
-from scalp_agent.instinct_agent import InstinctAgent
-from scalp_agent.playbook_simulator import PlaybookSimulator
-from scalp_agent.csv_utils import validate_csv_against_indicators
-from scalp_agent.regression_prediction_agent import RegressionPredictorAgent
+from research_agent.scalp_agent.scalp_agent_session import ScalpAgentSession
+from research_agent.scalp_agent.scalp_agent_controller import ScalpAgentController
+from research_agent.scalp_agent.input_container import InputContainer
+from research_agent.scalp_agent.agent_handler import AgentHandler
+from research_agent.scalp_agent.instinct_agent import InstinctAgent
+from research_agent.scalp_agent.playbook_simulator import PlaybookSimulator
+from research_agent.scalp_agent.csv_utils import validate_csv_against_indicators
+from research_agent.scalp_agent.regression_prediction_agent import RegressionPredictorAgent
 import numpy as np
 import time
 
@@ -97,7 +97,7 @@ LOGIN_TEMPLATE = """
 </body></html>
 """
 
-@app.before_request
+
 def enforce_login():
     # Allow static and login endpoints
     endpoint = request.endpoint or ""
@@ -433,8 +433,8 @@ def upload_csv():
                 interval_status = "error"
                 interval_message = "File contains no data columns"
             
-            # Check if this file already exists in our list (by filename)
-            existing_entry = next((item for item in file_info if item["symbol"] == filename), None)
+            # Check if this file already exists in our list (by filename) 
+            existing_entry = next((item for item in file_info if item["symbol"] == filename), None) 
             
             if existing_entry:
                 # Update the existing entry
@@ -552,19 +552,7 @@ def daily_analysis():
 
         symbol_summary = "\n".join(symbol_insights)
 
-        daily_results = [{
-            "filename": "🧭 Daily Market Highlights",
-            "text": f"**Bias:** {market_bias}\n**Focus Sectors:** {sectors}\n**Key Events:**\n{top_events}"
-        }, {
-            "filename": "📈 Symbol Insights",
-            "text": symbol_summary
-        }, {
-            "filename": "📰 Full Daily Summary",
-            "text": f"{CONFIG['summarized_news']}\n\n📅 Events:\n{CONFIG['summarized_events']}"
-        }, {
-            "filename": "💰 Cost Summary",
-            "text": f"Total Estimated LLM Cost: ${cost:.6f}"
-        }]
+        daily_results = [{"filename": "🧭 Daily Market Highlights", "text": f"**Bias:** {market_bias}\n**Focus Sectors:** {sectors}\n**Key Events:**\n{top_events}"}, {"filename": "📈 Symbol Insights", "text": symbol_summary}, {"filename": "📰 Full Daily Summary", "text": f"{CONFIG['summarized_news']}\n\n📅 Events:\n{CONFIG['summarized_events']}"}, {"filename": "💰 Cost Summary", "text": f"Total Estimated LLM Cost: ${cost:.6f}"}]
 
         return redirect(url_for("index", no_reset="true"))
         
@@ -574,13 +562,11 @@ def daily_analysis():
         print(error_message)  # Log to console/logs
         
         # Add error to daily_results
-        daily_results = [{
-            "filename": "❌ Error in Daily Analysis",
-            "text": error_message
-        }]
+        daily_results = [{"filename": "❌ Error in Daily Analysis", "text": error_message}]
         
         # Return both HTML display and JSON error
-        return render_template_string("""
+        return render_template_string(
+        """
         <html>
         <head>
             <title>Error in Daily Analysis</title>
@@ -609,7 +595,8 @@ def momentum_analysis():
 
         if not have_uploaded_files:
             # Show a message if no files are uploaded
-            return render_template_string("""
+            return render_template_string(
+            """
             <html>
             <head>
                 <title>No Uploaded Files</title>
@@ -643,7 +630,8 @@ def momentum_analysis():
                     symbols_from_files.append(symbol)
 
         if not symbols_from_files:
-            return render_template_string("""
+            return render_template_string(
+            """
             <html>
             <head>
                 <title>No Valid Symbols</title>
@@ -790,10 +778,7 @@ def momentum_analysis():
         """
         
         # Save results for dashboard display
-        daily_results = [{
-            "filename": "📊 Momentum Analysis",
-            "text": f"Analysis completed for {len(results_df)} symbols.\nWeekly and daily trends calculated with SMA crossover detection.\n\nClick for full report."
-        }]
+        daily_results = [{"filename": "📊 Momentum Analysis", "text": f"Analysis completed for {len(results_df)} symbols.\nWeekly and daily trends calculated with SMA crossover detection.\n\nClick for full report."}]
         
         # Return the full HTML page with plots
         return html_page
@@ -804,13 +789,11 @@ def momentum_analysis():
         print(error_message)  # Log to console/logs
         
         # Add error to daily_results
-        daily_results = [{
-            "filename": "❌ Error in Momentum Analysis",
-            "text": error_message
-        }]
+        daily_results = [{"filename": "❌ Error in Momentum Analysis", "text": error_message}]
         
         # Return both HTML display and JSON error
-        return render_template_string("""
+        return render_template_string(
+        """
         <html>
         <head>
             <title>Error in Momentum Analysis</title>
@@ -1018,7 +1001,7 @@ def scalp_agent():
             chart_file = request.files['chart_file']
             session_notes = request.form.get("session_notes")
             image_bytes = chart_file.read()
-            from scalp_agent.scalp_agent_session import ScalpAgentSession
+            from research_agent.scalp_agent.scalp_agent_session import ScalpAgentSession
             session_obj = ScalpAgentSession(image_bytes=image_bytes, session_notes=session_notes)
             csv_request_info = session_obj.analyze_chart_image()
             # Store requirements in Flask session for next phase
@@ -1335,7 +1318,7 @@ def five_star_analyze():
                     pass
         except Exception as e:
             provider = 'Gemini' if (model_choice or '').lower().startswith('gemini') else 'OpenAI'
-            import traceback as _tb
+            import traceback
             print(f"[FiveStar][ERROR] analyze_with_model failed ({provider}): {e}")
             print(f"[FiveStar][TRACE] {_tb.format_exc()}")
             return jsonify({"ok": False, "error": f"{provider} inference failed: {e}"}), 500
@@ -1359,7 +1342,7 @@ def five_star_analyze():
             "usage": usage
         })
     except Exception as e:
-        import traceback as _tb
+        import traceback
         print(f"[FiveStar][ERROR] Unexpected: {e}")
         print(f"[FiveStar][TRACE] {_tb.format_exc()}")
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -1409,8 +1392,8 @@ def dual_agent_scalp_analysis():
     and returns required indicators and agent outputs as JSON.
     """
     if 'chart_file' not in request.files or request.files['chart_file'].filename == '':
-        return jsonify({"error": "No chart image uploaded."}), 400
-
+        return jsonify({"error": "No chart image uploaded."}),
+    
     chart_file = request.files['chart_file']
     image_bytes = chart_file.read()
     session_notes = request.form.get("session_notes")
@@ -1590,8 +1573,6 @@ def start_playbook():
         playbook_results["llm_token_usage"] = "N/A"
     if "llm_cost_usd" not in playbook_results:
         playbook_results["llm_cost_usd"] = 0.0
-    if "total_cost_usd" not in playbook_results:
-        playbook_results["total_cost_usd"] = 0.0
     return jsonify(playbook_results)
 
 @app.route("/query_instinct", methods=["POST"])
@@ -1693,7 +1674,7 @@ def start_multitimeframe_agent():
         "llm_model_name": model_name,
         "llm_session_total_tokens": session_cost['llm_session_total_tokens'],
         "llm_session_total_cost": session_cost['llm_session_total_cost'],
-        "llm_session_model_name": session_cost['llm_model_name'],
+        "llm_session_model_name": session_cost['llm_session_model_name'],
         "bias_cost_metadata": bias_cost_metadata
     }
     return jsonify(result)
@@ -1886,9 +1867,9 @@ def run_vwap_agent():
         # Step 1: Get images from request
         images = request.files.getlist("images")
         if not images or len(images) == 0:
-            return jsonify({"error": "No images uploaded. Please upload at least one image."}), 400
+            return jsonify({"error": "No images uploaded. Please upload at least one image."}),
         if len(images) > 4:
-            return jsonify({"error": "Maximum 4 images allowed."}), 400
+            return jsonify({"error": "Maximum 4 images allowed."}),
 
         # Step 2: Convert images to bytes
         image_bytes_list = []
@@ -1899,7 +1880,7 @@ def run_vwap_agent():
             image_bytes_list.append(img_bytes)
         num_images = len(image_bytes_list)
         if num_images == 0:
-            return jsonify({"error": "No valid images found."}), 400
+            return jsonify({"error": "No valid images found."}),
 
         csv_file = request.files.get('csv_file')
         if csv_file and csv_file.filename:
@@ -1950,16 +1931,8 @@ def serve_uploaded_csvs(filename):
     dir_path = os.path.join(os.path.dirname(__file__), 'uploaded_csvs')
     return send_from_directory(dir_path, filename)
 
+
 if __name__ == "__main__":
     import os
-    import sys
-    # Detect if PyCharm debugger is attached
-    if "pydevd" in sys.modules:
-        from werkzeug.serving import run_simple
-        run_simple("127.0.0.1", 8080, app, use_reloader=False, use_debugger=False)
-    else:
-        port = int(os.environ.get("PORT", 8080))
-        app.run(host="0.0.0.0", port=port)
-
-
-
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)

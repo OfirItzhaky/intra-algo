@@ -1,6 +1,7 @@
 import json
 import base64
 from research_agent.config import CONFIG
+
 import os
 from google.oauth2 import service_account
 from google.generativeai import configure, GenerativeModel
