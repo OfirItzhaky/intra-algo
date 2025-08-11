@@ -41,7 +41,7 @@ COPY research_agent/ research_agent/
 COPY backend/ backend/
 COPY frontend/ frontend/
 COPY requirements.txt .
-COPY *.py .  # If you have any top-level scripts
+
 
 
 # Ensure folders exist
