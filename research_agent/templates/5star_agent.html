@@ -97,7 +97,7 @@
                 {% for m in chat_history %}
                   <div class="{{ 'msg-user' if m.role == 'user' else 'msg-agent' }}">
                     <div class="small text-muted mb-1">{{ m.role|capitalize }} • {{ m.timestamp }}</div>
-                    <div>{{ m.content }}</div>
+                    <div class="fivestar-content">{{ m.content }}</div>
                     {% if m.images and m.images|length > 0 %}
                       <div class="mt-1">
                         {% for fname in m.images %}
@@ -118,6 +118,96 @@
   </div>
 
   <script>
+    function escapeHtml(s){
+      return s
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;');
+    }
+
+    function addKeywordIcons(line){
+      // light, non-destructive replacements for Hebrew keywords
+      line = line.replace(/רמת ביטחון:\s*גבוהה/g, '🟢 רמת ביטחון: גבוהה');
+      // prefer whole-word-ish matches; keep original text
+      line = line.replace(/(^|\s)מתאים(\W|$)/g, '$1✅ מתאים$2');
+      line = line.replace(/(^|\s)לא מתאים(\W|$)/g, '$1❌ לא מתאים$2');
+      return line;
+    }
+
+    function formatFiveStarResponse(raw){
+      if (!raw || typeof raw !== 'string') return '';
+      // If it doesn't contain the Five-Star response marker, return simple pre wrapped RTL
+      const marker = '📝 Model Response:';
+      if (raw.indexOf(marker) === -1){
+        return '<pre dir="rtl" style="text-align:right; white-space:pre-wrap; margin:0">' + escapeHtml(raw) + '</pre>';
+      }
+
+      const idx = raw.indexOf(marker);
+      const preamble = raw.slice(0, idx).trim();
+      let body = raw.slice(idx + marker.length).trim();
+
+      const lines = body.split(/\r?\n/);
+      // Group into numbered sections: lines starting with "<num>."
+      const sections = [];
+      let current = {title: '', items: []};
+      for (let i=0;i<lines.length;i++){
+        const ln = lines[i];
+        const secMatch = ln.match(/^\s*(\d+)\.\s*(.*)$/);
+        if (secMatch){
+          if (current.title || current.items.length){ sections.push(current); }
+          current = {title: secMatch[1] + '. ' + secMatch[2], items: []};
+          continue;
+        }
+        // bullets start with -, – or •
+        const bulletMatch = ln.match(/^\s*[\-–•]\s*(.*)$/);
+        if (bulletMatch){
+          current.items.push(bulletMatch[1]);
+        } else {
+          // Non-bullet line; keep as-is (avoid dropping content)
+          if (ln.trim().length){ current.items.push(ln); }
+        }
+      }
+      if (current.title || current.items.length){ sections.push(current); }
+
+      // Build HTML
+      let html = '<div dir="rtl" style="text-align:right">';
+      if (preamble){
+        html += '<div class="text-muted" style="white-space:pre-wrap; margin-bottom:6px">' + escapeHtml(preamble) + '</div>';
+      }
+      html += '<div class="card" style="border:none">';
+      html += '<div style="white-space:pre-wrap;">';
+
+      if (sections.length === 0){
+        // Fallback to raw body if we didn\'t detect sections
+        html += '<pre dir="rtl" style="text-align:right; white-space:pre-wrap; margin:0">' + escapeHtml(body) + '</pre>';
+      } else {
+        for (const sec of sections){
+          if (sec.title){
+            html += '<div style="font-weight:600; margin-top:8px">' + escapeHtml(sec.title) + '</div>';
+          }
+          if (sec.items && sec.items.length){
+            html += '<ul style="padding-inline-start:18px; margin:6px 0">';
+            for (const it of sec.items){
+              const t = addKeywordIcons(escapeHtml(it));
+              html += '<li style="margin:2px 0">' + t + '</li>';
+            }
+            html += '</ul>';
+          }
+        }
+      }
+      html += '</div></div></div>';
+      return html;
+    }
+
+    function applyFiveStarFormatting(){
+      document.querySelectorAll('.msg-agent .fivestar-content').forEach(el => {
+        try{
+          const raw = el.textContent || '';
+          el.innerHTML = formatFiveStarResponse(raw);
+        } catch(e) { /* no-op */ }
+      });
+    }
+
     // Clear UI state on load
     window.addEventListener('load', () => {
       try {
@@ -127,6 +217,7 @@
         // Clear form fields
         $('#instructions').val('');
       } catch {}
+      try { applyFiveStarFormatting(); } catch {}
     });
     // In-memory file store (supports drag/drop + paste + picker)
     const selectedFiles = [];
