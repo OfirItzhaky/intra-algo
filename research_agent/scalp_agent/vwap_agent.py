@@ -136,6 +136,70 @@ class VWAPAgent:
             "prompt_type": prompt_type
         }
 
+    def call_llm_text(self, prompt_text: str):
+        """
+        Calls the configured LLM with a text-only prompt (no images). Returns a dict mirroring call_llm_with_images.
+        """
+        model_name = self.model_name
+        provider = self.provider
+        raw_response_text = None
+        llm_cost_usd = None
+        llm_token_usage = None
+        if provider == "gemini":
+            api_key = CONFIG.get("gemini_api_key") or os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                return {"error": "GEMINI_API_KEY not set in config or environment."}
+            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+            body = {"contents": [{"parts": [{"text": prompt_text}]}]}
+            headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
+            response = requests.post(endpoint, headers=headers, json=body)
+            response.raise_for_status()
+            response_data = response.json()
+            raw_response_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
+            usage = response_data.get('usage', response_data.get('usageMetadata', {}))
+            llm_token_usage = usage.get('totalTokenCount')
+            llm_cost_usd = usage.get('totalCostUsd')
+            if llm_cost_usd is None and llm_token_usage is not None:
+                try:
+                    llm_cost_usd = float(llm_token_usage) * 0.0025 / 1000
+                except Exception:
+                    llm_cost_usd = None
+        elif provider == "openai":
+            api_key = CONFIG.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                return {"error": "OPENAI_API_KEY not set in config or environment."}
+            endpoint = "https://api.openai.com/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": model_name,
+                "messages": [{"role": "user", "content": prompt_text}],
+                "max_tokens": 1000
+            }
+            response = requests.post(endpoint, headers=headers, json=payload)
+            response.raise_for_status()
+            response_data = response.json()
+            raw_response_text = response_data["choices"][0]["message"]["content"]
+            usage = response_data.get('usage', {})
+            prompt_tokens = usage.get('prompt_tokens', 0)
+            completion_tokens = usage.get('completion_tokens', 0)
+            llm_token_usage = prompt_tokens + completion_tokens
+            try:
+                llm_cost_usd = (prompt_tokens * 0.01 + completion_tokens * 0.03) / 1000
+            except Exception:
+                llm_cost_usd = None
+        else:
+            return {"error": f"Unknown or unsupported model_name '{model_name}'."}
+
+        return {
+            "llm_raw_response": raw_response_text,
+            "model_name": model_name,
+            "provider": provider,
+            "llm_cost_usd": llm_cost_usd,
+            "llm_token_usage": llm_token_usage,
+            "num_images": 0,
+            "prompt_type": "text_only"
+        }
+
     @staticmethod
     def parse_llm_response_text(raw_response_text: str) -> dict:
         """
@@ -534,28 +598,28 @@ class VWAPAgent:
         #
 
         # --- Optimization file flow (if present) ---
-        if hasattr(self, 'analyzer_dashboard') and hasattr(self, 'call_llm'):
-            optimization_files = getattr(self, 'optimization_files', None)
-            if optimization_files:
-                # 1. Parse optimization files
-                opt_result = self.analyzer_dashboard.parse_optimization_reports_from_tradestation_to_df(optimization_files)
-                grid_df = opt_result['grid_df']
-                # 2. Prepare for LLM
-                llm_input_df = self.prepare_optimization_results_for_llm(grid_df)
-                # 3. Retrieve session bias (assume self.session_bias or similar)
-                session_bias = getattr(self, 'session_bias', None)
-                # 4. Format prompt
-                prompt_template = """
-                [VWAP OPTIMIZATION]
-                Bias: {{BIAS}}
-                Top parameter sets:
-                {llm_input}
-                """
-                llm_input = llm_input_df.to_string(index=False)
-                prompt_text = prompt_template.replace("{{BIAS}}", str(session_bias)).replace("{llm_input}", llm_input)
-                # 5. Call LLM and log
-                llm_response = self.call_llm(prompt_text)
-                print("[VWAPAgent] LLM optimization response:\n", llm_response)
+        optimization_files = getattr(self, 'optimization_files', None)
+        if optimization_files:
+            dashboard = AnalyzerDashboard(pd.DataFrame(), pd.DataFrame())
+            # 1. Parse optimization files
+            opt_result = dashboard.parse_optimization_reports_from_tradestation_to_df(optimization_files)
+            grid_df = opt_result['grid_df']
+            # 2. Prepare for LLM
+            llm_input_df = self.prepare_optimization_results_for_llm(grid_df)
+            # 3. Retrieve session bias (assume self.session_bias or similar)
+            session_bias = getattr(self, 'session_bias', None)
+            # 4. Format prompt
+            prompt_template = """
+            [VWAP OPTIMIZATION]
+            Bias: {{BIAS}}
+            Top parameter sets:
+            {llm_input}
+            """
+            llm_input = llm_input_df.to_string(index=False)
+            prompt_text = prompt_template.replace("{{BIAS}}", str(session_bias)).replace("{llm_input}", llm_input)
+            # 5. Call LLM (text-only)
+            opt_llm = self.call_llm_text(prompt_text)
+            print("[VWAPAgent] LLM optimization response:\n", opt_llm.get("llm_raw_response"))
 
         return {
             "llm_raw_response": llm_result.get("llm_raw_response"),
@@ -568,6 +632,39 @@ class VWAPAgent:
             "parameter_grid": [],
             "backtest_summary": [],
             "natural_language_rules": None,
+            "final_strategy": None
+        }
+
+    def run_optimizations_only(self, optimization_files):
+        """
+        Process optimization .txt files without requiring images and return LLM recommendation.
+        """
+        dashboard = AnalyzerDashboard(pd.DataFrame(), pd.DataFrame())
+        opt_result = dashboard.parse_optimization_reports_from_tradestation_to_df(optimization_files)
+        grid_df = opt_result['grid_df']
+        llm_input_df = self.prepare_optimization_results_for_llm(grid_df)
+        session_bias = getattr(self, 'session_bias', None)
+        prompt_template = """
+        [VWAP OPTIMIZATION]
+        Bias: {{BIAS}}
+        Top parameter sets:
+        {llm_input}
+        """
+        llm_input = llm_input_df.to_string(index=False)
+        prompt_text = prompt_template.replace("{{BIAS}}", str(session_bias)).replace("{llm_input}", llm_input)
+        llm_result = self.call_llm_text(prompt_text)
+        try:
+            structured = self.parse_llm_response_text(llm_result.get("llm_raw_response") or "")
+        except Exception:
+            structured = None
+        return {
+            "llm_raw_response": llm_result.get("llm_raw_response"),
+            "llm_structured": structured,
+            "model_name": llm_result.get("model_name"),
+            "provider": llm_result.get("provider"),
+            "llm_cost_usd": llm_result.get("llm_cost_usd"),
+            "llm_token_usage": llm_result.get("llm_token_usage"),
+            "num_images": 0,
             "final_strategy": None
         }
 

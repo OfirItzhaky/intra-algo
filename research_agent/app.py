@@ -1928,32 +1928,67 @@ def run_vwap_agent():
     from research_agent.scalp_agent.vwap_agent import VWAPAgent
 
     try:
-        # Step 1: Get images from request
-        images = request.files.getlist("images")
-        if not images or len(images) == 0:
-            return jsonify({"error": "No images uploaded. Please upload at least one image."}),
-        if len(images) > 4:
-            return jsonify({"error": "Maximum 4 images allowed."}),
+        # Support two flows:
+        # 1) Image-based LLM suggestion (existing)
+        # 2) Optimization-only analysis when .txt files are uploaded
+        images = request.files.getlist("images") or []
+        optimization_files = request.files.getlist("optimization_files") or []
 
-        # Step 2: Convert images to bytes
+        # If optimization files provided without images, handle optimization-only flow
+        if (not images or len(images) == 0) and (optimization_files and len(optimization_files) > 0):
+            import tempfile
+            temp_paths = []
+            try:
+                # Cap at 10 files
+                files_to_process = optimization_files[:10]
+                for f in files_to_process:
+                    if not f.filename:
+                        continue
+                    suffix = ".txt" if not f.filename.lower().endswith('.txt') else ""
+                    tf = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                    tf.write(f.read())
+                    tf.flush()
+                    tf.close()
+                    temp_paths.append(tf.name)
+
+                if not temp_paths:
+                    return jsonify({"error": "No valid optimization files uploaded."}), 400
+
+                vwap_agent = VWAPAgent()
+                result = vwap_agent.run_optimizations_only(temp_paths)
+                return jsonify(result)
+            finally:
+                # Cleanup temp files
+                for p in temp_paths:
+                    try:
+                        os.remove(p)
+                    except Exception:
+                        pass
+
+        # Otherwise, proceed with the original image-based flow
+        if not images or len(images) == 0:
+            return jsonify({"error": "No images uploaded. Please upload at least one image or upload optimization .txt files in the Optimization tab."}), 400
+        if len(images) > 4:
+            return jsonify({"error": "Maximum 4 images allowed."}), 400
+
+        # Convert images to bytes
         image_bytes_list = []
         for img in images:
             img_bytes = img.read()
             if not img_bytes:
                 continue
             image_bytes_list.append(img_bytes)
-        num_images = len(image_bytes_list)
-        if num_images == 0:
-            return jsonify({"error": "No valid images found."}),
+        if len(image_bytes_list) == 0:
+            return jsonify({"error": "No valid images found."}), 400
 
         csv_file = request.files.get('csv_file')
         if csv_file and csv_file.filename:
             df_ohlcv = pd.read_csv(csv_file)
         else:
             df_ohlcv = None
+
         vwap_agent = VWAPAgent()
         result = vwap_agent.run(images=image_bytes_list, df_5m=df_ohlcv)
-
         return jsonify(result)
 
     except Exception as e:
