@@ -256,3 +256,21 @@ def prepare_scalper_rag_summary(config: dict, symbol: str) -> str:
 {vix}
 """.strip()
     return summary
+
+
+import json
+
+
+def extract_json_block(raw_response_text):
+    """Extracts the first valid JSON object from raw LLM response."""
+    start_idx = raw_response_text.find('{')
+    end_idx = raw_response_text.rfind('}')
+    if start_idx == -1 or end_idx == -1 or end_idx <= start_idx:
+        raise ValueError("Could not find a valid JSON object in the response.")
+
+    json_like = raw_response_text[start_idx:end_idx + 1]
+
+    try:
+        return json.loads(json_like)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Failed to parse JSON: {e}\nExtracted block:\n{json_like[:1000]}")

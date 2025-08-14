@@ -1998,5 +1998,16 @@ def serve_uploaded_csvs(filename):
 
 if __name__ == "__main__":
     import os
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    import sys
+    # Detect if PyCharm debugger is attached
+    if "pydevd" in sys.modules:
+        from werkzeug.serving import run_simple
+        run_simple("127.0.0.1", 8080, app, use_reloader=False, use_debugger=False)
+    else:
+        port = int(os.environ.get("PORT", 8080))
+        app.run(host="0.0.0.0", port=port)
+
+    #TODO: DO NOT DEPLOY THE DEBUGGER PART MAIN (ABOVE) ONLY THE COMMENTED OUT PART (BELOW ) TO AVOID BREAKS!!!
+
+    # port = int(os.environ.get("PORT", 8080))
+    # app.run(host="0.0.0.0", port=port)

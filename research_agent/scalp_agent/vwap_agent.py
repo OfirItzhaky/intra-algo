@@ -11,6 +11,7 @@ from copy import deepcopy
 
 from backend.analyzer.analyzer_blueprint_vwap_strategy import VWAPBounceStrategy
 from .prompt_manager import VWAP_PROMPT_SINGLE_IMAGE, VWAP_PROMPT_4_IMAGES
+from .scalp_rag_utils import extract_json_block
 from ..config import CONFIG, VWAP_STRATEGY_PARAM_TEMPLATE
 import requests
 import json
@@ -141,23 +142,8 @@ class VWAPAgent:
         Cleans and parses LLM response text as JSON. Removes markdown code block markers and strips whitespace.
         Prints the cleaned string before parsing. Raises ValueError if parsing fails.
         """
-        import json
-        cleaned = raw_response_text.strip()
-        # Remove markdown code block markers if present
-        if cleaned.startswith('```json'):
-            cleaned = cleaned[len('```json'):]
-        if cleaned.startswith('```'):
-            cleaned = cleaned[len('```'):]
-        if cleaned.endswith('```'):
-            cleaned = cleaned[:-len('```')]
-        cleaned = cleaned.strip()
-        print(f"[VWAPAgent] Cleaned LLM response for JSON parsing:\n{cleaned[:1000]}")
-        try:
-            parsed = json.loads(cleaned)
-            return parsed
-        except Exception as e:
-            print(f"[VWAPAgent] ERROR: Failed to parse LLM response as JSON: {e}")
-            raise ValueError(f"Failed to parse LLM response as JSON: {e}\nCleaned string: {cleaned[:500]}")
+        llm_structured = extract_json_block(raw_response_text)
+        return llm_structured
 
     def build_grid_from_llm_response(self, llm_response: dict) -> pd.DataFrame:
         """
