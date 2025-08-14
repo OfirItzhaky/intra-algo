@@ -465,3 +465,24 @@ STRATEGY GRID:
 BIAS SUMMARY:
 {bias_str}
 """
+
+VWAP_OPTIMIZATION_PROMPT = """
+## Strategy Overview
+This optimization is for VWAP-based strategy variants. Each row in the table below represents a specific parameter combination and its backtested results.
+
+## Optimization Summary
+Bias for today: {{BIAS}}
+
+## Top Parameter Sets (Backtest Grid)
+{llm_input}
+
+## Risk and Drawdown Analysis
+Please highlight parameter sets with:
+- Acceptable drawdowns
+- High profit factor
+- Robustness index or expectancy above average
+- Any tradeoff worth noting
+
+## Recommendation for Today
+Based on the above, select the best candidate for today's session and explain why. Provide a short strategy name and 1-sentence execution logic.
+"""

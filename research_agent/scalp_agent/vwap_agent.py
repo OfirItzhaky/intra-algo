@@ -10,9 +10,9 @@ import pandas_ta as ta
 from copy import deepcopy
 
 from backend.analyzer.analyzer_blueprint_vwap_strategy import VWAPBounceStrategy
-from .prompt_manager import VWAP_PROMPT_SINGLE_IMAGE, VWAP_PROMPT_4_IMAGES
+from .prompt_manager import VWAP_PROMPT_SINGLE_IMAGE, VWAP_PROMPT_4_IMAGES, VWAP_OPTIMIZATION_PROMPT
 from .scalp_rag_utils import extract_json_block
-from ..config import CONFIG, VWAP_STRATEGY_PARAM_TEMPLATE
+from ..config import CONFIG, VWAP_STRATEGY_PARAM_TEMPLATE, PRICING
 import requests
 import json
 import plotly.graph_objects as go
@@ -77,13 +77,23 @@ class VWAPAgent:
             raw_response_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
             llm_response = response.text
             usage = response_data.get('usage', response_data.get('usageMetadata', {}))
-            llm_token_usage = usage.get('totalTokenCount')
-            llm_cost_usd = usage.get('totalCostUsd')
-            if llm_cost_usd is None and llm_token_usage is not None:
-                try:
-                    llm_cost_usd = float(llm_token_usage) * 0.0025 / 1000
-                except Exception:
-                    llm_cost_usd = None
+            # Gemini usage fields may include promptTokenCount and candidatesTokenCount
+            prompt_tokens = usage.get('promptTokenCount') or usage.get('prompt_tokens') or 0
+            completion_tokens = usage.get('candidatesTokenCount') or usage.get('output_tokens') or 0
+            total_tokens = usage.get('totalTokenCount')
+            if (not prompt_tokens and not completion_tokens) and total_tokens:
+                # Fallback split if only total is available
+                prompt_tokens = int(total_tokens * 0.6)
+                completion_tokens = int(total_tokens - prompt_tokens)
+            llm_token_usage = (prompt_tokens or 0) + (completion_tokens or 0) or total_tokens
+            # Pricing-based cost estimate
+            pricing = PRICING.get(model_name) or next((PRICING[k] for k in PRICING if str(model_name).startswith(k)), None)
+            if pricing:
+                in_rate = pricing.get('input_per_1k') or 0.0
+                out_rate = pricing.get('output_per_1k') or 0.0
+                llm_cost_usd = ((prompt_tokens or 0) * in_rate + (completion_tokens or 0) * out_rate) / 1000
+            else:
+                llm_cost_usd = usage.get('totalCostUsd')
         elif provider == "openai":
             api_key = CONFIG.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
             if not api_key:
@@ -117,10 +127,14 @@ class VWAPAgent:
             usage = response_data.get('usage', {})
             prompt_tokens = usage.get('prompt_tokens', 0)
             completion_tokens = usage.get('completion_tokens', 0)
-            llm_token_usage = prompt_tokens + completion_tokens
-            try:
-                llm_cost_usd = (prompt_tokens * 0.01 + completion_tokens * 0.03) / 1000
-            except Exception:
+            llm_token_usage = (prompt_tokens or 0) + (completion_tokens or 0)
+            # Pricing-based cost estimate
+            pricing = PRICING.get(model_name) or next((PRICING[k] for k in PRICING if str(model_name).startswith(k)), None)
+            if pricing:
+                in_rate = pricing.get('input_per_1k') or 0.0
+                out_rate = pricing.get('output_per_1k') or 0.0
+                llm_cost_usd = ((prompt_tokens or 0) * in_rate + (completion_tokens or 0) * out_rate) / 1000
+            else:
                 llm_cost_usd = None
         else:
             return {"error": f"Unknown or unsupported model_name '{model_name}'."}
@@ -157,13 +171,21 @@ class VWAPAgent:
             response_data = response.json()
             raw_response_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
             usage = response_data.get('usage', response_data.get('usageMetadata', {}))
-            llm_token_usage = usage.get('totalTokenCount')
-            llm_cost_usd = usage.get('totalCostUsd')
-            if llm_cost_usd is None and llm_token_usage is not None:
-                try:
-                    llm_cost_usd = float(llm_token_usage) * 0.0025 / 1000
-                except Exception:
-                    llm_cost_usd = None
+            # Attempt to use detailed fields when available
+            prompt_tokens = usage.get('promptTokenCount') or usage.get('prompt_tokens') or 0
+            completion_tokens = usage.get('candidatesTokenCount') or usage.get('output_tokens') or 0
+            total_tokens = usage.get('totalTokenCount')
+            if (not prompt_tokens and not completion_tokens) and total_tokens:
+                prompt_tokens = int(total_tokens * 0.6)
+                completion_tokens = int(total_tokens - prompt_tokens)
+            llm_token_usage = (prompt_tokens or 0) + (completion_tokens or 0) or total_tokens
+            pricing = PRICING.get(model_name) or next((PRICING[k] for k in PRICING if str(model_name).startswith(k)), None)
+            if pricing:
+                in_rate = pricing.get('input_per_1k') or 0.0
+                out_rate = pricing.get('output_per_1k') or 0.0
+                llm_cost_usd = ((prompt_tokens or 0) * in_rate + (completion_tokens or 0) * out_rate) / 1000
+            else:
+                llm_cost_usd = usage.get('totalCostUsd')
         elif provider == "openai":
             api_key = CONFIG.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
             if not api_key:
@@ -182,10 +204,13 @@ class VWAPAgent:
             usage = response_data.get('usage', {})
             prompt_tokens = usage.get('prompt_tokens', 0)
             completion_tokens = usage.get('completion_tokens', 0)
-            llm_token_usage = prompt_tokens + completion_tokens
-            try:
-                llm_cost_usd = (prompt_tokens * 0.01 + completion_tokens * 0.03) / 1000
-            except Exception:
+            llm_token_usage = (prompt_tokens or 0) + (completion_tokens or 0)
+            pricing = PRICING.get(model_name) or next((PRICING[k] for k in PRICING if str(model_name).startswith(k)), None)
+            if pricing:
+                in_rate = pricing.get('input_per_1k') or 0.0
+                out_rate = pricing.get('output_per_1k') or 0.0
+                llm_cost_usd = ((prompt_tokens or 0) * in_rate + (completion_tokens or 0) * out_rate) / 1000
+            else:
                 llm_cost_usd = None
         else:
             return {"error": f"Unknown or unsupported model_name '{model_name}'."}
@@ -599,6 +624,7 @@ class VWAPAgent:
 
         # --- Optimization file flow (if present) ---
         optimization_files = getattr(self, 'optimization_files', None)
+        optimization_cost_metadata = None
         if optimization_files:
             dashboard = AnalyzerDashboard(pd.DataFrame(), pd.DataFrame())
             # 1. Parse optimization files
@@ -620,6 +646,13 @@ class VWAPAgent:
             # 5. Call LLM (text-only)
             opt_llm = self.call_llm_text(prompt_text)
             print("[VWAPAgent] LLM optimization response:\n", opt_llm.get("llm_raw_response"))
+            # Capture optimization LLM cost metadata for UI
+            optimization_cost_metadata = {
+                "model_name": opt_llm.get("model_name"),
+                "provider": opt_llm.get("provider"),
+                "llm_cost_usd": opt_llm.get("llm_cost_usd"),
+                "llm_token_usage": opt_llm.get("llm_token_usage"),
+            }
 
         return {
             "llm_raw_response": llm_result.get("llm_raw_response"),
@@ -632,7 +665,8 @@ class VWAPAgent:
             "parameter_grid": [],
             "backtest_summary": [],
             "natural_language_rules": None,
-            "final_strategy": None
+            "final_strategy": None,
+            "optimization_cost_metadata": optimization_cost_metadata
         }
 
     def run_optimizations_only(self, optimization_files):
@@ -644,15 +678,11 @@ class VWAPAgent:
         grid_df = opt_result['grid_df']
         llm_input_df = self.prepare_optimization_results_for_llm(grid_df)
         session_bias = getattr(self, 'session_bias', None)
-        prompt_template = """
-        [VWAP OPTIMIZATION]
-        Bias: {{BIAS}}
-        Top parameter sets:
-        {llm_input}
-        """
+        prompt_template = VWAP_OPTIMIZATION_PROMPT
         llm_input = llm_input_df.to_string(index=False)
         prompt_text = prompt_template.replace("{{BIAS}}", str(session_bias)).replace("{llm_input}", llm_input)
         llm_result = self.call_llm_text(prompt_text)
+
         try:
             structured = self.parse_llm_response_text(llm_result.get("llm_raw_response") or "")
         except Exception:
@@ -665,7 +695,13 @@ class VWAPAgent:
             "llm_cost_usd": llm_result.get("llm_cost_usd"),
             "llm_token_usage": llm_result.get("llm_token_usage"),
             "num_images": 0,
-            "final_strategy": None
+            "final_strategy": None,
+            "optimization_cost_metadata": {
+                "model_name": llm_result.get("model_name"),
+                "provider": llm_result.get("provider"),
+                "llm_cost_usd": llm_result.get("llm_cost_usd"),
+                "llm_token_usage": llm_result.get("llm_token_usage"),
+            }
         }
 
     def filter_strategy_params(self, config: dict) -> dict:

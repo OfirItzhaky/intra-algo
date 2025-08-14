@@ -1875,6 +1875,15 @@ document.addEventListener('DOMContentLoaded', function() {
                   if (rationale) {
                     out += `<div class='card border-secondary'><div class='card-header bg-light'><b>💬 LLM Rationale</b></div><div class='card-body'><pre>${rationale}</pre></div></div>`;
                   }
+                  // Render optimization LLM cost if provided
+                  if (j.optimization_cost_metadata) {
+                    const m = j.optimization_cost_metadata;
+                    const cost = (m.llm_cost_usd !== undefined && m.llm_cost_usd !== null) ? Number(m.llm_cost_usd).toFixed(4) : '-';
+                    const tokens = m.llm_token_usage !== undefined && m.llm_token_usage !== null ? m.llm_token_usage : '-';
+                    const model = m.model_name || '-';
+                    const prov = m.provider || '-';
+                    out += `<div class='small text-muted mt-2'>Optimization LLM → Model: ${model} | Provider: ${prov} | Tokens: ${tokens} | Cost: $${cost}</div>`;
+                  }
                   if (!out) {
                     out = `<div class='alert alert-info'>No structured optimization result returned. Raw output:</div><pre>${j.llm_raw_response || ''}</pre>`;
                   }
