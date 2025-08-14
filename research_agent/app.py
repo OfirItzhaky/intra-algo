@@ -26,6 +26,9 @@ import numpy as np
 import time
 
 from research_agent.config import CONFIG, SUMMARY_CACHE, EVENT_CACHE, REGRESSION_STRATEGY_DEFAULTS
+import logging
+from research_agent.five_star_agent.five_star_agent_controller import FiveStarAgentController
+from research_agent.company_calendar import CompanyCalendarError
 
 
 # === Runtime Constants ===
@@ -49,6 +52,8 @@ regression_backtest_tracker = {
 }
 
 app = Flask(__name__)
+logger = logging.getLogger("app.report_bias")
+logger.setLevel(logging.INFO)
 app.secret_key = 'snapshot-session-key'
 # Enable debugging and detailed error display
 app.config['DEBUG'] = True
@@ -231,6 +236,42 @@ def get_llm_session_cost():
         'llm_session_total_cost': session.get('llm_session_total_cost', 0.0),
         'llm_model_name': session.get('llm_model_name', 'Gemini 1.5 Pro')
     }
+
+# --- Minimal test endpoint for News & Reports Bias ---
+@app.route("/api/five_star/report-bias", methods=["GET"])
+def api_five_star_report_bias():
+    """
+    Test endpoint: /api/five_star/report-bias?symbol=ALNY
+    Returns:
+      {
+        "ok": true/false,
+        "data": {...} | null,
+        "error": "message" | null
+      }
+    """
+    symbol = (request.args.get("symbol") or "").strip()
+    days = request.args.get("days", default="14").strip()
+
+    try:
+        days_ahead = int(days)
+        if days_ahead <= 0 or days_ahead > 45:
+            raise ValueError("days must be between 1 and 45")
+    except Exception:
+        return jsonify({"ok": False, "data": None, "error": "invalid 'days' parameter"}), 400
+
+    if not symbol:
+        return jsonify({"ok": False, "data": None, "error": "missing 'symbol'"}), 400
+
+    try:
+        ctrl = FiveStarAgentController()
+        data = ctrl.get_symbol_report_info(symbol=symbol, days_ahead=days_ahead)
+        return jsonify({"ok": True, "data": data, "error": None}), 200
+    except CompanyCalendarError as ce:
+        logger.exception("validation error")
+        return jsonify({"ok": False, "data": None, "error": str(ce)}), 400
+    except Exception:
+        logger.exception("internal error")
+        return jsonify({"ok": False, "data": None, "error": "internal server error"}), 500
 
 @app.route("/upload_csv", methods=["POST"])
 def upload_csv():

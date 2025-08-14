@@ -9,7 +9,12 @@ import tiktoken
 from mimetypes import guess_type
 
 from research_agent.five_star_agent.prompt_manager_5_star import MAIN_SYSTEM_PROMPT, NEWS_AND_REPORT_BIAS as BIAS_TEMPLATE
-from research_agent.config import PRICING
+from research_agent.config import PRICING, CONFIG
+import logging
+from research_agent.company_calendar import get_upcoming_report_info, CompanyCalendarError
+
+logger = logging.getLogger("five_star_agent_controller")
+logger.setLevel(logging.INFO)
 try:
     # Optional: LangChain integration for OpenAI with conversation memory
     from langchain_openai import ChatOpenAI
@@ -36,6 +41,25 @@ class FiveStarAgentController:
     """
 
     REQUIRED_SOURCES = ["ProRealTime", "StockCharts", "Finviz"]
+
+    def get_symbol_report_info(self, symbol: str, days_ahead: int = 14) -> dict:
+        """
+        Lightweight helper for 'news & reports bias' feature.
+        Returns a raw dict with upcoming-report info and a tiny company summary.
+        """
+        try:
+            logger.info(f"[report-bias] request symbol={symbol} days_ahead={days_ahead}")
+            result = get_upcoming_report_info(symbol=symbol, config=CONFIG, days_ahead=days_ahead)
+            logger.info(
+                f"[report-bias] provider={result.get('provider_used')} has_upcoming={result.get('has_upcoming_report')} date={result.get('report_date')}"
+            )
+            return result
+        except CompanyCalendarError as ce:
+            logger.exception("[report-bias] validation error")
+            raise
+        except Exception:
+            logger.exception("[report-bias] unexpected error")
+            raise
 
     def _format_summary_block(self, summary: str) -> str:
         return f"Context from previous chart analysis (summary):\n{summary}"
