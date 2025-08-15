@@ -237,6 +237,13 @@ def get_llm_session_cost():
         'llm_model_name': session.get('llm_model_name', 'Gemini 1.5 Pro')
     }
 
+@app.route('/vwap_optimization_html', methods=['GET'])
+def vwap_optimization_html():
+    try:
+        return render_template('vwap_optimization.html')
+    except Exception as e:
+        return f"<div class='text-danger'>Error loading optimization UI: {e}</div>"
+
 # --- Minimal test endpoint for News & Reports Bias ---
 @app.route("/api/five_star/report-bias", methods=["GET"])
 def api_five_star_report_bias():

@@ -1023,45 +1023,43 @@ class AnalyzerDashboard:
 
     def parse_optimization_reports_from_tradestation_to_df(self, file_paths):
         """
-        Parse TradeStation optimization .txt files and aggregate into a single DataFrame.
-        Args:
-            file_paths (list of str): List of file paths to TradeStation optimization .txt files.
+        Parse TradeStation optimization .txt or .csv files (utf-16, tab-delimited) into a single DataFrame.
         Returns:
             dict: { 'raw_dfs': {strategy_name: df, ...}, 'grid_df': combined_df }
         """
         import pandas as pd
         import re
+        import os
+
         raw_dfs = {}
         all_dfs = []
+
         for path in file_paths:
-            with open(path, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-            # 1. Extract strategy name from first line/cell
-            first_line = lines[0].strip()
-            match = re.match(r'([^:]+):', first_line)
-            if match:
-                strategy_name = match.group(1).strip()
-            else:
-                strategy_name = path.split('/')[-1].split('\\')[-1].replace('.txt', '')
-            # 2. Read as tab-separated, then split column by comma
-            df_raw = pd.read_csv(path, sep='\t', header=None, engine='python')
-            df = df_raw[0].str.split(',', expand=True)
-            # 3. First row is header
-            df.columns = df.iloc[0].str.strip()
-            df = df.iloc[1:].reset_index(drop=True)
-            # 4. Clean headers
-            df.columns = [str(c).strip().replace(' ', '_').replace('(', '').replace(')', '').replace('%', 'pct') for c in df.columns]
-            df = df.loc[:, ~df.columns.duplicated()]
-            df = df.dropna(axis=1, how='all')
-            # 5. Detect input params (first few columns matching known param patterns)
-            param_cols = [col for col in df.columns if re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', col) and not col.lower() in ['netprofit', 'profitfactor', 'drawdown']]
-            df['strategy'] = strategy_name
-            raw_dfs[strategy_name] = df
-            all_dfs.append(df)
-        # 6. Aggregate
+            try:
+                # Read with strict utf-16 and tab delimiter
+                df = pd.read_csv(path, sep='\t', encoding='utf-16')
+
+                # First row = header
+                df.columns = df.columns.str.strip()
+                df = df.dropna(how='all', axis=1)
+
+                # Strategy name from file name
+                strategy_name = os.path.basename(path).replace('.txt', '').replace('.csv', '')
+                df['strategy'] = strategy_name
+
+                # Clean headers
+                df.columns = [str(c).strip().replace(' ', '_').replace('(', '').replace(')', '').replace('%', 'pct') for
+                              c in df.columns]
+                df = df.loc[:, ~df.columns.duplicated()]
+
+                raw_dfs[strategy_name] = df
+                all_dfs.append(df)
+
+            except Exception as e:
+                raise RuntimeError(f"[ERROR] Failed to parse file {path}: {e}")
+
         if all_dfs:
             grid_df = pd.concat(all_dfs, ignore_index=True)
-            # Try to convert numeric columns
             for col in grid_df.columns:
                 try:
                     grid_df[col] = pd.to_numeric(grid_df[col])
@@ -1069,7 +1067,9 @@ class AnalyzerDashboard:
                     pass
         else:
             grid_df = pd.DataFrame()
-        return { 'raw_dfs': raw_dfs, 'grid_df': grid_df }
+
+        return {'raw_dfs': raw_dfs, 'grid_df': grid_df}
+
 
 
 

@@ -1768,15 +1768,9 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
       <div id="content" class="mt-3"></div>
     </div>
-    <div class="tab-pane" id="tab-opt">
-      <div class="mb-2 small-muted">Upload up to 10 TradeStation optimization reports (.txt)</div>
-      <form id="opt-form">
-        <input class="form-control mb-2" type="file" id="opt-files" accept=".txt" multiple>
-        <button class="btn btn-primary" type="submit">Analyze Optimizations</button>
-      </form>
-      <div id="opt-status" class="mt-2"></div>
-      <div id="opt-output" class="mt-3"></div>
-    </div>
+      <div class="tab-pane" id="tab-opt">
+        <div id="opt-fragment-placeholder" class="text-secondary">Loading optimization UI…</div>
+      </div>
   </div>
 </div>
 </body></html>`;
@@ -1802,6 +1796,76 @@ document.addEventListener('DOMContentLoaded', function() {
           };
           btnLlm.addEventListener('click', () => activate('llm'));
           btnOpt.addEventListener('click', () => activate('opt'));
+          // Ensure marked.js is available inside popup for markdown rendering
+          try {
+            const m = d.createElement('script');
+            m.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
+            d.head.appendChild(m);
+          } catch(_) {}
+
+          // Attach optimization handler when fragment is present
+          function attachOptHandler() {
+            const form = d.getElementById('opt-form');
+            if (!form) { setTimeout(attachOptHandler, 200); return; }
+            if (form._handlerAttached) return;
+            form._handlerAttached = true;
+            form.addEventListener('submit', function(e){
+              e.preventDefault();
+              const filesInput = d.getElementById('opt-files');
+              const optStatus = d.getElementById('opt-status');
+              const optOutput = d.getElementById('opt-output');
+              optOutput.innerHTML = '';
+              optStatus.innerHTML = '<div class="d-flex align-items-center text-secondary"><div class="spinner-border spinner-border-sm me-2" role="status"></div>Analyzing optimizations…</div>';
+              const files = Array.from(filesInput.files || []);
+              if (files.length === 0) { optStatus.innerHTML = '<div class="text-danger">Please select at least one .txt file.</div>'; return; }
+              if (files.length > 10) { optStatus.innerHTML = '<div class="text-danger">Maximum 10 files allowed.</div>'; return; }
+              const fd = new FormData();
+              files.forEach(f => fd.append('optimization_files', f));
+              fetch('/run_vwap_agent', { method: 'POST', body: fd })
+                .then(r => r.json())
+                .then(j => {
+                  if (j.error) { optStatus.innerHTML = `<div class='alert alert-danger'>${j.error}</div>`; return; }
+                  optStatus.innerHTML = '';
+                  const pick = j.final_strategy || (j.llm_structured && (j.llm_structured.top_pick || j.llm_structured.final_strategy || (Array.isArray(j.llm_structured.strategy_recommendations) ? j.llm_structured.strategy_recommendations[0] : null)));
+                  const rationale = j.rationale || (j.llm_structured && (j.llm_structured.rationale || j.llm_structured.reason)) || j.llm_raw_response;
+                  let out = '';
+                  if (pick) {
+                    const name = pick.name || pick.strategy_name || 'Top Strategy';
+                    const params = Object.entries(pick).filter(([k]) => k !== 'name' && k !== 'strategy_name').map(([k,v]) => `<code class='mono'>${k}</code>: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join('<br>');
+                    out += `<div class='card border-success mb-3'><div class='card-header bg-success text-white'><b>✅ Selected Strategy</b></div><div class='card-body'><div><b>${name}</b></div><div class='mt-2 small'>${params || 'No parameters available'}</div></div></div>`;
+                  }
+                  if (rationale) {
+                    out += `<div class='card border-secondary'><div class='card-header bg-light'><b>💬 LLM Rationale</b></div><div class='card-body'>${formatOptimizationMarkdown(rationale)}</div></div>`;
+                  }
+                  if (j.optimization_cost_metadata) {
+                    const m = j.optimization_cost_metadata;
+                    const cost = (m.llm_cost_usd !== undefined && m.llm_cost_usd !== null) ? Number(m.llm_cost_usd).toFixed(4) : '-';
+                    const tokens = m.llm_token_usage !== undefined && m.llm_token_usage !== null ? m.llm_token_usage : '-';
+                    const model = m.model_name || '-';
+                    const prov = m.provider || '-';
+                    out += `<div class='small text-muted mt-2'>Optimization LLM → Model: ${model} | Provider: ${prov} | Tokens: ${tokens} | Cost: $${cost}</div>`;
+                  }
+                  if (!out) {
+                    out = `<div class='alert alert-info'>No structured optimization result returned. Raw output:</div>${formatOptimizationMarkdown(j.llm_raw_response || '')}`;
+                  }
+                  optOutput.innerHTML = out;
+                })
+                .catch(err => { optStatus.innerHTML = `<div class='alert alert-danger'>Error: ${err}</div>`; });
+            });
+          }
+          attachOptHandler();
+          // Load optimization HTML fragment from server and inject into the tab
+          fetch('/vwap_optimization_html', { method: 'GET' })
+            .then(r => r.text())
+            .then(html => {
+              const optTab = d.getElementById('tab-opt');
+              if (optTab) optTab.innerHTML = html;
+              attachOptHandler();
+            })
+            .catch(() => {
+              const optTab = d.getElementById('tab-opt');
+              if (optTab) optTab.innerHTML = '<div class="text-danger">Failed to load optimization UI.</div>';
+            });
         } catch (e) { /* no-op */ }
       }
 
@@ -1820,13 +1884,112 @@ document.addEventListener('DOMContentLoaded', function() {
         vwapBtn.disabled = false;
         vwapBtn.innerHTML = originalBtnHTML;
 
+        // --- Helper to prettify LLM markdown-like text for both tabs ---
+        function formatOptimizationMarkdown(raw) {
+          function escapeHtml(s) {
+            return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+          }
+          let text = (raw || '').trim();
+          // Emoji-enhanced section titles
+          text = text.replace(/^###\s*(.*risk.*|.*drawdown.*)$/gim, '### ⚠️ $1');
+          text = text.replace(/^##\s*(.*risk.*|.*drawdown.*)$/gim, '## ⚠️ $1');
+          text = text.replace(/^###\s*(.*profit.*|.*pnl.*)$/gim, '### 📈 $1');
+          text = text.replace(/^##\s*(.*profit.*|.*pnl.*)$/gim, '## 📈 $1');
+          text = text.replace(/^###\s*(.*reason.*|.*llm.*)$/gim, '### 🧠 $1');
+          text = text.replace(/^##\s*(.*reason.*|.*llm.*)$/gim, '## 🧠 $1');
+          let htmlBody = '';
+          if (window.marked && window.marked.parse) {
+            htmlBody = window.marked.parse(text);
+          } else {
+            htmlBody = text
+              .replace(/^###\s*(.*)$/gim, '<h4>$1<\/h4>')
+              .replace(/^##\s*(.*)$/gim, '<h3>$1<\/h3>')
+              .replace(/^#\s*(.*)$/gim, '<h2>$1<\/h2>')
+              .replace(/\*\*(.*?)\*\*/g, '<strong>$1<\/strong>')
+              .replace(/\n/g, '<br>');
+          }
+          const style = `
+            <style>
+              .llm-enhanced h2,.llm-enhanced h3,.llm-enhanced h4{margin-top:0.8rem}
+              .llm-enhanced ul{padding-left:1.2rem}
+            </style>`;
+          return `${style}<div class='llm-enhanced'>${htmlBody}</div>`;
+        }
+
         const renderHtml = (payload) => {
+          function escapeHtml(s) {
+            return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+          }
+          function formatLlmResponse(raw) {
+            let text = (raw || '').trim();
+            // Extract Strategy Name
+            let strategyName = null;
+            const nameMatch = text.match(/\*\*\s*Strategy Name:\s*\*\*\s*(.+)/i);
+            if (nameMatch) {
+              strategyName = nameMatch[1].trim();
+              text = text.replace(nameMatch[0], '').trim();
+            }
+            // Extract Execution Logic block (until blank line)
+            let executionLogic = null;
+            const execMatch = text.match(/\*\*\s*Execution Logic:\s*\*\*\s*([\s\S]+?)(?=\n\s*\n|$)/i);
+            if (execMatch) {
+              executionLogic = execMatch[1].trim();
+              text = text.replace(execMatch[0], '').trim();
+            }
+            // Emoji-enhanced section titles
+            text = text.replace(/^###\s*(.*risk.*|.*drawdown.*)$/gim, '### ⚠️ $1');
+            text = text.replace(/^##\s*(.*risk.*|.*drawdown.*)$/gim, '## ⚠️ $1');
+            text = text.replace(/^###\s*(.*profit.*|.*pnl.*)$/gim, '### 📈 $1');
+            text = text.replace(/^##\s*(.*profit.*|.*pnl.*)$/gim, '## 📈 $1');
+            text = text.replace(/^###\s*(.*reason.*|.*llm.*)$/gim, '### 🧠 $1');
+            text = text.replace(/^##\s*(.*reason.*|.*llm.*)$/gim, '## 🧠 $1');
+            // Optional: capture Top parameter sets section (for pretty <pre>)
+            let paramsBlock = null;
+            const paramsMatch = text.match(/##\s*Top\s*parameter\s*sets[:\s]*([\s\S]*?)(?=\n\s*##|$)/i);
+            if (paramsMatch) {
+              paramsBlock = paramsMatch[1].trim();
+            }
+            // Markdown → HTML
+            let htmlBody = '';
+            if (window.marked && window.marked.parse) {
+              htmlBody = window.marked.parse(text);
+            } else {
+              htmlBody = text
+                .replace(/^###\s*(.*)$/gim, '<h4>$1<\/h4>')
+                .replace(/^##\s*(.*)$/gim, '<h3>$1<\/h3>')
+                .replace(/^#\s*(.*)$/gim, '<h2>$1<\/h2>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1<\/strong>')
+                .replace(/\n/g, '<br>');
+            }
+            const style = `
+              <style>
+                .llm-enhanced h2,.llm-enhanced h3,.llm-enhanced h4{margin-top:0.8rem}
+                .llm-enhanced ul{padding-left:1.2rem}
+                .callout{border:1px solid #e6e6ff;border-left:4px solid #7c3aed;background:#f9f7ff;border-radius:8px;padding:12px;margin-bottom:10px}
+                .callout.logic{border-left-color:#0d6efd;background:#f5faff}
+                .callout.params{border-left-color:#198754;background:#f6fff8}
+                .callout-title{font-weight:600;margin-bottom:6px}
+                .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; white-space: pre-wrap}
+                .small-muted{color:#6c757d;font-size:0.9rem}
+              </style>`;
+            let callouts = '';
+            if (strategyName) {
+              callouts += `<div class="callout"><div class="callout-title">Strategy Name</div><div class="callout-body">${escapeHtml(strategyName)}</div></div>`;
+            }
+            if (executionLogic) {
+              callouts += `<div class="callout logic"><div class="callout-title">Execution Logic</div><div class="callout-body mono">${escapeHtml(executionLogic)}</div></div>`;
+            }
+            if (paramsBlock) {
+              callouts += `<div class="callout params"><div class="callout-title">Top Parameter Sets</div><pre class="mono">${escapeHtml(paramsBlock)}</pre></div>`;
+            }
+            return `${style}<div class='llm-enhanced'>${callouts}<div class='llm-md'>${htmlBody}</div></div>`;
+          }
           let html = `
           <div class='card border-primary mt-2'>
             <div class='card-header bg-primary text-white'><b>VWAP Agent LLM Output</b></div>
             <div class='card-body'>
               <div class='mb-2'><b>Model:</b> ${payload.model_name || '-'} | <b>Provider:</b> ${payload.provider || '-'} | <b>Cost:</b> $${payload.llm_cost_usd !== undefined && payload.llm_cost_usd !== null ? Number(payload.llm_cost_usd).toFixed(4) : '-'} | <b>Tokens:</b> ${payload.llm_token_usage || '-'} | <b>Prompt:</b> ${payload.prompt_type === 'single_image' ? 'Single Image' : (payload.prompt_type === 'multi_image' ? '4-Image' : '-') } | <b>Images:</b> ${payload.num_images || 0}</div>
-              <pre style='white-space:pre-wrap;'>${payload.llm_raw_response || ''}</pre>
+              ${formatLlmResponse(payload.llm_raw_response || '')}
             </div>
           </div>`;
           return html;
@@ -1841,8 +2004,9 @@ document.addEventListener('DOMContentLoaded', function() {
           } else {
             statusDiv.innerHTML = '';
             contentDiv.innerHTML = renderHtml(data);
-            // Attach Optimization Upload handler in the same popup tab
+            // Attach Optimization Upload handler after fragment injection
             const form = d.getElementById('opt-form');
+            if (!form) return; // fragment not loaded yet
             form.addEventListener('submit', function(e){
               e.preventDefault();
               const filesInput = d.getElementById('opt-files');
@@ -1873,7 +2037,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     out += `<div class='card border-success mb-3'><div class='card-header bg-success text-white'><b>✅ Selected Strategy</b></div><div class='card-body'><div><b>${name}</b></div><div class='mt-2 small'>${params || 'No parameters available'}</div></div></div>`;
                   }
                   if (rationale) {
-                    out += `<div class='card border-secondary'><div class='card-header bg-light'><b>💬 LLM Rationale</b></div><div class='card-body'><pre>${rationale}</pre></div></div>`;
+                    out += `<div class='card border-secondary'><div class='card-header bg-light'><b>💬 LLM Rationale</b></div><div class='card-body'>${formatOptimizationMarkdown(rationale)}</div></div>`;
                   }
                   // Render optimization LLM cost if provided
                   if (j.optimization_cost_metadata) {

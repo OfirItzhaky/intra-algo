@@ -1,0 +1,33 @@
+<div class="mb-2 small-muted">Upload up to 10 TradeStation optimization reports (.txt)</div>
+<form id="opt-form">
+  <input class="form-control mb-2" type="file" id="opt-files" accept=".txt" multiple>
+  <button class="btn btn-primary" type="submit">Analyze Optimizations</button>
+  <div class="small text-muted mt-1">Output appears below. LLM cost and model will be shown if available.</div>
+  <div id="opt-status" class="mt-2"></div>
+  <div id="opt-output" class="mt-3"></div>
+</form>
+<script>
+// Lightweight formatter so optimization rationale shows emoji/headings
+window._vwapOptFormat = function(raw){
+  try{
+    if (!raw) return '';
+    let text = String(raw).trim();
+    text = text.replace(/^###\s*(.*risk.*|.*drawdown.*)$/gim, '### ⚠️ $1');
+    text = text.replace(/^##\s*(.*risk.*|.*drawdown.*)$/gim, '## ⚠️ $1');
+    text = text.replace(/^###\s*(.*profit.*|.*pnl.*)$/gim, '### 📈 $1');
+    text = text.replace(/^##\s*(.*profit.*|.*pnl.*)$/gim, '## 📈 $1');
+    text = text.replace(/^###\s*(.*reason.*|.*llm.*)$/gim, '### 🧠 $1');
+    text = text.replace(/^##\s*(.*reason.*|.*llm.*)$/gim, '## 🧠 $1');
+    if (window.marked && window.marked.parse) {
+      return '<div class="llm-enhanced">' + window.marked.parse(text) + '</div>';
+    }
+    return '<div class="llm-enhanced">'
+      + text.replace(/^###\s*(.*)$/gim, '<h4>$1</h4>')
+            .replace(/^##\s*(.*)$/gim, '<h3>$1</h3>')
+            .replace(/^#\s*(.*)$/gim, '<h2>$1</h2>')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\n/g, '<br>')
+      + '</div>';
+  }catch(e){return String(raw)}
+}
+</script>
