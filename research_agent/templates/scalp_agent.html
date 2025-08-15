@@ -2140,4 +2140,33 @@ document.addEventListener('DOMContentLoaded', function() {
     })();
 
 });
+
+// --- Helper to prettify LLM markdown-like text for both tabs ---
+if (typeof window.formatOptimizationMarkdown !== 'function') {
+  window.formatOptimizationMarkdown = function(raw) {
+    function escapeHtml(s) {
+      return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+    }
+    let text = (raw || '').trim();
+    // Emoji-enhanced section titles
+    text = text.replace(/^###\s*(.*risk.*|.*drawdown.*)$/gim, '### ⚠️ $1');
+    text = text.replace(/^##\s*(.*risk.*|.*drawdown.*)$/gim, '## ⚠️ $1');
+    text = text.replace(/^###\s*(.*profit.*|.*pnl.*)$/gim, '### 📈 $1');
+    text = text.replace(/^##\s*(.*profit.*|.*pnl.*)$/gim, '## 📈 $1');
+    text = text.replace(/^###\s*(.*reason.*|.*llm.*)$/gim, '### 🧠 $1');
+    text = text.replace(/^##\s*(.*reason.*|.*llm.*)$/gim, '## 🧠 $1');
+    let htmlBody = '';
+    if (window.marked && window.marked.parse) {
+      htmlBody = window.marked.parse(text);
+    } else {
+      htmlBody = text
+        .replace(/^###\s*(.*)$/gim, '<h4>$1<\/h4>')
+        .replace(/^##\s*(.*)$/gim, '<h3>$1<\/h3>')
+        .replace(/^#\s*(.*)$/gim, '<h2>$1<\/h2>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1<\/strong>')
+        .replace(/\n/g, '<br>');
+    }
+    return '<div class="llm-enhanced">' + htmlBody + '</div>';
+  }
+}
 </script>

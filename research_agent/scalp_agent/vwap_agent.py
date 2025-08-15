@@ -673,6 +673,7 @@ class VWAPAgent:
         """
         Process optimization .txt files without requiring images and return LLM recommendation.
         """
+        print(f"[VWAPAgent] DEBUG: Number of optimization files sent to LLM: {len(optimization_files)}")
         dashboard = AnalyzerDashboard(pd.DataFrame(), pd.DataFrame())
         opt_result = dashboard.parse_optimization_reports_from_tradestation_to_df(optimization_files)
         grid_df = opt_result['grid_df']
