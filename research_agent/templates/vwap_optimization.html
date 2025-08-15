@@ -1,6 +1,7 @@
 <div class="mb-2 small-muted">Upload up to 10 TradeStation optimization reports (.txt)</div>
 <form id="opt-form">
   <input class="form-control mb-2" type="file" id="opt-files" accept=".txt" multiple>
+  <div id="opt-file-list" class="mb-2 small"></div>
   <button class="btn btn-primary" type="submit">Analyze Optimizations</button>
   <div class="small text-muted mt-1">Output appears below. LLM cost and model will be shown if available.</div>
   <div id="opt-status" class="mt-2"></div>
@@ -30,4 +31,34 @@ window._vwapOptFormat = function(raw){
       + '</div>';
   }catch(e){return String(raw)}
 }
+
+// --- Optimization file list and results logic ---
+const optFilesInput = document.getElementById('opt-files');
+const optFileList = document.getElementById('opt-file-list');
+const optForm = document.getElementById('opt-form');
+const optOutput = document.getElementById('opt-output');
+const optStatus = document.getElementById('opt-status');
+
+function updateOptFileList() {
+  const files = optFilesInput.files;
+  if (!files || files.length === 0) {
+    optFileList.innerHTML = '<span class="text-muted">No files selected.</span>';
+    return;
+  }
+  let html = '<strong>Files selected:</strong><ul style="margin-bottom:0">';
+  for (let i = 0; i < files.length; ++i) {
+    html += `<li>${files[i].name}</li>`;
+  }
+  html += '</ul>';
+  optFileList.innerHTML = html;
+}
+optFilesInput.addEventListener('change', updateOptFileList);
+updateOptFileList(); // Initial
+
+optForm.addEventListener('submit', function(e) {
+  // Clear output/results area immediately on run
+  if (optOutput) optOutput.innerHTML = '';
+  if (optStatus) optStatus.innerHTML = '';
+  // Optionally, show a loading spinner or message here
+});
 </script>

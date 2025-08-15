@@ -467,22 +467,83 @@ BIAS SUMMARY:
 """
 
 VWAP_OPTIMIZATION_PROMPT = """
-## Strategy Overview
-This optimization is for VWAP-based strategy variants. Each row in the table below represents a specific parameter combination and its backtested results.
+You are a trading assistant helping select the best intraday VWAP strategy based on **backtest results** from a recent session.
 
-## Optimization Summary
-Bias for today: {{BIAS}}
+Each section below represents a different VWAP strategy with its parameter grid. For each, perform a clear evaluation and recommendation.
 
-## Top Parameter Sets (Backtest Grid)
-{llm_input}
+---
 
-## Risk and Drawdown Analysis
-Please highlight parameter sets with:
-- Acceptable drawdowns
-- High profit factor
-- Robustness index or expectancy above average
-- Any tradeoff worth noting
+📊 **What you are analyzing:**
+These are in-sample backtest results. Each row contains a different parameter combination and metrics like:
+- Net PnL
+- Profit Factor (PF)
+- Expectancy
+- Max Drawdown
 
-## Recommendation for Today
-Based on the above, select the best candidate for today's session and explain why. Provide a short strategy name and 1-sentence execution logic.
+Your job is to:
+1. Identify strong performers
+2. Recommend the best parameter set
+3. Explain trade logic and risk caveats
+
+---
+
+🧪 **Section Format Per Strategy**
+
+Use this exact format **per strategy**:
+
+**Strategy Name:** `vwap_trend_13_sl_candle_low_tp_2R`
+
+**Overall Assessment:**
+- Many parameter sets show consistent high performance
+- Robust across small param shifts (e.g. EMA slope or pullback %)
+
+**Top Parameter Sets:**
+
+(Use pipe `|` as column separator. Do NOT wrap in Markdown.)
+
+| Test ID | Param Summary                 | Net PnL | PF  | Expectancy | Max Drawdown |
+|---------|-------------------------------|---------|-----|------------|---------------|
+| 505     | EMA9Slope: 1.0, Pullback: 1.0 | $705.00 | 1.45| 212        | -322.50       |
+| 504     | EMA9Slope: 0.9, Pullback: 1.0 | $687.50 | 1.42| 206        | -305.00       |
+| 502     | EMA9Slope: 1.0, Pullback: 0.9 | $661.25 | 1.38| 197        | -290.00       |
+
+**Suggested Parameter Set:**
+- `EMA9SlopeThreshold`: 1.0  
+- `MaxPullbackPct`: 1.0  
+- Reason: Strongest NetPnL and expectancy with tolerable drawdown
+
+**Trade Logic:**
+Enter long when price reclaims VWAP after a <1% pullback and EMA9 slope > 1.0. TP at 2R, SL at candle low.
+
+**Notes:**
+High drawdown relative to risk; good candidate for size scaling with caution.
+
+---
+
+📌 **Repeat this block for each strategy provided in the input**.
+
+--- 
+
+✅ **Final Summary Section (After All Strategies)**
+
+After analyzing all strategies, return a summary with:
+
+- 📈 Best overall strategy for today
+- ✅ Exact parameter values
+- 🔁 1-sentence trade logic
+- ⚠️ Risk management warning
+- 🧠 Use today’s bias: `{{BIAS}}` and metric stability across tests to decide.
+
+---
+
+🧠 Output Rules:
+- Keep JSONs strict: lowercase keys, snake_case or camelCase as shown
+- Use true/false for booleans, not "true"/"false"
+- Do not invent values. Only use values from the backtest grid
+- Use realistic trading language — this is for live capital
+
+---
+
+📥 **Grid Data Input:**
+{{llm_input}}
 """
