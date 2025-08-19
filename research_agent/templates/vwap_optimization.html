@@ -41,6 +41,8 @@ document.addEventListener('DOMContentLoaded', function() {
   const optStatus = document.getElementById('opt-status');
 
   function updateOptFileList() {
+    // Debug: log the FileList object
+    console.log("Files uploaded:", optFilesInput.files);
     const files = optFilesInput.files;
     if (!files || files.length === 0) {
       optFileList.innerHTML = '<span class="text-muted">No files selected.</span>';
@@ -55,15 +57,24 @@ document.addEventListener('DOMContentLoaded', function() {
     optFileList.innerHTML = html;
     optFileList.style.display = 'block';
   }
-  optFilesInput.addEventListener('change', updateOptFileList);
-  optFilesInput.addEventListener('input', updateOptFileList); // for some browsers
-  updateOptFileList(); // Initial
 
+  // Always update on file input change or input (for all browsers)
+  optFilesInput.addEventListener('change', updateOptFileList);
+  optFilesInput.addEventListener('input', updateOptFileList);
+
+  // Also update on form reset (if you have a reset button)
+  optForm.addEventListener('reset', function() {
+    setTimeout(updateOptFileList, 0);
+  });
+
+  // Also update after submit (in case the same file is uploaded again)
   optForm.addEventListener('submit', function(e) {
-    // Clear output/results area immediately on run
     if (optOutput) optOutput.innerHTML = '';
     if (optStatus) optStatus.innerHTML = '';
-    // Optionally, show a loading spinner or message here
+    setTimeout(updateOptFileList, 0);
   });
+
+  // Initial call
+  updateOptFileList();
 });
 </script>

@@ -27,8 +27,10 @@ class VWAPAgent:
     """
     def __init__(self, user_params=None):
         self.user_params = user_params or {}
-        self.model_name = CONFIG.get("model_name")
-        self.provider = "gemini" if self.model_name and self.model_name.startswith("gemini-") else "openai"
+        # --- NEW: Allow override from user_params ---
+        self.model_name = self.user_params.get('model_name') or CONFIG.get("model_name")
+        self.provider = self.user_params.get('provider') or ("gemini" if self.model_name and self.model_name.startswith("gemini-") else "openai")
+        print(f"[VWAPAgent][INIT] model_name: {self.model_name}, provider: {self.provider}")
 
     def build_prompt(self, num_images):
         """

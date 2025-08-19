@@ -1978,6 +1978,15 @@ def run_vwap_agent():
         if len(images) > 4:
             return jsonify({"error": "Maximum 4 images allowed."}), 400
 
+        # --- NEW: Read model selection from form ---
+        selected_model = request.form.get('llm_model') or request.values.get('llm_model')
+        model_override = None
+        provider_override = None
+        if selected_model:
+            model_override = selected_model
+            provider_override = 'gemini' if selected_model.startswith('gemini') else 'openai'
+            print(f"[VWAP_AGENT] User selected model: {selected_model} (provider: {provider_override})")
+
         # Convert images to bytes
         image_bytes_list = []
         for img in images:
@@ -1994,8 +2003,16 @@ def run_vwap_agent():
         else:
             df_ohlcv = None
 
-        vwap_agent = VWAPAgent()
+        # --- Pass model override to VWAPAgent ---
+        vwap_agent = VWAPAgent(user_params={
+            'model_name': model_override,
+            'provider': provider_override
+        } if model_override else None)
+        if model_override:
+            vwap_agent.model_name = model_override
+            vwap_agent.provider = provider_override
         result = vwap_agent.run(images=image_bytes_list, df_5m=df_ohlcv)
+        print(f"[VWAP_AGENT] LLM provider used: {vwap_agent.provider}, model: {vwap_agent.model_name}")
         return jsonify(result)
 
     except Exception as e:

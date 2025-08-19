@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+   <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1876,6 +1876,11 @@ document.addEventListener('DOMContentLoaded', function() {
       const csvInput = document.getElementById('vwap-csv-upload');
       if (csvInput && csvInput.files.length > 0) {
         formData.append('csv_file', csvInput.files[0]);
+      }
+      // --- NEW: Add selected model to FormData ---
+      const modelRadio = document.querySelector('input[name="llm_model"]:checked');
+      if (modelRadio) {
+        formData.append('llm_model', modelRadio.value);
       }
 
       fetch('/run_vwap_agent', { method: 'POST', body: formData })
