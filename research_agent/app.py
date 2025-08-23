@@ -1103,7 +1103,7 @@ def scalp_agent():
             }
             show_csv_upload = True
             return render_template(
-                "scalp_agent.html",
+                "scalp_agent_split.html",
                 result=result,
                 csv_request_info=csv_request_info,
                 show_csv_upload=show_csv_upload,
@@ -1140,7 +1140,7 @@ def scalp_agent():
                         })
             requirements = session.get('scalp_agent_requirements')
             return render_template(
-                "scalp_agent.html",
+                "scalp_agent_split.html",
                 result=None,
                 csv_request_info=requirements,
                 show_csv_upload=True,
@@ -1150,7 +1150,7 @@ def scalp_agent():
                 csv_summaries=csv_summaries
             )
     # GET or initial load
-    return render_template("scalp_agent.html", result=None, csv_request_info=None, show_csv_upload=False, validation_result=None, trade_idea_result=None, max_risk_per_trade=None)
+    return render_template("scalp_agent_split.html", result=None, csv_request_info=None, show_csv_upload=False, validation_result=None, trade_idea_result=None, max_risk_per_trade=None)
 
 
 # =============================

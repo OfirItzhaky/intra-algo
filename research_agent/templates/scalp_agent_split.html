@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Scalping Agent (Modular)</title>
+    <!-- Modular split version, see README.md for details. -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='styles/scalp-agent.css') }}" rel="stylesheet">
+</head>
+<body style="font-family: Arial; margin: 40px;">
+<div class="container mb-4">
+  <div class="card border-info mb-3" style="max-width: 480px; margin: 0 auto;">
+    <div class="card-header bg-info text-white"><b>LLM Model Selection</b></div>
+    <div class="card-body">
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="radio" name="llm_model" id="llm-model-gpt4o" value="gpt-4o">
+        <label class="form-check-label" for="llm-model-gpt4o">OpenAI GPT-4o</label>
+      </div>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="radio" name="llm_model" id="llm-model-gemini" value="gemini-1.5-pro-latest">
+        <label class="form-check-label" for="llm-model-gemini">Google Gemini 1.5 Pro</label>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="container">
+    {% include "shared_ui_blocks.html" %}
+    <div class="tab-content" id="scalpAgentTabContent">
+      <!-- TAB 1: SETUP -->
+      <div class="tab-pane fade show active" id="setup" role="tabpanel" aria-labelledby="setup-tab">
+        <form id="setup-form" action="/run_regression_predictor" method="POST" enctype="multipart/form-data" class="mb-4">
+          <div class="mb-3">
+            <label for="max_risk" class="form-label fw-bold">Max Daily Risk</label>
+            <input type="number" step="any" class="form-control" id="max_risk" name="max_risk" placeholder="Enter your daily max risk" required>
+            <div class="form-text">This is your total loss cap for the day. The agent will not suggest trades that may exceed this.</div>
+          </div>
+          <div class="mb-3">
+            <label for="max_risk_per_trade" class="form-label fw-bold">Max Risk Per Trade</label>
+            <input type="number" step="any" class="form-control" id="max_risk_per_trade" name="max_risk_per_trade" placeholder="Enter max risk per trade (optional)">
+          </div>
+          <div class="mb-3">
+            <label for="session_notes" class="form-label fw-bold">Session Notes (optional)</label>
+            <textarea class="form-control" id="session_notes" name="session_notes" rows="3" placeholder="Enter any notes..."></textarea>
+          </div>
+          <div class="mb-2 d-flex align-items-center">
+            <hr class="flex-grow-1 me-2" style="height:2px; background:#222; opacity:0.2; border:none; margin:0;">
+            <span style="font-weight: bold; color: #222; font-size: 1.08rem; white-space:nowrap;">Multi-Timeframe Agent</span>
+            <hr class="flex-grow-1 ms-2" style="height:2px; background:#222; opacity:0.2; border:none; margin:0;">
+          </div>
+          <div id="paste-dropzone" class="border border-primary rounded p-4 mb-3 text-center" tabindex="0" style="background: #f8f9fa; cursor: pointer;">
+            <span class="text-secondary">
+              <strong>📋 Paste chart images here (Ctrl+V)</strong><br>
+              <small>Or use the file upload below (multiple images supported)</small>
+            </span>
+            <div id="multi-image-preview" class="mt-3" style="display: flex; flex-wrap: wrap; gap: 12px; overflow-x: auto;"></div>
+          </div>
+          <input type="file" class="form-control" id="chart_file" name="chart_file" accept="image/*" multiple style="margin-top: 8px;">
+          <button id="run-multitimeframe-agent-btn" class="btn fw-bold text-uppercase mb-3" type="button" style="background-color: #66bb6a; color: #fff; border-radius: 0.375rem; padding: 0.5rem 1.25rem; font-size: 1rem; width: 100%; max-width: none; min-width: 0;">
+            Run MultiTimeframe Agent
+          </button>
+          <div class="mb-2 d-flex align-items-center">
+            <hr class="flex-grow-1 me-2" style="height:2px; background:#222; opacity:0.2; border:none; margin:0;">
+            <span style="font-weight: bold; color: #222; font-size: 1.08rem; white-space:nowrap;">Regression Agent</span>
+            <hr class="flex-grow-1 ms-2" style="height:2px; background:#222; opacity:0.2; border:none; margin:0;">
+          </div>
+          <div class="mb-3 d-flex flex-row gap-2" style="width: 100%; align-items: end;">
+            <div style="flex: 1;">
+              <label for="csv_file" class="form-label">Upload CSV (<span class="fw-bold">Regression</span>)</label>
+              <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv,.txt,.xlsx,.xls" multiple>
+            </div>
+            <div style="flex: 1; display: flex; align-items: flex-end;">
+              <div style="position: relative; display: inline-block; width: 100%;">
+                <button id="run-regression-strategy-btn" type="submit" class="btn btn-success fw-bold text-uppercase" style="width: 100%; min-width: 0; background-color: #198754; color: #fff; border-radius: 0.375rem; padding: 0.5rem 1.25rem; font-size: 1rem;">
+                  <span style="vertical-align: middle;">💡 RUN REGRESSION PREDICTOR STRATEGY</span>
+                </button>
+                <div id="regression-defaults-hover-panel" style="display:none; position:absolute; left:50%; top:100%; transform:translateX(-50%); min-width:270px; max-width:350px; background:#fff; border:1px solid #198754; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.10); padding:16px; z-index:1000; font-size:0.98rem; margin-top:8px;">
+                  <div style="font-weight:bold; color:#198754; margin-bottom:8px;">Default Regression Strategy Settings</div>
+                  <div id="regression-defaults-content">Loading...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="csv-summary-list" class="mb-2"></div>
+          <div id="regression-strategy-result"></div>
+          {% if csv_summaries and csv_summaries|length > 0 %}
+            <div class="mb-2">
+              <ul class="list-unstyled mb-0">
+                {% for csv in csv_summaries %}
+                  <li>
+                    📄 <b>{{ csv.filename }}</b>:
+                    {% if csv.error %}
+                      <span class="text-danger">Error: {{ csv.error }}</span>
+                    {% else %}
+                      <span class="text-primary">{{ csv.num_bars }}</span> bars loaded (<span class="text-secondary">{{ csv.timeframe }}</span>)
+                    {% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+          <div class="mb-2 d-flex align-items-center">
+            <hr class="flex-grow-1 me-2" style="height:2px; background:#222; opacity:0.2; border:none; margin:0;">
+            <span style="font-weight: bold; color: #222; font-size: 1.08rem; white-space:nowrap;">VWAP Agent</span>
+            <hr class="flex-grow-1 ms-2" style="height:2px; background:#222; opacity:0.2; border:none; margin:0;">
+          </div>
+          <div class="mb-3 d-flex flex-row gap-2" style="width: 100%; align-items: stretch;">
+            <div style="flex: 2; display: flex; flex-direction: column; gap: 0.5rem;">
+              <div>
+                <div id="vwap-paste-dropzone" class="border border-primary rounded p-4 mb-3 text-center" tabindex="0" style="background: #f8f9fa; cursor: pointer;">
+                  <span class="text-secondary">
+                    <strong>📋 Paste chart images here (Ctrl+V)</strong><br>
+                    <small>Image upload via file picker is disabled. Please paste screenshots only.</small>
+                  </span>
+                  <div id="vwap-multi-image-preview" class="mt-3" style="display: flex; flex-wrap: wrap; gap: 12px; overflow-x: auto;"></div>
+                </div>
+
+              </div>
+              <div>
+                <label for="vwap-csv-upload" class="form-label">Upload CSV for VWAP Agent:</label>
+                <input type="file" class="form-control" id="vwap-csv-upload" name="csv_file" accept=".csv,.txt,.xlsx,.xls">
+                <div id="vwap-csv-summary" class="mt-1 text-secondary"></div>
+              </div>
+            </div>
+            <div style="flex: 1; display: flex; align-items: stretch; justify-content: flex-end;">
+              <button id="run-vwap-strategy-btn" type="button" class="btn h-100" style="display:inline-block; min-width:260px; background-color: #7c3aed; color: #fff; font-weight: 600; border-radius: 0.375rem; transition: background 0.2s; font-size: 1.15rem; height: 100%; white-space: normal;" disabled>🚀 Run VWAP Strategy Agent</button>
+            </div>
+          </div>
+          <div id="vwap-agent-result" class="mt-2"></div>
+          <div class="action-btns-container" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1.5rem;">
+            <div class="d-flex flex-row gap-2" style="width: 100%;">
+              <button id="run-instinct-btn" class="btn btn-primary fw-bold text-uppercase flex-fill" type="button" style="min-width: 0;">
+                Run Instinct Agent
+              </button>
+              <button id="run-playbook-btn" class="btn btn-success fw-bold text-uppercase flex-fill" type="button" style="min-width: 0;">
+                Run Playbook Agent
+              </button>
+            </div>
+          </div>
+          <div id="multitimeframe-agent-result" class="mt-3"></div>
+          <!-- HIGHLIGHTED: Playbook response container for feedback/messages -->
+          <div id="playbook-response-container" class="mt-2"></div>
+          <div id="bias-summary-block"></div>
+          <!-- END HIGHLIGHTED -->
+        </form>
+      </div>
+      <!-- TAB 2: INTERACTION -->
+      <div class="tab-pane fade" id="interaction" role="tabpanel" aria-labelledby="interaction-tab">
+        <div class="row">
+          <!-- Instinct Agent Panel -->
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                <strong>Instinct Agent Results</strong>
+                <button class="btn btn-outline-secondary btn-sm ms-2" type="button" onclick="toggleRagPanel('instinct')">🧠 Toggle RAG View</button>
+              </div>
+              <div class="card-body" id="instinct_output">
+                <!-- InstinctAgent output will be rendered here -->
+              </div>
+              <div class="card-footer">
+                <div class="input-group mb-2">
+                  <input type="text" class="form-control" id="instinct_query_input" placeholder="Ask Instinct Agent a question...">
+                  <button class="btn btn-outline-primary" type="button" id="send_instinct_query">Send</button>
+                </div>
+                <div class="mb-2">
+                  <input type="file" class="form-control mt-2" id="enhance-instinct-csv" accept=".csv,.txt,.xlsx,.xls">
+                  <textarea class="form-control mt-2" id="enhance-instinct-notes" rows="2" placeholder="Add clarification or extra notes (optional)"></textarea>
+                  <button type="button" class="btn btn-outline-info mt-2" id="enhance-instinct-btn" disabled>🧪 Enhance Strategy</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Playbook Agent Panel -->
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <strong>Playbook Strategy Results</strong>
+                <button class="btn btn-outline-secondary btn-sm ms-2" type="button" onclick="toggleRagPanel('playbook')">🧠 Toggle RAG View</button>
+              </div>
+              <div class="card-body" id="playbook_output">
+                <!-- PlaybookAgent output will be rendered here -->
+              </div>
+              <div class="card-footer">
+                <div class="input-group mb-2">
+                  <input type="text" class="form-control" id="playbook_query_input" placeholder="Ask Playbook Agent a question...">
+                  <button class="btn btn-outline-success" type="button" id="send_playbook_query">Send</button>
+                </div>
+                <div class="mb-2">
+                  <input type="file" class="form-control mt-2" id="enhance-playbook-csv" accept=".csv,.txt,.xlsx,.xls">
+                  <textarea class="form-control mt-2" id="enhance-playbook-notes" rows="2" placeholder="Add clarification or extra notes (optional)"></textarea>
+                  <button type="button" class="btn btn-outline-info mt-2" id="enhance-playbook-btn" disabled>🧪 Enhance Strategy</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Final VWAP Strategy Block -->
+        {% if final_strategy %}
+        <div class="row">
+          <div class="col-12">
+            <div class="card mb-4">
+              <div class="card-header bg-warning text-dark">
+                <strong>Final VWAP Strategy (LLM Selected)</strong>
+              </div>
+              <div class="card-body">
+                <pre class="json-block" id="final-strategy-json">{{ final_strategy | tojson(indent=2) }}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+</div>
+<!-- External JS modules -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="{{ url_for('static', filename='config/agent-config.js') }}"></script>
+<script src="{{ url_for('static', filename='js/ui-utilities.js') }}"></script>
+<script src="{{ url_for('static', filename='js/agent-handlers.js') }}"></script>
+<script src="{{ url_for('static', filename='js/multi-timeframe-agent.js') }}"></script>
+<script src="{{ url_for('static', filename='js/form-handlers.js') }}"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

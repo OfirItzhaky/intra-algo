@@ -1,0 +1,99 @@
+/* Scalping Agent Custom Styles */
+
+#paste-dropzone:focus,
+#paste-dropzone:hover {
+  border-color: #0d6efd;
+  background: #e7f1ff;
+  outline: none;
+}
+
+.floating-rag-panel {
+  position: fixed;
+  top: 80px;
+  width: 380px;
+  max-height: 70vh;
+  background: #fff;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e0e0e0;
+}
+
+.floating-rag-panel-left {
+  left: 24px;
+}
+
+.floating-rag-panel-right {
+  right: 24px;
+}
+
+.floating-rag-panel-header {
+  padding: 12px 16px;
+  font-weight: bold;
+  background: #f5f5f7;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.floating-rag-panel-content {
+  padding: 16px;
+  overflow-y: auto;
+  font-size: 1rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.floating-rag-panel-close {
+  background: none;
+  border: none;
+  font-size: 1.2em;
+  cursor: pointer;
+}
+
+@media (max-width: 900px) {
+  .floating-rag-panel {
+    width: 95vw;
+    left: 2.5vw;
+    right: 2.5vw;
+  }
+}
+
+.fade-out {
+  opacity: 0.4;
+  transition: opacity 0.4s;
+}
+
+.fade-in {
+  opacity: 1;
+  transition: opacity 0.5s;
+}
+
+.shimmer {
+  height: 18px;
+  width: 100px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.rag-flash {
+  box-shadow:
+    0 0 0 3px #ffe066,
+    0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: box-shadow 0.5s;
+}
