@@ -182,6 +182,35 @@ document.addEventListener('DOMContentLoaded', function () {
     window.vwapImages = vwapImages;
   }
 
+  // --- VWAP Renko Agent Button Handler ---
+  const vwapRenkoBtn = document.getElementById('run-vwap-renko-agent-btn');
+  if (vwapRenkoBtn) {
+    vwapRenkoBtn.addEventListener('click', function() {
+      // Show test popup
+      const testWin = window.open('', '_blank', 'width=400,height=200');
+      if (testWin) {
+        testWin.document.open();
+        testWin.document.write(`
+          <!doctype html>
+          <html><head><meta charset="utf-8"><title>VWAP Renko Agent</title>
+          <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+          </head><body style="font-family:Arial,sans-serif;margin:24px">
+          <div class="container text-center">
+            <h3 class="mb-3">VWAP Renko Agent</h3>
+            <div class="alert alert-info">
+              <h4>Test</h4>
+              <p>This is a test popup for the VWAP Renko Agent functionality.</p>
+            </div>
+          </div>
+          </body></html>
+        `);
+        testWin.document.close();
+      } else {
+        alert('Test: VWAP Renko Agent clicked!');
+      }
+    });
+  }
+
   console.log('All modules initialized successfully');
 });
 
