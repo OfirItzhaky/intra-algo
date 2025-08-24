@@ -185,30 +185,90 @@ document.addEventListener('DOMContentLoaded', function () {
   // --- VWAP Renko Agent Button Handler ---
   const vwapRenkoBtn = document.getElementById('run-vwap-renko-agent-btn');
   if (vwapRenkoBtn) {
-    vwapRenkoBtn.addEventListener('click', function() {
-      // Show test popup
-      const testWin = window.open('', '_blank', 'width=400,height=200');
-      if (testWin) {
-        testWin.document.open();
-        testWin.document.write(`
-          <!doctype html>
-          <html><head><meta charset="utf-8"><title>VWAP Renko Agent</title>
-          <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-          </head><body style="font-family:Arial,sans-serif;margin:24px">
-          <div class="container text-center">
-            <h3 class="mb-3">VWAP Renko Agent</h3>
-            <div class="alert alert-info">
-              <h4>Test</h4>
-              <p>This is a test popup for the VWAP Renko Agent functionality.</p>
-            </div>
-          </div>
-          </body></html>
-        `);
-        testWin.document.close();
-      } else {
-        alert('Test: VWAP Renko Agent clicked!');
+    console.log('VWAP Renko button found, attaching handler');
+    
+    // Remove any existing event listeners to prevent conflicts
+    vwapRenkoBtn.replaceWith(vwapRenkoBtn.cloneNode(true));
+    const newVwapRenkoBtn = document.getElementById('run-vwap-renko-agent-btn');
+    
+    newVwapRenkoBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      console.log('VWAP Renko button clicked - starting analysis');
+      
+      // Show loading state
+      newVwapRenkoBtn.disabled = true;
+      const originalBtnHTML = newVwapRenkoBtn.innerHTML;
+      newVwapRenkoBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Analyzing...';
+      
+      // Prepare FormData with same inputs as VWAP agent
+      const formData = new FormData();
+      
+      // Add pasted images from global vwapImages array
+      if (window.vwapImages && window.vwapImages.length > 0) {
+        console.log(`Adding ${window.vwapImages.length} images to FormData`);
+        window.vwapImages.slice(0, 4).forEach(img => formData.append('images', img.file));
       }
+      
+      // Add selected model (OpenAI vs Gemini)
+      const modelRadio = document.querySelector('input[name="llm_model"]:checked');
+      if (modelRadio) {
+        console.log(`Selected model: ${modelRadio.value}`);
+        formData.append('llm_model', modelRadio.value);
+      }
+      
+      // Add optional user notes from session notes field
+      const sessionNotes = document.getElementById('session_notes');
+      if (sessionNotes && sessionNotes.value.trim()) {
+        console.log('Adding user notes to request');
+        formData.append('notes', sessionNotes.value.trim());
+      }
+      
+      console.log('Sending request to /run_vwap_renko_agent');
+      
+      // Send to new endpoint and handle response
+      fetch('/run_vwap_renko_agent', { method: 'POST', body: formData })
+        .then(response => {
+          console.log(`Response status: ${response.status}`);
+          
+          // Reset button state
+          newVwapRenkoBtn.disabled = false;
+          newVwapRenkoBtn.innerHTML = originalBtnHTML;
+          
+          if (response.ok) {
+            // Open results in new tab
+            const resultWin = window.open('', '_blank');
+            if (resultWin) {
+              console.log('Opening results in new tab');
+              return response.text().then(html => {
+                resultWin.document.open();
+                resultWin.document.write(html);
+                resultWin.document.close();
+              });
+            } else {
+              console.log('Popup blocked, showing inline');
+              // Fallback if popup blocked
+              return response.text().then(html => {
+                const resultDiv = document.createElement('div');
+                resultDiv.innerHTML = '<div class="alert alert-warning mt-2">Popup blocked. Results opened inline:</div>' + html;
+                document.body.appendChild(resultDiv);
+              });
+            }
+          } else {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+        })
+        .catch(err => {
+          console.error('VWAP Renko Agent Error:', err);
+          // Reset button and show error
+          newVwapRenkoBtn.disabled = false;
+          newVwapRenkoBtn.innerHTML = originalBtnHTML;
+          alert(`VWAP Renko Agent Error: ${err.message}`);
+        });
     });
+  } else {
+    console.warn('VWAP Renko button not found');
   }
 
   console.log('All modules initialized successfully');

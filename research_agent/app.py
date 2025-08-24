@@ -2019,6 +2019,93 @@ def run_vwap_agent():
         print(f"[VWAP_AGENT] Error: {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
+
+@app.route("/run_vwap_renko_agent", methods=["POST"])
+def run_vwap_renko_agent():
+    """
+    VWAP Renko Agent endpoint - accepts images, model selection, and optional notes.
+    Uses VWAP_RENKO_PROMPT and returns plain text analysis with cost/usage info.
+    """
+    from flask import render_template, request
+    import traceback
+    from research_agent.scalp_agent.prompt_manager import VWAP_RENKO_PROMPT
+    from research_agent.scalp_agent.vwap_agent import VWAPAgent
+    
+    try:
+        # Get images from request
+        images = request.files.getlist("images") or []
+        
+        # Read model selection from form (same as VWAP agent)
+        selected_model = request.form.get('llm_model') or request.values.get('llm_model')
+        model_override = None
+        provider_override = None
+        if selected_model:
+            model_override = selected_model
+            provider_override = 'gemini' if selected_model.startswith('gemini') else 'openai'
+            print(f"[VWAP_RENKO_AGENT] User selected model: {selected_model} (provider: {provider_override})")
+        
+        # Get optional user notes
+        user_notes = request.form.get('notes', '').strip()
+        
+        # Convert images to bytes (lenient if missing)
+        image_bytes_list = []
+        for img in images:
+            img_bytes = img.read()
+            if img_bytes:
+                image_bytes_list.append(img_bytes)
+        
+        # Prepare context for template
+        context = {
+            'provider': provider_override or 'default',
+            'model_name': model_override or CONFIG.get("model_name", "unknown"),
+            'user_notes': user_notes,
+            'num_images': len(image_bytes_list),
+            'warning': None,
+            'llm_output': '',
+            'input_tokens': 0,
+            'output_tokens': 0,
+            'total_tokens': 0,
+            'estimated_cost': 0.0
+        }
+        
+        # If no images, show friendly warning but don't crash
+        if len(image_bytes_list) == 0:
+            context['warning'] = "No images detected. Please paste chart screenshots for better analysis."
+            context['llm_output'] = "Unable to provide chart analysis without images. Please upload or paste chart screenshots showing 60-minute candles and Renko panels for optimal VWAP Renko analysis."
+        else:
+            # Create VWAP agent with model override
+            vwap_agent = VWAPAgent(user_params={
+                'model_name': model_override,
+                'provider': provider_override
+            } if model_override else None)
+            
+            # Call LLM with VWAP Renko prompt
+            llm_result = vwap_agent.call_llm_with_images(image_bytes_list, user_params={'prompt_override': VWAP_RENKO_PROMPT})
+            
+            # Extract results
+            context['llm_output'] = llm_result.get('llm_raw_response', 'No response received')
+            context['input_tokens'] = llm_result.get('input_tokens', 0)
+            context['output_tokens'] = llm_result.get('output_tokens', 0) 
+            context['total_tokens'] = llm_result.get('total_tokens', 0)
+            context['estimated_cost'] = llm_result.get('llm_cost_usd', 0.0)
+            context['provider'] = llm_result.get('provider', context['provider'])
+            context['model_name'] = llm_result.get('model_name', context['model_name'])
+            
+            print(f"[VWAP_RENKO_AGENT] LLM provider used: {context['provider']}, model: {context['model_name']}")
+        
+        # Render results in new tab
+        return render_template('vwap_renko.html', **context)
+        
+    except Exception as e:
+        print(f"[VWAP_RENKO_AGENT] Error: {e}\n{traceback.format_exc()}")
+        # Return error page instead of JSON
+        return render_template('vwap_renko.html', 
+                             warning=f"Error: {str(e)}", 
+                             llm_output="An error occurred while processing your request.",
+                             provider="error", model_name="error", user_notes="", 
+                             num_images=0, input_tokens=0, output_tokens=0, 
+                             total_tokens=0, estimated_cost=0.0)
+
 @app.route("/regression_strategy_defaults", methods=["GET"])
 def regression_strategy_defaults():
     """Return the regression strategy default parameters as JSON for frontend UI."""

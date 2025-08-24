@@ -46,8 +46,15 @@ class VWAPAgent:
         Calls the configured LLM (OpenAI or Gemini) with the VWAP prompt and images.
         Returns a dict with raw response, cost, model, etc.
         """
-        num_images = len(images)
-        prompt_text, prompt_type = self.build_prompt(num_images)
+        user_params = user_params or {}
+        num_images = len(images)  # Always calculate num_images regardless of prompt type
+        
+        # Check for prompt override
+        if 'prompt_override' in user_params:
+            prompt_text = user_params['prompt_override']
+            prompt_type = 'renko_override'
+        else:
+            prompt_text, prompt_type = self.build_prompt(num_images)
         print(f"[VWAP_AGENT] Using prompt type: {prompt_type}")
         model_name = self.model_name
         provider = self.provider
