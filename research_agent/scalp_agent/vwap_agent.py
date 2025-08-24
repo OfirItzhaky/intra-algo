@@ -155,6 +155,9 @@ class VWAPAgent:
             "provider": provider,
             "llm_cost_usd": llm_cost_usd,
             "llm_token_usage": llm_token_usage,
+            "input_tokens": prompt_tokens if 'prompt_tokens' in locals() else 0,
+            "output_tokens": completion_tokens if 'completion_tokens' in locals() else 0,
+            "total_tokens": total_tokens if 'total_tokens' in locals() else llm_token_usage,
             "num_images": num_images,
             "prompt_type": prompt_type
         }
