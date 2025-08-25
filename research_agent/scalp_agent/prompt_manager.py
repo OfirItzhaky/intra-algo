@@ -721,6 +721,7 @@ Re-entry policy:
 - Exception: if trend extremely strong (steep VWAP + expanding bands), allow ONE immediate retry.
 
 Final reminders:
+ - When citing swing highs/lows or support/resistance on the 60-min, always include an approximate price zone (e.g., “close above recent swing high ~6060–6065 (60-min)”). 
 - Use only locked color names.
 - No price predictions, no sizing, no platform instructions.
 - Keep language simple.
