@@ -687,9 +687,9 @@ Bias rule:
 - If panels disagree, use: “sideways with long tilt (60-min)” or “sideways with short tilt (60-min)”.
 
 Order-type rules:
-- Fade at green/blue: LIMIT
+- Fade at green/blue: LIMIT (ensure trigger includes "touch" or compatible logic)
 - Breakout: STOP 1 tick/pip beyond that line
-- Retest: LIMIT on pullback, or STOP beyond after bounce
+- Retest: LIMIT on pullback (if structure confirmed), or STOP beyond after bounce
 - VWAP reclaim: STOP beyond VWAP, or LIMIT on first pullback to VWAP
 
 OUTPUT (plain text only):
@@ -703,12 +703,21 @@ OUTPUT (plain text only):
   - If sideways, include BOTH: one UP-break (e.g., close above resistance/PH1) AND one DOWN-break (close below support/PL1).
 - Places (3 ranked):
   1) <Side>. Place a <limit/stop> <buy/sell> at <color line> (Renko).
-     Trigger: <one allowed trigger>.
+     Trigger: <one allowed trigger>. If using LIMIT, make sure it's compatible (e.g., touch + close back). Avoid close-only triggers with LIMIT.
      Angle note: <line> = <angle term>, which <supports/rejects> this setup.
      Stop: <line/pivot/fixed>.
      Target(s): <line/pivot/fixed>.
      Manage: <rule, e.g., breakeven at VWAP; optional trail under line, pivot, or fixed ticks>.
-  2) same structure
+     Inputs mapping:  
+       EntryTrigger_Line: <line>  
+       EntryTrigger_Type: <trigger type>  
+       Stop_Ref_Line: <line>  
+       Target1_Ref_Line: <line>  
+       TrailingStop_Ref_Line: <line> (if used)  
+       MoveToBreakeven_Condition: <condition> (if used)  
+     Allowed slope zones: <e.g., flat, moderate up, strong up>
+
+  2) same structure  
   3) same structure (if choppy, write: “Sit on hands: range too tight/choppy.”)
 
 Directional trailing guardrail:
@@ -722,9 +731,11 @@ Re-entry policy:
 
 Final reminders:
  - When citing swing highs/lows or support/resistance on the 60-min, always include an approximate price zone (e.g., “close above recent swing high ~6060–6065 (60-min)”). 
-- Use only locked color names.
-- No price predictions, no sizing, no platform instructions.
-- Keep language simple.
-- Output exactly in the bullet form. No JSON, no markdown.
+ - Use only locked color names.
+ - No price predictions, no sizing, no platform instructions.
+ - Keep language simple.
+ - Output exactly in the bullet form. No JSON, no markdown.
+ - Keep setup logic and input mappings visually distinct to aid clarity.
 """
+
 
