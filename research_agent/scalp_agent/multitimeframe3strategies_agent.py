@@ -4,6 +4,10 @@ import os
 import requests
 import json
 from research_agent.config import CONFIG
+from logging_setup import get_logger
+
+log = get_logger(__name__)
+
 class MultiTimeframe3StrategiesAgent(BaseAgent):
     """
     An agent that first analyzes higher timeframe charts (15m, 60m, daily)

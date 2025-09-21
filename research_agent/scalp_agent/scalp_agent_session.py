@@ -9,7 +9,9 @@ import imghdr
 import requests
 from dotenv import load_dotenv
 import re
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 class ScalpAgentSession:
     """
     Session object for a scalping agent workflow.

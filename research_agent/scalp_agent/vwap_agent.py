@@ -17,7 +17,9 @@ import requests
 import json
 import plotly.graph_objects as go
 from backend.analyzer.analyzer_dashboard import AnalyzerDashboard
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 
 
 class VWAPAgent:

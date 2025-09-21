@@ -11,7 +11,9 @@ from ..config import CONFIG, REGRESSION_STRATEGY_DEFAULTS
 import traceback
 import math  # Ensure math is imported for isinf/isnan
 import re
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 from .prompt_manager import PROMPT_REGRESSION_AGENT
 
 try:

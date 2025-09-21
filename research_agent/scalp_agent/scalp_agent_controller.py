@@ -4,7 +4,9 @@ from scalp_agent.agent_handler import AgentHandler
 from typing import Dict, Any
 from scalp_agent.scalp_rag_utils import prepare_scalper_rag_summary
 from config import CONFIG
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 class ScalpAgentController:
     def __init__(self, max_risk=None, csv_file=None, chart_file=None, session_notes=None):
         self.max_risk = max_risk

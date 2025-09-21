@@ -6,7 +6,9 @@ This stub implementation returns a mocked analysis for demonstration and testing
 from typing import Dict, Any, List
 from scalp_agent.input_container import InputContainer
 from scalp_agent.scalp_base_agent import BaseAgent
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 class PlaybookAgent(BaseAgent):
     """
     An agent that applies methodical, pre-validated strategies based on the current market context.
