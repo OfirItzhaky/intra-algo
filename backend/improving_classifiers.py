@@ -5,14 +5,13 @@
 
 
 import pandas as pd
-import numpy as np
 from data_loader import DataLoader
 from feature_generator import FeatureGenerator
 from label_generator import LabelGenerator
 from regression_model_trainer import RegressionModelTrainer
 from classifier_model_trainer import ClassifierModelTrainer
 from data_processor import DataProcessor
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 

@@ -1,9 +1,8 @@
 import os
 
 import pytest
-import pandas as pd
 from backend.analyzer.analyzer_mcp_sl_tp_logic import *
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 def get_entry_price(df, entry_index):

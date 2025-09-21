@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 class LabelGenerator:

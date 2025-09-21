@@ -6,7 +6,7 @@ import matplotlib
 matplotlib.use("TkAgg")  # Ensure using Tk backend
 import matplotlib.pyplot as plt
 plt.ion()  # Interactive mode ON
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 
@@ -44,7 +44,6 @@ class ModelLoaderAndExplorer:
         return regression_model, classifier_model, df_classifier_preds
 
     import pandas as pd
-    import matplotlib.pyplot as plt
 
     def plot_delta_distribution(self, df: pd.DataFrame) -> None:
         """
@@ -116,7 +115,6 @@ class ModelLoaderAndExplorer:
 
         return high_conf_preds
 
-    import matplotlib.pyplot as plt
     import pandas as pd
 
     def plot_high_confidence_by_hour(self, df: pd.DataFrame) -> None:

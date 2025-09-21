@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import backtrader as bt
 import plotly.io as pio
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 
@@ -61,7 +61,6 @@ class AnalyzerDashboard:
         Returns:
             None – displays an interactive chart.
         """
-        import numpy as np
 
         # Step 1: Build core DataFrame with actual and predicted values
         plot_df = self.df_strategy.copy()
@@ -452,8 +451,6 @@ class AnalyzerDashboard:
             'num_losing_days': num_losing_days
         }
         return pd.DataFrame([metrics])
-
-    import plotly.graph_objects as go
 
     def display_metrics_plotly(self, df: pd.DataFrame) -> None:
         import plotly.graph_objects as go
@@ -861,7 +858,6 @@ class AnalyzerDashboard:
         Returns:
             None – displays an interactive chart or saves to file.
         """
-        import numpy as np
         # Step 1: Build core DataFrame with actual and predicted values
         plot_df = self.df_strategy.copy()
         # Standardize all columns to lowercase
@@ -1030,7 +1026,6 @@ class AnalyzerDashboard:
             dict: { 'raw_dfs': {strategy_name: df, ...}, 'grid_df': combined_df }
         """
         import pandas as pd
-        import re
         import os
 
         raw_dfs = {}

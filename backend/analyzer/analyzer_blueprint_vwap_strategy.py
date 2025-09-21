@@ -1,14 +1,13 @@
 
 import sys
 import os
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 # Ensure root path is added
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 import backtrader as bt
-import pandas as pd
 
 import pandas as pd
 

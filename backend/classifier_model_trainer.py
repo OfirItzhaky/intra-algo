@@ -1,5 +1,5 @@
 import pandas as pd
-from sklearn.metrics import classification_report, accuracy_score
+from sklearn.metrics import accuracy_score
 from sklearn.ensemble import RandomForestClassifier
 import lightgbm as lgb
 import xgboost as xgb
@@ -7,7 +7,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import classification_report
 from imblearn.over_sampling import SMOTE
 
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 

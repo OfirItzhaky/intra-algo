@@ -1,5 +1,5 @@
 from backend.analyzer import analyzer_mcp_sl_tp_logic as logic
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 

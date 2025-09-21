@@ -1,5 +1,4 @@
 import inspect
-import itertools
 import os
 import base64
 import imghdr
@@ -17,7 +16,7 @@ import requests
 import json
 import plotly.graph_objects as go
 from backend.analyzer.analyzer_dashboard import AnalyzerDashboard
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 
@@ -454,8 +453,6 @@ class VWAPAgent:
 
         return full_config
 
-    import inspect
-
     def filter_strategy_params(self, config: dict) -> dict:
         """
         Clean config dict by:
@@ -736,7 +733,6 @@ class VWAPAgent:
         Returns:
             pd.DataFrame: Filtered and sorted DataFrame ready for LLM.
         """
-        import pandas as pd
         df = grid_df.copy()
         # === Per-line filters (toggle on/off as needed) ===
         if 'ProfitFactor' in df.columns:

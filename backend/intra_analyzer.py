@@ -3,7 +3,7 @@
 
 # In[1]:
 
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 # # ✅ Clean up __pycache__ and .ipynb_checkpoints
@@ -34,7 +34,7 @@ get_ipython().system('pip install -r ../requirements.txt')
 
 
 import pickle
-import pandas as pd
+
 # Load the saved model
 with open("regression_trainer_model.pkl", "rb") as f:
     elastic_trainer = pickle.load(f)
@@ -49,7 +49,7 @@ for key, value in attributes.items():
 
 
 import pickle
-import pandas as pd
+
 # Load the saved model
 with open("classifier_trainer_model.pkl", "rb") as f:
     classifier_trainer = pickle.load(f)
@@ -289,7 +289,7 @@ get_ipython().system('pip install plotly')
 
 import backtrader as bt
 import pandas as pd
-from datetime import time, datetime
+
 
 class ElasticNetStrategy(bt.Strategy):
     params = dict(

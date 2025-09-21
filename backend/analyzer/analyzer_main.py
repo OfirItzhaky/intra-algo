@@ -15,7 +15,7 @@ from backend.label_generator import LabelGenerator
 from backend.feature_generator import FeatureGenerator
 from backend.regression_model_trainer import RegressionModelTrainer
 
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 

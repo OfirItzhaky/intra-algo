@@ -11,7 +11,7 @@ from data_processor import DataProcessor
 from regression_model_trainer import RegressionModelTrainer
 from imblearn.over_sampling import SMOTE
 from sklearn.metrics import classification_report, confusion_matrix
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 # === 2. Load Data ===
@@ -109,7 +109,7 @@ for model_name, results in [
 # })
 # results_df.to_csv("classifier_test_results.csv", index=False)
 ## === 12. Inference on New Forward Data (for all models) ===
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import classification_report
 
 # Separate threshold sweeps for each model
 THRESHOLDS_MAP = {

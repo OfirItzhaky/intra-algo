@@ -1,10 +1,9 @@
-import pandas as pd
 from scalp_agent.input_container import InputContainer
 from scalp_agent.agent_handler import AgentHandler
 from typing import Dict, Any
 from scalp_agent.scalp_rag_utils import prepare_scalper_rag_summary
 from config import CONFIG
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 class ScalpAgentController:

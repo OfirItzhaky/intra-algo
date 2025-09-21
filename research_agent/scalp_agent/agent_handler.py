@@ -9,7 +9,7 @@ from scalp_agent.input_container import InputContainer
 from scalp_agent.scalp_base_agent import BaseAgent
 from scalp_agent.instinct_agent import InstinctAgent
 from scalp_agent.multitimeframe3strategies_agent import MultiTimeframe3StrategiesAgent
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 class AgentHandler:

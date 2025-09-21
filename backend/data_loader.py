@@ -9,8 +9,7 @@ Original file is located at
 
 import yfinance as yf
 import pandas as pd
-import numpy as np
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 class DataLoader:

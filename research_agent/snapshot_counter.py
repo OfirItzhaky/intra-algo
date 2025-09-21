@@ -1,7 +1,7 @@
 from IPython.display import display, HTML
 import ipywidgets as widgets
 
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 def create_snapshot_counter():

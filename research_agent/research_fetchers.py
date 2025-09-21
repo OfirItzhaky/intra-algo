@@ -1,12 +1,10 @@
 import requests
-import openai
 from openai import OpenAI
 import feedparser
-import numpy as np
 from config import SUMMARY_CACHE, EVENT_CACHE
 import google.generativeai as genai  # Make sure this is at the top of your file
 
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 def summarize_with_cache(fetchers, merged_headlines, force_refresh=False):

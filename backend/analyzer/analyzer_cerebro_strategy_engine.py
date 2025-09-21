@@ -4,7 +4,7 @@ import pandas as pd
 from backend.analyzer.analyzer_cerebro_custom_feeds import CustomClassifierData, CustomRegressionData, CustomVWAPData
 from backend.analyzer.analyzer_strategy_blueprint import ElasticNetStrategy
 from backend.analyzer.analyzer_blueprint_vwap_strategy import VWAPBounceStrategy
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 

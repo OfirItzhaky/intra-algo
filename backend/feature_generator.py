@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
-import pandas_ta as ta
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 class FeatureGenerator:
@@ -62,7 +61,6 @@ class FeatureGenerator:
         Returns:
         pd.DataFrame: Updated DataFrame with calculated technical indicators.
         """
-        import pandas_ta as ta
 
         df = df.copy()
 
@@ -350,8 +348,6 @@ class FeatureGenerator:
 
         log.info("✅ Ichimoku Cloud indicators added successfully (Top 5 features only)!")
         return df
-
-    import pandas_ta as ta
 
     def add_atr_price_features(self, df, atr_period=14):
         """

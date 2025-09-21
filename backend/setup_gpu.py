@@ -2,8 +2,7 @@ import os
 import sys
 import subprocess
 import ctypes
-import shutil
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 def is_admin():

@@ -1,15 +1,6 @@
-import json
-import base64
 from research_agent.config import CONFIG
 
-import os
-from google.oauth2 import service_account
-from google.generativeai import configure, GenerativeModel
-import imghdr
-import requests
-from dotenv import load_dotenv
-import re
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 class ScalpAgentSession:

@@ -1,12 +1,11 @@
 import base64
-import json
 import requests
 from datetime import datetime
 from pathlib import Path
 import imghdr  # make sure this is at the top of your file
 import os
 from config import CONFIG
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 # Try to import optional dependencies, but don't fail if they're not available

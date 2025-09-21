@@ -3,7 +3,7 @@ from typing import Optional
 import pandas_ta as ta  # Ensure pandas_ta is available
 import pandas as pd
 
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 @dataclass

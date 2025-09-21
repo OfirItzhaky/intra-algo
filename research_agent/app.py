@@ -1,6 +1,6 @@
 # Import the numpy patch to fix NaN issue
 
-from flask import Flask, request, render_template_string, redirect, url_for,jsonify, render_template, session, send_from_directory
+from flask import Flask, request, render_template_string, url_for,jsonify, render_template, send_from_directory
 from datetime import datetime
 import plotly.graph_objects as go
 import pandas_ta as ta
@@ -31,7 +31,7 @@ from research_agent.five_star_agent.five_star_agent_controller import FiveStarAg
 from research_agent.company_calendar import CompanyCalendarError
 import sys, io
 sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8', errors='ignore')
-from logging_setup import setup_logging, get_logger
+from research_agent.logging_setup import setup_logging, get_logger
 setup_logging()
 log = get_logger("web")
 
@@ -1171,7 +1171,6 @@ def _get_fivestar_chat_history():
 
 
 from typing import Optional, List
-import importlib
 
 
 def _append_fivestar_message(role: str, content: str, images: Optional[List[str]] = None):
@@ -1424,7 +1423,6 @@ def five_star_analyze():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-import os
 from flask import session, redirect
 
 @app.route('/five_star/reset', methods=['POST'])
@@ -1935,7 +1933,6 @@ def run_vwap_agent():
     """
     from flask import jsonify, request
     import traceback
-    import json
     import pandas as pd
     from research_agent.scalp_agent.vwap_agent import VWAPAgent
 

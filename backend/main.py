@@ -21,7 +21,7 @@ from fastapi.responses import Response
 import matplotlib.pyplot as plt
 from io import BytesIO
 app = FastAPI()
-from logging_setup import get_logger
+from research_agent.logging_setup import get_logger
 
 log = get_logger(__name__)
 
