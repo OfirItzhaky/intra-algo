@@ -85,7 +85,7 @@ class ScalpAgentSession:
         import os
         from dotenv import load_dotenv
         model_name = CONFIG["model_name"]
-        print(f"[ScalpAgentSession] Model: {model_name}")
+        log.info(f"[ScalpAgentSession] Model: {model_name}")
         if model_name.startswith("gemini-"):
             # --- Gemini Vision API ---
             try:
@@ -96,7 +96,7 @@ class ScalpAgentSession:
                 if not api_key:
                     raise ValueError("GEMINI_API_KEY environment variable not set.")
                 endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-                print(f"[ScalpAgentSession] Gemini endpoint: {endpoint}")
+                log.info(f"[ScalpAgentSession] Gemini endpoint: {endpoint}")
                 mime_type = imghdr.what(None, h=self.image_bytes) or "png"
                 mime_type = f"image/{mime_type}"
                 encoded_image = base64.b64encode(self.image_bytes).decode("utf-8")
@@ -118,7 +118,7 @@ class ScalpAgentSession:
                     }]
                 }
                 response = requests.post(endpoint, headers=headers, json=body)
-                print(f"[ScalpAgentSession] Gemini Vision raw response: {response.text[:1000]}{'...' if len(response.text) > 1000 else ''}")
+                log.info(f"[ScalpAgentSession] Gemini Vision raw response: {response.text[:1000]}{'...' if len(response.text) > 1000 else ''}")
                 response.raise_for_status()
                 response_data = response.json()
                 usage = response_data.get('usage', {})
@@ -137,7 +137,7 @@ class ScalpAgentSession:
                     }
                 }
             except Exception as e:
-                print(f"[ScalpAgentSession] Gemini Vision call failed: {e}")
+                log.info(f"[ScalpAgentSession] Gemini Vision call failed: {e}")
                 return {"error": f"Gemini Vision call failed: {e}"}
         elif model_name.startswith("gpt-4") or model_name.startswith("gpt-3"):
             # --- OpenAI Vision API ---
@@ -149,7 +149,7 @@ class ScalpAgentSession:
                 if not api_key:
                     raise ValueError("OPENAI_API_KEY environment variable not set.")
                 endpoint = "https://api.openai.com/v1/chat/completions"
-                print(f"[ScalpAgentSession] OpenAI endpoint: {endpoint}")
+                log.info(f"[ScalpAgentSession] OpenAI endpoint: {endpoint}")
                 headers = {
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json"
@@ -170,7 +170,7 @@ class ScalpAgentSession:
                     "max_tokens": 1000
                 }
                 response = requests.post(endpoint, headers=headers, json=payload)
-                print(f"[ScalpAgentSession] OpenAI Vision raw response: {response.text[:1000]}{'...' if len(response.text) > 1000 else ''}")
+                log.info(f"[ScalpAgentSession] OpenAI Vision raw response: {response.text[:1000]}{'...' if len(response.text) > 1000 else ''}")
                 response.raise_for_status()
                 response_data = response.json()
                 usage = response_data.get('usage', {})
@@ -194,10 +194,10 @@ class ScalpAgentSession:
                     }
                 }
             except Exception as e:
-                print(f"[ScalpAgentSession] OpenAI Vision call failed: {e}")
+                log.info(f"[ScalpAgentSession] OpenAI Vision call failed: {e}")
                 return {"error": f"OpenAI Vision call failed: {e}"}
         else:
-            print(f"[ScalpAgentSession] ERROR: Unknown or unsupported model_name '{model_name}'")
+            log.info(f"[ScalpAgentSession] ERROR: Unknown or unsupported model_name '{model_name}'")
             return {"error": f"Unknown or unsupported model_name '{model_name}'. Please use a Gemini or OpenAI model."}
 
     def get_requirements_summary(self):

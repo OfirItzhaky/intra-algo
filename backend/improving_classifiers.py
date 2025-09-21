@@ -12,7 +12,9 @@ from label_generator import LabelGenerator
 from regression_model_trainer import RegressionModelTrainer
 from classifier_model_trainer import ClassifierModelTrainer
 from data_processor import DataProcessor
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 
 # In[2]:
 
@@ -65,11 +67,11 @@ from sklearn.metrics import mean_squared_error, r2_score
 mse = mean_squared_error(trainer.y_test, trainer.predictions)
 r2 = r2_score(trainer.y_test, trainer.predictions)
 
-print("📊 Regression Metrics (Unfiltered):")
-print(f"MSE: {mse:.3f}")
-print(f"R²: {r2:.3f}")
-print(f"Test Samples: {len(trainer.y_test)}")
-print(f"Features Used: {trainer.x_train.shape[1]}")
+log.info("📊 Regression Metrics (Unfiltered):")
+log.info(f"MSE: {mse:.3f}")
+log.info(f"R²: {r2:.3f}")
+log.info(f"Test Samples: {len(trainer.y_test)}")
+log.info(f"Features Used: {trainer.x_train.shape[1]}")
 
 
 # In[7]:
@@ -95,7 +97,7 @@ safe_indices = trainer.x_test.index[trainer.x_test.index <= max_valid_index]
 
 # ✅ Optional: Warn if any were dropped
 if len(safe_indices) < len(trainer.x_test.index):
-    print(f"⚠️ {len(trainer.x_test.index) - len(safe_indices)} test rows dropped due to index overflow.")
+    log.info(f"⚠️ {len(trainer.x_test.index) - len(safe_indices)} test rows dropped due to index overflow.")
 
 # ✅ Step 3: Build x_test_with_meta with safe indices only
 x_test_with_meta = trainer.x_test.loc[safe_indices].copy()
@@ -126,7 +128,7 @@ trainer.x_test_with_meta["Prev_Predicted_High"] = trainer.x_test_with_meta["Pred
 # ✅ Step 7: Clean result
 df_with_meta = trainer.x_test_with_meta.dropna(subset=["Prev_Close", "Prev_Predicted_High"])
 
-print("✅ Metadata attached and df_with_meta ready. Shape:", df_with_meta.shape)
+log.info("✅ Metadata attached and df_with_meta ready. Shape:", df_with_meta.shape)
 
 
 # In[17]:
@@ -205,15 +207,15 @@ total_bars = len(df_labeled_bullish)
 total_good_bars = len(good_bars)
 percentage_good = (total_good_bars / total_bars) * 100
 
-print(f"Total Bars: {total_bars}")
-print(f"Total 'Good' Labeled Bars (Potential Trades): {total_good_bars} ({percentage_good:.2f}%)\n")
+log.info(f"Total Bars: {total_bars}")
+log.info(f"Total 'Good' Labeled Bars (Potential Trades): {total_good_bars} ({percentage_good:.2f}%)\n")
 
 # Count potential trades per day
 good_bars['Date'] = pd.to_datetime(good_bars['Date'])
 trades_per_day = good_bars.groupby(good_bars['Date'].dt.date).size()
 
-print("📅 Potential trades per day statistics:")
-print(trades_per_day.describe())
+log.info("📅 Potential trades per day statistics:")
+log.info(trades_per_day.describe())
 
 # Simple visualization of potential trades per day
 plt.figure(figsize=(10, 5))
@@ -229,8 +231,8 @@ plt.show()
 good_bars['Hour'] = pd.to_datetime(good_bars['Time']).dt.hour
 trades_by_hour = good_bars.groupby('Hour').size()
 
-print("\n⏰ Trades distribution by hour:")
-print(trades_by_hour)
+log.info("\n⏰ Trades distribution by hour:")
+log.info(trades_by_hour)
 
 # Visualization of trades by hour
 plt.figure(figsize=(10, 5))
@@ -279,10 +281,10 @@ variants = {
     },
 }
 
-print("🔍 Checking for overfitting and data leakage across all label types:\n")
+log.info("🔍 Checking for overfitting and data leakage across all label types:\n")
 
 for label_name, data in variants.items():
-    print(f"🏷️ Label Variant: {label_name}")
+    log.info(f"🏷️ Label Variant: {label_name}")
     models = {
         'RandomForest': data["trainer"].rf_results["model"],
         'LightGBM': data["trainer"].lgbm_results["model"],
@@ -290,7 +292,7 @@ for label_name, data in variants.items():
     }
 
     for name, model in models.items():
-        print(f"\nModel: {name}")
+        log.info(f"\nModel: {name}")
 
         # Predictions on training and test
         if name in ['LightGBM', 'XGBoost']:
@@ -304,9 +306,9 @@ for label_name, data in variants.items():
         train_report = classification_report(data["y_train"], train_preds, digits=2, output_dict=True)
         test_report = classification_report(data["y_test"], test_preds, digits=2, output_dict=True)
 
-        print("  ➡️ Training vs. Testing Performance (Precision, Recall, F1):")
-        print(f"    - Train: {train_report['1']['precision']:.2f}, {train_report['1']['recall']:.2f}, {train_report['1']['f1-score']:.2f}")
-        print(f"    - Test:  {test_report['1']['precision']:.2f}, {test_report['1']['recall']:.2f}, {test_report['1']['f1-score']:.2f}")
+        log.info("  ➡️ Training vs. Testing Performance (Precision, Recall, F1):")
+        log.info(f"    - Train: {train_report['1']['precision']:.2f}, {train_report['1']['recall']:.2f}, {train_report['1']['f1-score']:.2f}")
+        log.info(f"    - Test:  {test_report['1']['precision']:.2f}, {test_report['1']['recall']:.2f}, {test_report['1']['f1-score']:.2f}")
 
         # Check for gap
         precision_gap = abs(train_report['1']['precision'] - test_report['1']['precision'])
@@ -314,11 +316,11 @@ for label_name, data in variants.items():
         f1_gap = abs(train_report['1']['f1-score'] - test_report['1']['f1-score'])
 
         if precision_gap > 0.1 or recall_gap > 0.1 or f1_gap > 0.1:
-            print("  ⚠️ Potential overfitting or data leakage detected!")
+            log.info("  ⚠️ Potential overfitting or data leakage detected!")
         else:
-            print("  ✅ No significant signs of overfitting or leakage.")
+            log.info("  ✅ No significant signs of overfitting or leakage.")
 
-    print("\n" + "=" * 65 + "\n")
+    log.info("\n" + "=" * 65 + "\n")
 
 
 # # Overfitting check and analysis
@@ -333,15 +335,15 @@ variants = {
     "Bullish": (X_train_bullish, X_test_bullish),
 }
 
-print("🔎 Checking for overlapping indexes (potential data leakage):\n")
+log.info("🔎 Checking for overlapping indexes (potential data leakage):\n")
 
 for label_name, (X_train, X_test) in variants.items():
     overlap_index = X_train.index.intersection(X_test.index)
 
     if len(overlap_index) > 0:
-        print(f"⚠️ {label_name}: Overlapping indexes found! Count = {len(overlap_index)}")
+        log.info(f"⚠️ {label_name}: Overlapping indexes found! Count = {len(overlap_index)}")
     else:
-        print(f"✅ {label_name}: No overlapping indexes found.")
+        log.info(f"✅ {label_name}: No overlapping indexes found.")
 
 
 # In[30]:
@@ -366,25 +368,25 @@ model_classes = {
     'XGBoost': XGBClassifier,
 }
 
-print("📊 Cross-Validation Results (F1-score):\n")
+log.info("📊 Cross-Validation Results (F1-score):\n")
 
 for variant_name, (X_train, y_train, X_test, y_test) in variants.items():
-    print(f"🔹 {variant_name.upper()} Label:\n")
+    log.info(f"🔹 {variant_name.upper()} Label:\n")
     X_all = pd.concat([X_train, X_test])
     y_all = pd.concat([y_train, y_test])
 
     for model_name, model_cls in model_classes.items():
         model = model_cls(random_state=42)
         scores = cross_val_score(model, X_all, y_all, cv=5, scoring='f1')
-        print(f"  {model_name}: mean={scores.mean():.3f}, std={scores.std():.3f}")
-    print("-" * 50)
+        log.info(f"  {model_name}: mean={scores.mean():.3f}, std={scores.std():.3f}")
+    log.info("-" * 50)
 
     if variant_name in ["ALL", "BULLISH"]:  # Only show these two
-        print(f"\n🔹 {variant_name} Label Distribution:")
-        print("Training set:")
-        print(pd.Series(y_train).value_counts(normalize=True))
-        print("\nTest set:")
-        print(pd.Series(y_test).value_counts(normalize=True))
+        log.info(f"\n🔹 {variant_name} Label Distribution:")
+        log.info("Training set:")
+        log.info(pd.Series(y_train).value_counts(normalize=True))
+        log.info("\nTest set:")
+        log.info(pd.Series(y_test).value_counts(normalize=True))
 
 
 # In[ ]:

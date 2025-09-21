@@ -32,9 +32,9 @@ RUN pip install pandas_ta==0.3.14b0
 RUN sed -i 's/from numpy import NaN as npNaN/from numpy import nan as npNaN/' $(find / -type f -name squeeze_pro.py 2>/dev/null | head -n 1)
 
 # Optional: Verify critical packages
-RUN python -c "import numpy; print('Numpy version:', numpy.__version__)"
-RUN python -c "import pandas_ta; print('Pandas_ta version:', pandas_ta.__version__)"
-RUN python -c "import requests; print('Requests installed successfully')"
+RUN python -c "import numpy; log.info('Numpy version:', numpy.__version__)"
+RUN python -c "import pandas_ta; log.info('Pandas_ta version:', pandas_ta.__version__)"
+RUN python -c "import requests; log.info('Requests installed successfully')"
 
 # Copy source code (including app and research_agent folders)
 COPY research_agent/ research_agent/

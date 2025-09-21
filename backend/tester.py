@@ -11,7 +11,9 @@ from data_processor import DataProcessor
 from regression_model_trainer import RegressionModelTrainer
 from imblearn.over_sampling import SMOTE
 from sklearn.metrics import classification_report, confusion_matrix
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 # === 2. Load Data ===
 loader = DataLoader()
 df = loader.load_from_csv("data/training/mes_new_2_15_mins_20000_bars.txt")
@@ -49,8 +51,8 @@ regression_trainer.x_test_with_meta = regression_trainer.x_test_with_meta.join(
 df_labels = label_gen.green_red_bar_label_goal_d(df_features)
 
 # Verify labels
-print("Label distribution:")
-print(df_labels["long_good_bar_label"].value_counts(normalize=True))
+log.info("Label distribution:")
+log.info(df_labels["long_good_bar_label"].value_counts(normalize=True))
 
 # === 7. Prepare Data for Classifier ===
 processor = DataProcessor()
@@ -91,12 +93,12 @@ for model_name, results in [
     ("LightGBM", classifier_trainer.lgbm_results),
     ("XGBoost", classifier_trainer.xgb_results)
 ]:
-    print(f"\n--- {model_name} Results ---")
-    print(f"Accuracy: {results['accuracy']:.2f}")
-    print("Classification Report:")
-    print(classification_report(y_test, results["predictions"], digits=3))
-    print("Confusion Matrix:")
-    print(confusion_matrix(y_test, results["predictions"]))
+    log.info(f"\n--- {model_name} Results ---")
+    log.info(f"Accuracy: {results['accuracy']:.2f}")
+    log.info("Classification Report:")
+    log.info(classification_report(y_test, results["predictions"], digits=3))
+    log.info("Confusion Matrix:")
+    log.info(confusion_matrix(y_test, results["predictions"]))
 
 # === 11. Save Results (Optional) ===
 # results_df = pd.DataFrame({
@@ -134,7 +136,7 @@ forward_features["True_Label"] = (forward_features["Next_Close"] > forward_featu
 forward_eval_base = forward_features.dropna(subset=["True_Label"]).copy()
 
 ## === 13. Evaluate All Classifiers ===
-print("\n📊 === Step 13: Evaluation Across Multiple Thresholds ===")
+log.info("\n📊 === Step 13: Evaluation Across Multiple Thresholds ===")
 
 for model_name, results in [
     ("RandomForest", classifier_trainer.rf_results),
@@ -148,30 +150,30 @@ for model_name, results in [
     # Try the sklearn API first
     if hasattr(model, "feature_names_in_"):
         features_needed = model.feature_names_in_
-        print(f"✅ [{model_name}] Using model.feature_names_in_: {len(features_needed)} features")
+        log.info(f"✅ [{model_name}] Using model.feature_names_in_: {len(features_needed)} features")
 
     # Fall back to .feature_name() only if needed
     elif hasattr(model, "feature_name") and callable(model.feature_name):
         features_needed = model.feature_name()
-        print(f"✅ [{model_name}] Using model.feature_name(): {len(features_needed)} features")
+        log.info(f"✅ [{model_name}] Using model.feature_name(): {len(features_needed)} features")
 
     # Final fallback
     elif hasattr(model, "feature_names"):
         features_needed = model.feature_names
-        print(f"✅ [{model_name}] Using model.feature_names: {len(features_needed)} features")
+        log.info(f"✅ [{model_name}] Using model.feature_names: {len(features_needed)} features")
 
     else:
         raise AttributeError(f"❌ Cannot determine feature names for {model_name}")
 
     missing = set(features_needed) - set(forward_features.columns)
     if missing:
-        print(f"⚠️ Skipping {model_name}: missing model features ({len(missing)}): {missing}")
+        log.info(f"⚠️ Skipping {model_name}: missing model features ({len(missing)}): {missing}")
         continue
 
     X_forward = forward_features[features_needed].copy()
     probs = model.predict_proba(X_forward)[:, 1]
 
-    print(f"\n📍 {model_name} Threshold Sweep:")
+    log.info(f"\n📍 {model_name} Threshold Sweep:")
 
     for thresh in THRESHOLDS_MAP[model_name]:
         forward_eval = forward_eval_base.copy()
@@ -189,23 +191,23 @@ for model_name, results in [
             output_dict=True
         )
 
-        print(f"\n🔹 Threshold = {thresh}")
-        print(f"✅ Bars predicted as label=1: {n_total}")
-        print(f"🎯 Correct predictions: {n_correct}")
-        print(f"📌 Precision (label=1): {precision:.3f}")
-        print(f"📈 Recall (label=1): {report['1']['recall']:.3f}")
-        print(f"📊 F1 Score: {report['1']['f1-score']:.3f}")
+        log.info(f"\n🔹 Threshold = {thresh}")
+        log.info(f"✅ Bars predicted as label=1: {n_total}")
+        log.info(f"🎯 Correct predictions: {n_correct}")
+        log.info(f"📌 Precision (label=1): {precision:.3f}")
+        log.info(f"📈 Recall (label=1): {report['1']['recall']:.3f}")
+        log.info(f"📊 F1 Score: {report['1']['f1-score']:.3f}")
 
 # === 14. LightGBM Feature Importance Analysis ===
 import matplotlib.pyplot as plt
 import lightgbm as lgb
 
-print("\n📊 === Step 14: LightGBM Feature Importance ===")
+log.info("\n📊 === Step 14: LightGBM Feature Importance ===")
 
 lgb_model = classifier_trainer.lgbm_results["model"]
 
 # ✅ Plot gain-based feature importance
-print("🔎 Showing Top 20 Features by 'gain'...")
+log.info("🔎 Showing Top 20 Features by 'gain'...")
 lgb.plot_importance(lgb_model, max_num_features=20, importance_type='gain', figsize=(10, 6))
 plt.title("Top 20 LightGBM Features by Gain")
 plt.tight_layout()
@@ -218,8 +220,8 @@ importance_df = pd.DataFrame({
 }).sort_values("gain", ascending=False)
 
 
-print("\n📈 Top 10 Important Features (Gain):")
-print(importance_df.head(10).to_string(index=False))
+log.info("\n📈 Top 10 Important Features (Gain):")
+log.info(importance_df.head(10).to_string(index=False))
 
 # === 15. Visualize Full LightGBM Feature Importance Trend ===
 # 📌 Purpose: Help visually locate the "elbow point" where additional features contribute very little to model performance.

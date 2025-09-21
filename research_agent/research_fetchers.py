@@ -4,16 +4,20 @@ from openai import OpenAI
 import feedparser
 import numpy as np
 from config import SUMMARY_CACHE, EVENT_CACHE
+import google.generativeai as genai  # Make sure this is at the top of your file
 
+from logging_setup import get_logger
+
+log = get_logger(__name__)
 def summarize_with_cache(fetchers, merged_headlines, force_refresh=False):
 
     if not force_refresh and "summarized_news" in SUMMARY_CACHE:
-        print("ℹ️ Using cached summarized news (no additional token cost).")
+        log.info("ℹ️ Using cached summarized news (no additional token cost).")
         fetchers.token_usage = 0
         fetchers.cost_usd = 0
         return SUMMARY_CACHE["summarized_news"]
     else:
-        print("⚡ Summarizing headlines via LLM...")
+        log.info("⚡ Summarizing headlines via LLM...")
         summarized = fetchers.summarize_headlines_with_llm(merged_headlines)
         SUMMARY_CACHE["summarized_news"] = summarized
         return summarized
@@ -21,12 +25,12 @@ def summarize_with_cache(fetchers, merged_headlines, force_refresh=False):
 def summarize_economic_events_with_cache(fetchers, force_refresh=False):
 
     if not force_refresh and "summarized_events" in EVENT_CACHE:
-        print("ℹ️ Using cached summarized economic events (no additional token cost).")
+        log.info("ℹ️ Using cached summarized economic events (no additional token cost).")
         fetchers.token_usage = 0
         fetchers.cost_usd = 0
         return EVENT_CACHE["summarized_events"]
     else:
-        print("⚡ Summarizing economic events via LLM...")
+        log.info("⚡ Summarizing economic events via LLM...")
         events = fetchers.fetch_economic_events()
         summaries = fetchers.summarize_headlines_with_llm([e["event"] for e in events])
         EVENT_CACHE["summarized_events"] = summaries
@@ -67,13 +71,13 @@ class ResearchFetchers:
                 for article in data.get("articles", []):
                     headlines.append(article.get("title", ""))
             else:
-                print(f"⚠️ News API Error: {data.get('message')}")
+                log.info(f"⚠️ News API Error: {data.get('message')}")
 
             if not headlines:
-                print("⚠️ No headlines fetched.")
+                log.info("⚠️ No headlines fetched.")
                 return []
 
-            print(f"✅ Pulled {len(headlines)} raw news headlines.")
+            log.info(f"✅ Pulled {len(headlines)} raw news headlines.")
 
             # Summarize headlines using OpenAI
             summarized_news = self.summarize_headlines_with_llm(headlines)
@@ -81,11 +85,10 @@ class ResearchFetchers:
             return summarized_news
 
         except Exception as e:
-            print(f"⚠️ News fetching or summarizing failed: {e}")
+            log.info(f"⚠️ News fetching or summarizing failed: {e}")
 
         return []
 
-    import google.generativeai as genai  # Make sure this is at the top of your file
 
     def summarize_headlines_with_llm(self, headlines):
         """
@@ -112,8 +115,8 @@ class ResearchFetchers:
             self.token_usage = usage.total_tokens
             self.cost_usd = self.calculate_cost_estimate(usage.total_tokens)
 
-            print(f"📊 LLM Token usage: {usage.total_tokens} tokens")
-            print(f"💵 Estimated LLM Cost: ${self.cost_usd:.4f}")
+            log.info(f"📊 LLM Token usage: {usage.total_tokens} tokens")
+            log.info(f"💵 Estimated LLM Cost: ${self.cost_usd:.4f}")
 
             summary.append(summary_text)
 
@@ -126,7 +129,7 @@ class ResearchFetchers:
             self.token_usage = 0  # Gemini does not return token usage yet
             self.cost_usd = self.calculate_cost_estimate(0)
 
-            print("📊 Gemini LLM used (token usage unknown)")
+            log.info("📊 Gemini LLM used (token usage unknown)")
             summary.append(summary_text)
 
         return summary
@@ -236,7 +239,7 @@ class ResearchFetchers:
             return events[:10]  # Limit to first 10 events for now
 
         except Exception as e:
-            print(f"⚠️ Failed to fetch economic events: {e}")
+            log.info(f"⚠️ Failed to fetch economic events: {e}")
             return []
 
     # 1. Fetch ETF Sector Sentiment

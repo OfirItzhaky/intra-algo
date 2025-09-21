@@ -30,7 +30,7 @@ class VWAPAgent:
         # --- NEW: Allow override from user_params ---
         self.model_name = self.user_params.get('model_name') or CONFIG.get("model_name")
         self.provider = self.user_params.get('provider') or ("gemini" if self.model_name and self.model_name.startswith("gemini-") else "openai")
-        print(f"[VWAPAgent][INIT] model_name: {self.model_name}, provider: {self.provider}")
+        log.info(f"[VWAPAgent][INIT] model_name: {self.model_name}, provider: {self.provider}")
 
     def build_prompt(self, num_images):
         """
@@ -55,7 +55,7 @@ class VWAPAgent:
             prompt_type = 'renko_override'
         else:
             prompt_text, prompt_type = self.build_prompt(num_images)
-        print(f"[VWAP_AGENT] Using prompt type: {prompt_type}")
+        log.info(f"[VWAP_AGENT] Using prompt type: {prompt_type}")
         model_name = self.model_name
         provider = self.provider
         llm_response = None
@@ -127,7 +127,7 @@ class VWAPAgent:
                 ],
                 "max_tokens": 1000
             }
-            print("🧪 DEBUG: OpenAI payload:\n", json.dumps(payload, indent=2))
+            log.info("🧪 DEBUG: OpenAI payload:\n", json.dumps(payload, indent=2))
             response = requests.post(endpoint, headers=headers, json=payload)
             response.raise_for_status()
             response_data = response.json()
@@ -147,7 +147,7 @@ class VWAPAgent:
                 llm_cost_usd = None
         else:
             return {"error": f"Unknown or unsupported model_name '{model_name}'."}
-        print(f"[VWAPAgent] Provider: {provider}, Model: {model_name}, Tokens: {llm_token_usage}, Cost: ${llm_cost_usd}")
+        log.info(f"[VWAPAgent] Provider: {provider}, Model: {model_name}, Tokens: {llm_token_usage}, Cost: ${llm_cost_usd}")
 
         return {
             "llm_raw_response": raw_response_text,
@@ -275,7 +275,7 @@ class VWAPAgent:
 
             # Safeguard for threshold list mismatch
             if not all(isinstance(v, list) for v in threshold_values):
-                print(f"[WARN] Skipping strategy '{name}' due to malformed threshold values.")
+                log.info(f"[WARN] Skipping strategy '{name}' due to malformed threshold values.")
                 continue
 
             # Extract sl_tp_function and its params
@@ -319,7 +319,7 @@ class VWAPAgent:
 
         if not df.empty:
             debug_cols = [c for c in df.columns if "sl_tp" in c or "multiplier" in c]
-            print(f"[DEBUG] Grid includes SL/TP-related columns: {debug_cols}")
+            log.info(f"[DEBUG] Grid includes SL/TP-related columns: {debug_cols}")
 
         return df
 
@@ -335,19 +335,19 @@ class VWAPAgent:
             summary_df: DataFrame of metrics for all strategies
         """
         from backend.analyzer.analyzer_cerebro_strategy_engine import run_backtest_VWAPStrategy
-        print(f"[Step 8] Running backtest for {len(df_grid)} strategy configs...")
+        log.info(f"[Step 8] Running backtest for {len(df_grid)} strategy configs...")
         all_results = []
         metrics_rows = []
         total = len(df_grid)
         for idx, row in df_grid.iterrows():
             config_dict = self.filter_strategy_params(row.to_dict())
-            print(f"[Step 8] Running backtest {idx+1}/{total} for strategy: {config_dict.get('strategy_name', 'N/A')}")
+            log.info(f"[Step 8] Running backtest {idx+1}/{total} for strategy: {config_dict.get('strategy_name', 'N/A')}")
             try:
                 result = run_backtest_VWAPStrategy(config_dict, df_5m)
                 metrics = result.get('metrics', {})
                 trades = result.get('trades', [])
             except Exception as e:
-                print(f"[Step 8] ERROR in backtest {idx+1}: {e}")
+                log.info(f"[Step 8] ERROR in backtest {idx+1}: {e}")
                 metrics = {'error': str(e)}
                 trades = []
             all_results.append({
@@ -361,7 +361,7 @@ class VWAPAgent:
             metrics_row["trades"] = trades
             metrics_rows.append(metrics_row)
         summary_df = pd.DataFrame(metrics_rows)
-        print(f"[Step 8] Finished backtests. Total results: {len(all_results)}")
+        log.info(f"[Step 8] Finished backtests. Total results: {len(all_results)}")
         return all_results, summary_df
 
     def generate_natural_language_rules(self, top_n=5):
@@ -371,7 +371,7 @@ class VWAPAgent:
         Stores the result in self.generated_rules.
         """
         if not hasattr(self, 'summary_df') or self.summary_df is None or self.summary_df.empty:
-            print("[VWAPAgent] No summary_df available. Run backtests first.")
+            log.info("[VWAPAgent] No summary_df available. Run backtests first.")
             return None
         df = self.summary_df.copy()
         # Sort by PnL (or win_rate if not present)
@@ -406,22 +406,22 @@ class VWAPAgent:
             prompt_lines.append(f"Metrics: PnL={s['PnL']}, Win Rate={s['win_rate']}, Max Drawdown={s['max_drawdown']}")
             prompt_lines.append("")
         prompt_text = '\n'.join(prompt_lines)
-        print(f"\n📊 Sent top {top_n} strategies to LLM for rule generation...")
-        print(f"[VWAPAgent] LLM prompt:\n{prompt_text}\n")
+        log.info(f"\n📊 Sent top {top_n} strategies to LLM for rule generation...")
+        log.info(f"[VWAPAgent] LLM prompt:\n{prompt_text}\n")
         # Call LLM (simulate if not implemented)
         if hasattr(self, 'llm_client') and hasattr(self.llm_client, 'ask_rules_from_grid_summary'):
             rules = self.llm_client.ask_rules_from_grid_summary(prompt_text)
         else:
             rules = f"[SIMULATED LLM OUTPUT]\nRules for {top_n} strategies would be generated here."
-        print(f"[VWAPAgent] LLM-generated rules:\n{rules}\n")
+        log.info(f"[VWAPAgent] LLM-generated rules:\n{rules}\n")
         self.generated_rules = rules
         # === Debug output for backend validation ===
-        print("\n=== Top Strategy Rules from LLM ===")
-        print(self.generated_rules)
-        print("\n--- Top 5 Strategy Grid Rows Used ---")
+        log.info("\n=== Top Strategy Rules from LLM ===")
+        log.info(self.generated_rules)
+        log.info("\n--- Top 5 Strategy Grid Rows Used ---")
         if hasattr(self, 'summary_df') and self.summary_df is not None:
-            print(self.summary_df.head(5).to_string(index=False))
-        print("\n====================================\n")
+            log.info(self.summary_df.head(5).to_string(index=False))
+        log.info("\n====================================\n")
         return rules
 
 
@@ -432,9 +432,9 @@ class VWAPAgent:
         Lowercase all column names. No alias mapping. User must upload with columns: open, high, low, close, volume.
         """
         df = df.copy()
-        print(f"[VWAPAgent] [DEBUG] Columns before normalization: {list(df.columns)}")
+        log.info(f"[VWAPAgent] [DEBUG] Columns before normalization: {list(df.columns)}")
         df.columns = [col.lower() for col in df.columns]
-        print(f"[VWAPAgent] [DEBUG] Columns after normalization: {list(df.columns)}")
+        log.info(f"[VWAPAgent] [DEBUG] Columns after normalization: {list(df.columns)}")
         return df
 
     def normalize_strategy_params(self, llm_params: dict) -> dict:
@@ -448,7 +448,7 @@ class VWAPAgent:
             if k in full_config:
                 full_config[k] = v
             else:
-                print(f"[VWAPAgent] ⚠️ Ignoring unexpected param: {k}")
+                log.info(f"[VWAPAgent] ⚠️ Ignoring unexpected param: {k}")
 
         return full_config
 
@@ -503,7 +503,7 @@ class VWAPAgent:
         df['VWAP'] = ta.vwap(df['high'], df['low'], df['close'], df['vol'])
         # Optional cleanup: drop raw 'vwap' if exists to avoid confusion
         if 'vwap' in df.columns:
-            print("[FIX] Dropping lowercase 'vwap' to prevent conflict with computed VWAP")
+            log.info("[FIX] Dropping lowercase 'vwap' to prevent conflict with computed VWAP")
             df.drop(columns=['vwap'], inplace=True)
 
         df['ATR_14'] = ta.atr(df['high'], df['low'], df['close'], length=14)
@@ -517,13 +517,13 @@ class VWAPAgent:
         # DMI (includes ADX, +DI, -DI)
         dmi_df = df.ta.dm(length=14)
         adx_df = df.ta.adx(length=14)
-        # print("[DEBUG] Existing cols dmi_df:", dmi_df.columns)
-        # print("[DEBUG] Existing cols adx_df:", adx_df.columns)
-        # print("[DEBUG] Existing cols before join:", df.columns)
+        # log.info("[DEBUG] Existing cols dmi_df:", dmi_df.columns)
+        # log.info("[DEBUG] Existing cols adx_df:", adx_df.columns)
+        # log.info("[DEBUG] Existing cols before join:", df.columns)
 
         overlap = dmi_df.columns.intersection(adx_df.columns)
         if not overlap.empty:
-            print(f"[DEBUG] Dropping overlap columns from adx_df: {overlap}")
+            log.info(f"[DEBUG] Dropping overlap columns from adx_df: {overlap}")
             adx_df = adx_df.drop(columns=overlap)
 
         # Safe join
@@ -533,7 +533,7 @@ class VWAPAgent:
 
         # Optional: preprocess ema_bias_filter, dmi_crossover, etc.
         df['ema_bias_filter'] = df['EMA_9'] > df['EMA_20']
-        print("[DEBUG] Existing cols after join befor cross over", df.columns)
+        log.info("[DEBUG] Existing cols after join befor cross over", df.columns)
         df['dmi_crossover'] = df['DMP_14'] > df['DMN_14']
         # --- Place immediately after enrichment ---
         required = ["VWAP", "VWAP_upper", "VWAP_lower", "EMA_9", "EMA_20", "DMP_14", "DMN_14", "ADX_14",
@@ -546,7 +546,7 @@ class VWAPAgent:
             raise ValueError("No valid rows found with all indicators present!")
 
         df_cleaned = df.loc[first_valid_idx:]
-        print(f"[CLEANUP] Trimmed df_5m_enriched to start at first valid indicator row: {first_valid_idx}. leaving with {len(df_cleaned)} bars for testing...")
+        log.info(f"[CLEANUP] Trimmed df_5m_enriched to start at first valid indicator row: {first_valid_idx}. leaving with {len(df_cleaned)} bars for testing...")
 
         return df_cleaned
 
@@ -556,12 +556,12 @@ class VWAPAgent:
         Show metrics and trades for the best strategy using AnalyzerDashboard.
         """
         if summary_df is None or summary_df.empty:
-            print("[VWAPAgent] No summary DataFrame to display.")
+            log.info("[VWAPAgent] No summary DataFrame to display.")
             return
         # Determine sort column
         sort_col = 'PnL' if 'PnL' in summary_df.columns else ('win_rate' if 'win_rate' in summary_df.columns else None)
         if sort_col is None:
-            print("[VWAPAgent] No PnL or win_rate column in summary_df.")
+            log.info("[VWAPAgent] No PnL or win_rate column in summary_df.")
             return
         top_df = summary_df.sort_values(sort_col, ascending=False).head(top_n)
         # Plotly heatmap
@@ -601,7 +601,7 @@ class VWAPAgent:
         normalized = {}
         for original, value in params_dict.items():
             normalized_key = self.camel_to_snake(original)
-            print(f"[VWAPAgent] Normalized param key: {original}  {normalized_key}")
+            log.info(f"[VWAPAgent] Normalized param key: {original}  {normalized_key}")
             normalized[normalized_key] = value
         return normalized
 
@@ -616,14 +616,14 @@ class VWAPAgent:
         llm_structured = self.parse_llm_response_text(raw_response_text)
         # Debug: print number of strategies received
         recommendations = llm_structured.get("strategy_recommendations", []) if llm_structured else []
-        print(f"[VWAPAgent] Parsed {len(recommendations)} strategy recommendations")
+        log.info(f"[VWAPAgent] Parsed {len(recommendations)} strategy recommendations")
         # Normalize param keys in all strategies and warn if missing params_to_optimize
         if recommendations:
             for rec in recommendations:
                 if "params_to_optimize" in rec:
                     rec["params_to_optimize"] = self.normalize_params_dict(rec["params_to_optimize"])
                 else:
-                    print(f"[WARN] Strategy {rec.get('name')} missing 'params_to_optimize'")
+                    log.info(f"[WARN] Strategy {rec.get('name')} missing 'params_to_optimize'")
 
         # # === Extract final top strategy ===
         # final_strategy = None
@@ -657,7 +657,7 @@ class VWAPAgent:
             prompt_text = prompt_template.replace("{{BIAS}}", str(session_bias)).replace("{llm_input}", llm_input)
             # 5. Call LLM (text-only)
             opt_llm = self.call_llm_text(prompt_text)
-            print("[VWAPAgent] LLM optimization response:\n", opt_llm.get("llm_raw_response"))
+            log.info("[VWAPAgent] LLM optimization response:\n", opt_llm.get("llm_raw_response"))
             # Capture optimization LLM cost metadata for UI
             optimization_cost_metadata = {
                 "model_name": opt_llm.get("model_name"),
@@ -685,7 +685,7 @@ class VWAPAgent:
         """
         Process optimization .txt files without requiring images and return LLM recommendation.
         """
-        print(f"[VWAPAgent] DEBUG: Number of optimization files sent to LLM: {len(optimization_files)}")
+        log.info(f"[VWAPAgent] DEBUG: Number of optimization files sent to LLM: {len(optimization_files)}")
         dashboard = AnalyzerDashboard(pd.DataFrame(), pd.DataFrame())
         opt_result = dashboard.parse_optimization_reports_from_tradestation_to_df(optimization_files)
         grid_df = opt_result['grid_df']

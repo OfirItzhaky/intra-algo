@@ -3,7 +3,9 @@ import os
 import pytest
 import pandas as pd
 from backend.analyzer.analyzer_mcp_sl_tp_logic import *
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 def get_entry_price(df, entry_index):
     return df.iloc[entry_index]["close"]
 
@@ -186,9 +188,9 @@ def test_sl_tp_trailing_update(sample_df, entry_index, side, trail_lookback, exp
         side,
         trail_lookback
     )
-    print("Computed SL:", result["sl"])
-    print("Expected SL:", expected_sl)
-    print("SL Window Data:", sample_df['low'].iloc[max(0, entry_index - trail_lookback + 1):entry_index + 1].tolist())
+    log.info("Computed SL:", result["sl"])
+    log.info("Expected SL:", expected_sl)
+    log.info("SL Window Data:", sample_df['low'].iloc[max(0, entry_index - trail_lookback + 1):entry_index + 1].tolist())
 
     assert result["sl"] == pytest.approx(expected_sl, rel=1e-2)
     assert result["tp"] is None

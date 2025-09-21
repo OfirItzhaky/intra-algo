@@ -2,6 +2,9 @@ from datetime import datetime
 import os
 import json
 import pyperclip
+from logging_setup import get_logger
+
+log = get_logger(__name__)
 
 class ResearchAnalyzer:
     def __init__(self, config, fetchers, aggregator):
@@ -65,7 +68,7 @@ class ResearchAnalyzer:
         self.outputs["symbols"] = {}
 
         for symbol in self.config.get("symbols", []):
-            print(f"\n🔎 Analyzing Symbol: {symbol}")
+            log.info(f"\n🔎 Analyzing Symbol: {symbol}")
 
             # Fetch top headlines
             headlines = self.fetchers.fetch_news_headlines([symbol])
@@ -78,9 +81,9 @@ class ResearchAnalyzer:
                 "company_profile": profile_data,
             }
 
-            print(f"✅ {symbol}: Found {len(headlines)} headlines.")
+            log.info(f"✅ {symbol}: Found {len(headlines)} headlines.")
             if profile_data:
-                print(
+                log.info(
                     f"✅ {symbol}: Sector: {profile_data.get('sector', 'N/A')}, Industry: {profile_data.get('industry', 'N/A')}")
 
     def save_report(self):
@@ -103,7 +106,7 @@ class ResearchAnalyzer:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(self.outputs, f, ensure_ascii=False, indent=2)
     
-        print(f"✅ Research report saved to {file_path}.")
+        log.info(f"✅ Research report saved to {file_path}.")
 
     def print_summary(self):
         """
@@ -113,15 +116,15 @@ class ResearchAnalyzer:
         sectors = self.outputs["general"].get("smart_money_flow", {}).get("top_sectors", [])
         upcoming_events = [e["event"] for e in self.outputs["general"].get("economic_calendar", [])]
 
-        print("\n🔔 Daily Summary:")
-        print(f"🧠 Market Bias: {bias}")
-        print(f"🏛️ Focus Sectors: {', '.join(sectors) if sectors else 'None'}")
-        print(f"📅 Key Events: {', '.join(upcoming_events) if upcoming_events else 'None'}\n")
+        log.info("\n🔔 Daily Summary:")
+        log.info(f"🧠 Market Bias: {bias}")
+        log.info(f"🏛️ Focus Sectors: {', '.join(sectors) if sectors else 'None'}")
+        log.info(f"📅 Key Events: {', '.join(upcoming_events) if upcoming_events else 'None'}\n")
 
         if self.config["copy_to_clipboard"]:
             summary_text = f"Bias: {bias} | Sectors: {', '.join(sectors)} | Events: {', '.join(upcoming_events)}"
             pyperclip.copy(summary_text)
-            print("📋 Summary copied to clipboard!")
+            log.info("📋 Summary copied to clipboard!")
 
     def run_daily_analysis(self):
         """
@@ -141,7 +144,7 @@ class ResearchAnalyzer:
         self.outputs["symbols"] = {}
     
         for symbol in self.config.get("symbols", []):
-            print(f"\n🔎 Analyzing Symbol: {symbol}")
+            log.info(f"\n🔎 Analyzing Symbol: {symbol}")
     
             # Fetch top headlines
             headlines = self.fetchers.fetch_news_headlines([symbol])
@@ -160,9 +163,9 @@ class ResearchAnalyzer:
             }
     
             # Print a brief summary
-            print(f"✅ {symbol}: Found {len(headlines)} headlines.")
+            log.info(f"✅ {symbol}: Found {len(headlines)} headlines.")
             if profile_data:
-                print(f"✅ {symbol}: Sector: {profile_data.get('sector', 'N/A')}, Industry: {profile_data.get('industry', 'N/A')}")
+                log.info(f"✅ {symbol}: Sector: {profile_data.get('sector', 'N/A')}, Industry: {profile_data.get('industry', 'N/A')}")
 
     def display_metrics_plotly(self, df):
         """

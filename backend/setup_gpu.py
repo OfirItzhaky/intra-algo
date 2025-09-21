@@ -3,7 +3,9 @@ import sys
 import subprocess
 import ctypes
 import shutil
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 def is_admin():
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
@@ -15,9 +17,9 @@ def set_env_var(name, value):
     try:
         subprocess.run(['setx', name, value], check=True)
         os.environ[name] = value
-        print(f"✅ Set {name}={value}")
+        log.info(f"✅ Set {name}={value}")
     except Exception as e:
-        print(f"❌ Failed to set {name}: {e}")
+        log.info(f"❌ Failed to set {name}: {e}")
 
 def get_cuda_version():
     """Get CUDA version from nvcc if available"""
@@ -49,43 +51,43 @@ def get_cuDNN_path():
 
 def download_cudnn():
     """Provide instructions to download cuDNN"""
-    print("\n===== cuDNN Download Instructions =====")
-    print("1. Go to: https://developer.nvidia.com/cudnn")
-    print("2. Create a free NVIDIA developer account if you don't have one")
-    print("3. Download cuDNN v8.x for CUDA 11.8")
-    print("4. Extract and copy the files:")
-    print("   - Copy cudnn*.dll to C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v11.8\\bin")
-    print("   - Copy cudnn*.h to C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v11.8\\include")
-    print("   - Copy cudnn*.lib to C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v11.8\\lib\\x64")
-    print("5. After copying, run this script again\n")
+    log.info("\n===== cuDNN Download Instructions =====")
+    log.info("1. Go to: https://developer.nvidia.com/cudnn")
+    log.info("2. Create a free NVIDIA developer account if you don't have one")
+    log.info("3. Download cuDNN v8.x for CUDA 11.8")
+    log.info("4. Extract and copy the files:")
+    log.info("   - Copy cudnn*.dll to C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v11.8\\bin")
+    log.info("   - Copy cudnn*.h to C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v11.8\\include")
+    log.info("   - Copy cudnn*.lib to C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v11.8\\lib\\x64")
+    log.info("5. After copying, run this script again\n")
 
 def setup_cuda_env():
-    print("===== GPU Setup for TensorFlow =====")
+    log.info("===== GPU Setup for TensorFlow =====")
     
     # Check CUDA installation
     cuda_path = os.environ.get('CUDA_PATH')
     if not cuda_path:
         cuda_path = 'C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v11.8'
         if not os.path.exists(cuda_path):
-            print("❌ CUDA not found. Please install CUDA 11.8")
+            log.info("❌ CUDA not found. Please install CUDA 11.8")
             return False
-        print(f"CUDA_PATH not set, defaulting to {cuda_path}")
+        log.info(f"CUDA_PATH not set, defaulting to {cuda_path}")
     else:
-        print(f"CUDA_PATH found: {cuda_path}")
+        log.info(f"CUDA_PATH found: {cuda_path}")
     
     # Check CUDA version
     cuda_version = get_cuda_version()
-    print(f"CUDA Version: {cuda_version}")
+    log.info(f"CUDA Version: {cuda_version}")
     
     # Check cuDNN
     cudnn_status = get_cuDNN_path()
-    print(f"cuDNN Status: {cudnn_status}")
+    log.info(f"cuDNN Status: {cudnn_status}")
     if "not found" in cudnn_status:
         download_cudnn()
         return False
     
     # Set environment variables
-    print("\nSetting environment variables...")
+    log.info("\nSetting environment variables...")
     set_env_var("CUDA_PATH", cuda_path)
     set_env_var("CUDA_HOME", cuda_path)
     
@@ -95,25 +97,25 @@ def setup_cuda_env():
         path_var = os.environ.get('PATH', '') + os.pathsep + cuda_bin
         set_env_var("PATH", path_var)
     else:
-        print("✅ CUDA bin directory already in PATH")
+        log.info("✅ CUDA bin directory already in PATH")
     
-    print("\n===== Setup Complete =====")
-    print("Please restart your terminal/IDE for changes to take effect.")
-    print("TensorFlow should now be able to detect and use your GPU.")
+    log.info("\n===== Setup Complete =====")
+    log.info("Please restart your terminal/IDE for changes to take effect.")
+    log.info("TensorFlow should now be able to detect and use your GPU.")
     return True
 
 if __name__ == "__main__":
     if is_admin():
         setup_cuda_env()
     else:
-        print("⚠️ This script needs administrative privileges to set environment variables.")
-        print("Please run as administrator.")
+        log.info("⚠️ This script needs administrative privileges to set environment variables.")
+        log.info("Please run as administrator.")
         
         # Try to re-run the script with admin privileges
         if os.name == 'nt':  # Windows
-            print("Attempting to elevate privileges...")
+            log.info("Attempting to elevate privileges...")
             script_path = os.path.abspath(__file__)
             try:
                 ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, script_path, None, 1)
             except:
-                print("Failed to elevate privileges. Please right-click on the script and select 'Run as administrator'.") 
+                log.info("Failed to elevate privileges. Please right-click on the script and select 'Run as administrator'.") 

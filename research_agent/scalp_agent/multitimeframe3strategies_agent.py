@@ -105,7 +105,7 @@ class MultiTimeframe3StrategiesAgent(BaseAgent):
                 response.raise_for_status()
                 content = response.json()["choices"][0]["message"]["content"]
             else:
-                print(f"[MultiTimeframe3StrategiesAgent] ERROR: Unknown or unsupported model_name '{model_name}'")
+                log.info(f"[MultiTimeframe3StrategiesAgent] ERROR: Unknown or unsupported model_name '{model_name}'")
                 return {"feedback": f"Unknown or unsupported model_name '{model_name}'. Please use a Gemini or OpenAI model.", "step": "llm_error", "raw_bias_data": vision_outputs or []}
             try:
                 cleaned = content.strip()

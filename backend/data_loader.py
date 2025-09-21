@@ -10,6 +10,9 @@ Original file is located at
 import yfinance as yf
 import pandas as pd
 import numpy as np
+from logging_setup import get_logger
+
+log = get_logger(__name__)
 class DataLoader:
     """
     A class responsible for loading market data either from a CSV file or from Yahoo Finance API.
@@ -36,13 +39,13 @@ class DataLoader:
         """
         try:
             data = pd.read_csv(file_path)
-            print(f"Data successfully loaded from {file_path}")
+            log.info(f"Data successfully loaded from {file_path}")
             return data[["Open","High","Low","Close","Volume","Date","Time"]]
         except FileNotFoundError:
-            print(f"Error: File not found at {file_path}")
+            log.info(f"Error: File not found at {file_path}")
             return pd.DataFrame()
         except Exception as e:
-            print(f"Error loading file: {e}")
+            log.info(f"Error loading file: {e}")
             return pd.DataFrame()
 
     def fetch_market_data_from_yahoo(self, symbol: str, interval: str = '5m', start_date: str = '2020-01-01', end_date: str = '2021-01-01') -> pd.DataFrame:
@@ -55,10 +58,10 @@ class DataLoader:
         """
         try:
             data = yf.download(symbol, interval=interval, start=start_date, end=end_date)
-            print(f"Data successfully fetched for {symbol} from {start_date} to {end_date} with {interval} interval.")
+            log.info(f"Data successfully fetched for {symbol} from {start_date} to {end_date} with {interval} interval.")
             return data
         except Exception as e:
-            print(f"Error fetching data from Yahoo Finance: {e}")
+            log.info(f"Error fetching data from Yahoo Finance: {e}")
             return pd.DataFrame()
 
 
@@ -95,7 +98,7 @@ class DataLoader:
                 lambda row: pd.to_datetime(f"{row['Date']} {row['Time']}") > last_training_ts,
                 axis=1
             )]
-            print("🔗 Simulation trimmed to avoid overlap with training data.")
+            log.info("🔗 Simulation trimmed to avoid overlap with training data.")
 
         # ✅ Check for gap (missing bars between training and simulation)
         expected_start = last_training_ts + pd.Timedelta(minutes=interval_minutes)
@@ -121,5 +124,5 @@ class DataLoader:
 # market_data = data_loader.fetch_market_data_from_yahoo(symbol, interval, start_date,end_date)
 
 # # Display the first few rows of the fetched data
-# print(market_data.head())
+# log.info(market_data.head())
 

@@ -18,6 +18,9 @@ from regression_model_trainer import RegressionModelTrainer
 import random
 from datetime import datetime
 import matplotlib.pyplot as plt
+from logging_setup import get_logger
+
+log = get_logger(__name__)
 
 # --- Config ---
 WINDOW_SIZE = 500
@@ -32,7 +35,7 @@ MAX_PRED_DISTANCE = 3.0  # Filter predictions above this distance from Close
 loader = DataLoader()
 df_raw = loader.load_from_csv(CSV_PATH)
 if df_raw.empty:
-    print(f"❌ Error: Could not load data from {CSV_PATH}")
+    log.info(f"❌ Error: Could not load data from {CSV_PATH}")
     exit(1)
 
 df_raw = df_raw.drop_duplicates(subset=["Date", "Time"])
@@ -58,7 +61,7 @@ window_testhour_mse = []  # For plotting: (test_start_hour, mse, window_number)
 window_mse_pred_dist = []  # For new analysis: (mse, avg_pred_dist, window_number)
 
 for i, start in enumerate(valid_indices):
-    print(f"\n🧪 Window {i+1} | Index range: {start}-{start+WINDOW_SIZE}")
+    log.info(f"\n🧪 Window {i+1} | Index range: {start}-{start+WINDOW_SIZE}")
     window_df = valid_df.iloc[start:start + WINDOW_SIZE].copy()
 
     # Generate features and label
@@ -69,7 +72,7 @@ for i, start in enumerate(valid_indices):
     # Use only Group 1 features + Next_High
     available = [f for f in GROUP1_FEATURES if f in window_df.columns]
     if len(available) < 2:
-        print(f"   ⚠️ Not enough Group 1 features available in window. Skipping.")
+        log.info(f"   ⚠️ Not enough Group 1 features available in window. Skipping.")
         continue
     group_data = window_df[available + ['Next_High', 'Close']].copy()
     group_data = group_data.replace([np.inf, -np.inf], np.nan).dropna()
@@ -121,13 +124,13 @@ for i, start in enumerate(valid_indices):
     window_mse_pred_dist.append((mse, avg_pred_dist, f"Window {i+1}"))
 
 # --- Print summary table ---
-print("\n\n📊 SLIDING WINDOW RESULTS (Group 1 Only)")
-print("=" * 90)
-print(f"{'Window':<10} | {'Start':<16} | {'End':<16} | {'MSE':<10} | {'RMSE':<10} | {'R²':<10}")
-print("-" * 90)
+log.info("\n\n📊 SLIDING WINDOW RESULTS (Group 1 Only)")
+log.info("=" * 90)
+log.info(f"{'Window':<10} | {'Start':<16} | {'End':<16} | {'MSE':<10} | {'RMSE':<10} | {'R²':<10}")
+log.info("-" * 90)
 for row in window_results:
-    print(f"{row[0]:<10} | {row[1]:<16} | {row[2]:<16} | {row[3]:<10.4f} | {row[4]:<10.4f} | {row[5]:<10.4f}")
-print("=" * 90)
+    log.info(f"{row[0]:<10} | {row[1]:<16} | {row[2]:<16} | {row[3]:<10.4f} | {row[4]:<10.4f} | {row[5]:<10.4f}")
+log.info("=" * 90)
 
 # --- Plot: MSE vs. Test Start Hour ---
 hours = [h for h, mse, w in window_testhour_mse if h is not None]
@@ -173,13 +176,13 @@ for i, (row, (_, avg_pred_dist, _)) in enumerate(zip(window_results, window_mse_
     if not np.isnan(avg_pred_dist) and avg_pred_dist <= MAX_PRED_DISTANCE:
         filtered_results.append(row + [avg_pred_dist])
 
-print("\n\n📊 SLIDING WINDOW RESULTS (Group 1 Only, Filtered by Max Distance from Close)")
-print("=" * 110)
-print(f"{'Window':<10} | {'Start':<16} | {'End':<16} | {'MSE':<10} | {'RMSE':<10} | {'R²':<10} | {'Avg_Dist':<10}")
-print("-" * 110)
+log.info("\n\n📊 SLIDING WINDOW RESULTS (Group 1 Only, Filtered by Max Distance from Close)")
+log.info("=" * 110)
+log.info(f"{'Window':<10} | {'Start':<16} | {'End':<16} | {'MSE':<10} | {'RMSE':<10} | {'R²':<10} | {'Avg_Dist':<10}")
+log.info("-" * 110)
 for row in filtered_results:
-    print(f"{row[0]:<10} | {row[1]:<16} | {row[2]:<16} | {row[3]:<10.4f} | {row[4]:<10.4f} | {row[5]:<10.4f} | {row[6]:<10.4f}")
-print("=" * 110)
+    log.info(f"{row[0]:<10} | {row[1]:<16} | {row[2]:<16} | {row[3]:<10.4f} | {row[4]:<10.4f} | {row[5]:<10.4f} | {row[6]:<10.4f}")
+log.info("=" * 110)
 
 # --- Directional Metrics Analysis ---
 directional_results = []
@@ -234,13 +237,13 @@ for i, start in enumerate(valid_indices):
     ])
 
 # Print table
-print("\n\n📊 SLIDING WINDOW RESULTS (Directional Metrics)")
-print("=" * 68)
-print(f"{'Window':<10} | {'Start':<16} | {'End':<16} | {'MASE':<7} | {'PSME':<7} | {'DMR':<6}")
-print("-" * 68)
+log.info("\n\n📊 SLIDING WINDOW RESULTS (Directional Metrics)")
+log.info("=" * 68)
+log.info(f"{'Window':<10} | {'Start':<16} | {'End':<16} | {'MASE':<7} | {'PSME':<7} | {'DMR':<6}")
+log.info("-" * 68)
 for row in directional_results:
-    print(f"{row[0]:<10} | {row[1]:<16} | {row[2]:<16} | {row[3]:<7.4f} | {row[4]:<7.4f} | {row[5]:<5.1f}%")
-print("=" * 68)
+    log.info(f"{row[0]:<10} | {row[1]:<16} | {row[2]:<16} | {row[3]:<7.4f} | {row[4]:<7.4f} | {row[5]:<5.1f}%")
+log.info("=" * 68)
 
 # Line chart comparing all three metrics per window
 window_labels = [row[0] for row in directional_results]

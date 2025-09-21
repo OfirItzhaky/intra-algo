@@ -1,7 +1,9 @@
 import sys
 import os
 from tabulate import tabulate
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 # === Force Project Root to PYTHONPATH ===
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT not in sys.path:
@@ -30,8 +32,8 @@ df["prev_close_vs_vwap"] = df["Close"].shift(1) - df["VWAP"].shift(1)
 df["curr_close_vs_vwap"] = df["Close"] - df["VWAP"]
 df["reclaim_up"] = (df["prev_close_vs_vwap"] < 0) & (df["curr_close_vs_vwap"] > 0)
 df["reclaim_down"] = (df["prev_close_vs_vwap"] > 0) & (df["curr_close_vs_vwap"] < 0)
-print("Reclaim Up:", df["reclaim_up"].sum())
-print("Reclaim Down:", df["reclaim_down"].sum())
+log.info("Reclaim Up:", df["reclaim_up"].sum())
+log.info("Reclaim Down:", df["reclaim_down"].sum())
 
 # === Backtrader Feed Class ===
 class PandasVWAPData(bt.feeds.PandasData):
@@ -63,8 +65,8 @@ strategies_to_test = [
 all_results = []
 
 for strat_name, strat_class, strat_params in strategies_to_test:
-    print("\n" + "=" * 60)
-    print(f"Running strategy: {strat_name}")
+    log.info("\n" + "=" * 60)
+    log.info(f"Running strategy: {strat_name}")
     cerebro = bt.Cerebro(stdstats=False)
     cerebro.adddata(data)
     cerebro.addstrategy(strat_class, strategy_name=strat_name, **strat_params)
@@ -93,9 +95,9 @@ for strat_name, strat_class, strat_params in strategies_to_test:
         "best": round(best, 2),
         "worst": round(worst, 2)
     })
-    print(f"✅ Trades: {num_trades} | TP: {tp_hits} | SL: {sl_hits} | Win%: {win_rate:.1f}%")
-    print(f"💰 Avg PnL: {avg_pnl:.2f} | Best: {best:.2f} | Worst: {worst:.2f}")
+    log.info(f"✅ Trades: {num_trades} | TP: {tp_hits} | SL: {sl_hits} | Win%: {win_rate:.1f}%")
+    log.info(f"💰 Avg PnL: {avg_pnl:.2f} | Best: {best:.2f} | Worst: {worst:.2f}")
 # === Final Summary
-print("\n" + "=" * 60)
-print("🔍 Summary of All Strategies:\n")
-print(tabulate(all_results, headers="keys", tablefmt="pretty", floatfmt=".2f"))
+log.info("\n" + "=" * 60)
+log.info("🔍 Summary of All Strategies:\n")
+log.info(tabulate(all_results, headers="keys", tablefmt="pretty", floatfmt=".2f"))

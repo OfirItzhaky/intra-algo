@@ -6,7 +6,9 @@ from pathlib import Path
 import imghdr  # make sure this is at the top of your file
 import os
 from config import CONFIG
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 # Try to import optional dependencies, but don't fail if they're not available
 try:
     import ipywidgets as widgets
@@ -65,7 +67,7 @@ class ImageAnalyzerAI:
 
     def upload_and_analyze_images(self, rule_id):
         if not JUPYTER_AVAILABLE:
-            print("Jupyter widgets not available in this environment")
+            log.info("Jupyter widgets not available in this environment")
             return
             
         self._uploader = widgets.FileUpload(
@@ -79,7 +81,7 @@ class ImageAnalyzerAI:
     def _handle_uploaded_files(self, rule_id):
         prompt_block = self.get_prompt_by_id(rule_id)
         if not prompt_block:
-            print(f"❌ Invalid rule_id: {rule_id}")
+            log.info(f"❌ Invalid rule_id: {rule_id}")
             return
 
         # Create temp directory if it doesn't exist
@@ -90,7 +92,7 @@ class ImageAnalyzerAI:
         for filename, fileinfo in self._uploader.value.items():
             symbol = filename.split(".")[0].upper()
             image_bytes = fileinfo['content']
-            print(f"🧠 Analyzing {symbol}...")
+            log.info(f"🧠 Analyzing {symbol}...")
 
             temp_path = os.path.join(temp_dir, filename)
             try:
@@ -125,10 +127,10 @@ class ImageAnalyzerAI:
                     if os.path.exists(temp_path):
                         os.unlink(temp_path)
                 except Exception as e:
-                    print(f"Warning: Could not remove temporary file {filename}: {e}")
+                    log.info(f"Warning: Could not remove temporary file {filename}: {e}")
 
         self.image_analysis = results
-        print("✅ Image analysis completed.")
+        log.info("✅ Image analysis completed.")
 
     def analyze_image_with_bytes(self, image_input, rule_id):
         """
@@ -180,14 +182,14 @@ class ImageAnalyzerAI:
 
         response = requests.post(endpoint, headers=headers, json=payload)
         response.raise_for_status()
-        print("\n[OpenAI LOG] === OpenAI Vision API Call ===")
-        print(f"[OpenAI LOG] Endpoint: {endpoint}")
-        print(f"[OpenAI LOG] Model Name: {CONFIG['image_analysis_model_openai']}")
-        print(f"[OpenAI LOG] API Key Present: {'Yes' if self.api_key else 'No'}")
-        print(f"[OpenAI LOG] Prompt (first 80 chars): {prompt[:80]}...")
-        print(f"[OpenAI LOG] Image size (bytes): {len(image_bytes)}")
-        print(f"[OpenAI LOG] MIME type: {mime_type}")
-        print("[OpenAI LOG] Submitting request to OpenAI...\n")
+        log.info("\n[OpenAI LOG] === OpenAI Vision API Call ===")
+        log.info(f"[OpenAI LOG] Endpoint: {endpoint}")
+        log.info(f"[OpenAI LOG] Model Name: {CONFIG['image_analysis_model_openai']}")
+        log.info(f"[OpenAI LOG] API Key Present: {'Yes' if self.api_key else 'No'}")
+        log.info(f"[OpenAI LOG] Prompt (first 80 chars): {prompt[:80]}...")
+        log.info(f"[OpenAI LOG] Image size (bytes): {len(image_bytes)}")
+        log.info(f"[OpenAI LOG] MIME type: {mime_type}")
+        log.info("[OpenAI LOG] Submitting request to OpenAI...\n")
 
         content = response.json()["choices"][0]["message"]["content"]
         return {"raw_output": content}
@@ -240,14 +242,14 @@ class ImageAnalyzerAI:
             )
             
             if not file_paths:
-                print("No files selected.")
+                log.info("No files selected.")
                 return {}
 
             # No need to create temporary files since we're using the original files directly
             results = {}
             for path in file_paths:
                 symbol = Path(path).stem.upper()
-                print(f"🧠 Analyzing {symbol}...")
+                log.info(f"🧠 Analyzing {symbol}...")
 
                 try:
                     # Using the file directly rather than creating a temporary copy
@@ -265,14 +267,14 @@ class ImageAnalyzerAI:
                     }
 
             self.image_analysis = results
-            print("✅ All snapshots processed.")
+            log.info("✅ All snapshots processed.")
             return results
         
         except ImportError:
-            print("Tkinter not available in this environment")
+            log.info("Tkinter not available in this environment")
             return {}
         except Exception as e:
-            print(f"❌ Error in file dialog: {e}")
+            log.info(f"❌ Error in file dialog: {e}")
             return {}
 
     def analyze_clipboard_snapshot(self, rule_id="trend_strength"):
@@ -280,14 +282,14 @@ class ImageAnalyzerAI:
         Analyzes an image from the clipboard.
         """
         if not PIL_AVAILABLE:
-            print("PIL ImageGrab not available in this environment")
+            log.info("PIL ImageGrab not available in this environment")
             return
             
-        print("📋 Waiting for snapshot from clipboard...")
+        log.info("📋 Waiting for snapshot from clipboard...")
 
         image = ImageGrab.grabclipboard()
         if image is None:
-            print("❌ No image found in clipboard. Use Snipping Tool or press PrtScr, then try again.")
+            log.info("❌ No image found in clipboard. Use Snipping Tool or press PrtScr, then try again.")
             return
 
         # Create a temp folder if it doesn't exist
@@ -300,16 +302,16 @@ class ImageAnalyzerAI:
         image.save(image_path)
 
         try:
-            print(f"✅ Snapshot saved as: {os.path.basename(image_path)}")
+            log.info(f"✅ Snapshot saved as: {os.path.basename(image_path)}")
             result = self.analyze_image_with_bytes(image_path, rule_id)
-            print("🔍 Analysis Result:")
-            print(result["raw_output"])
+            log.info("🔍 Analysis Result:")
+            log.info(result["raw_output"])
             return result
         finally:
             # Clean up the temporary file
             try:
                 if os.path.exists(image_path):
                     os.unlink(image_path)
-                    print(f"✓ Removed temporary file: {os.path.basename(image_path)}")
+                    log.info(f"✓ Removed temporary file: {os.path.basename(image_path)}")
             except Exception as e:
-                print(f"Warning: Could not remove temporary file: {e}") 
+                log.info(f"Warning: Could not remove temporary file: {e}") 

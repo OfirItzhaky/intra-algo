@@ -3,7 +3,9 @@
 
 # In[1]:
 
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 # # ✅ Clean up __pycache__ and .ipynb_checkpoints
 # !find . -type d -name "__pycache__" -exec rm -r {} + 2>/dev/null
 # !find . -type d -name ".ipynb_checkpoints" -exec rm -r {} + 2>/dev/null
@@ -40,7 +42,7 @@ with open("regression_trainer_model.pkl", "rb") as f:
 # Print all attributes of the loaded object
 attributes = {attr: getattr(elastic_trainer, attr) for attr in dir(elastic_trainer) if not attr.startswith("__")}
 for key, value in attributes.items():
-    print(f"{key}: {type(value)}")  # Print attribute names and types
+    log.info(f"{key}: {type(value)}")  # Print attribute names and types
 
 
 # In[15]:
@@ -55,7 +57,7 @@ with open("classifier_trainer_model.pkl", "rb") as f:
 # Print all attributes of the loaded object
 attributes = {attr: getattr(classifier_trainer, attr) for attr in dir(classifier_trainer) if not attr.startswith("__")}
 for key, value in attributes.items():
-    print(f"{key}: {type(value)}")  # Print attribute names and types
+    log.info(f"{key}: {type(value)}")  # Print attribute names and types
 
 df_classifier_preds = classifier_trainer.classifier_predictions_df.copy()
 
@@ -70,9 +72,9 @@ df_classifier_preds = classifier_trainer.classifier_predictions_df.copy()
 
 
 # Print the column names and preview the data to confirm structure
-print("🔹 x_test_with_meta Columns:", elastic_trainer.x_test_with_meta.columns.tolist())
-print("🔹 y_test (Actual Values) Sample:", elastic_trainer.y_test.tail(5))
-print("🔹 Predictions Sample:", elastic_trainer.predictions[-5:])
+log.info("🔹 x_test_with_meta Columns:", elastic_trainer.x_test_with_meta.columns.tolist())
+log.info("🔹 y_test (Actual Values) Sample:", elastic_trainer.y_test.tail(5))
+log.info("🔹 Predictions Sample:", elastic_trainer.predictions[-5:])
 
 
 # In[17]:
@@ -141,9 +143,9 @@ total_candidates = len(high_conf_preds)
 num_good = high_conf_preds["Is_Good"].sum()
 percent_good = 100 * num_good / total_candidates if total_candidates > 0 else 0
 
-print(f"📈 Total predictions >= 1.0 points: {total_candidates}")
-print(f"✅ Number of 'good' bars (Actual >= Close + 1.0): {num_good}")
-print(f"🎯 Percentage good: {percent_good:.2f}%")
+log.info(f"📈 Total predictions >= 1.0 points: {total_candidates}")
+log.info(f"✅ Number of 'good' bars (Actual >= Close + 1.0): {num_good}")
+log.info(f"🎯 Percentage good: {percent_good:.2f}%")
 
 
 # In[20]:
@@ -317,7 +319,7 @@ class ElasticNetStrategy(bt.Strategy):
 
         # Exit on session end
         if self.position and self.p.force_exit and current_time >= self.p.session_end:
-            print(f"[{dt}] ⏹️ Session end. Closing position.")
+            log.info(f"[{dt}] ⏹️ Session end. Closing position.")
             self.close()
             self.order = None
             return
@@ -332,7 +334,7 @@ class ElasticNetStrategy(bt.Strategy):
         predicted = self.data.predicted_high[0]
         delta = predicted - close
 
-        print(f"[{dt}] Close: {close:.2f}, Predicted: {predicted:.2f}, Delta: {delta:.2f}")
+        log.info(f"[{dt}] Close: {close:.2f}, Predicted: {predicted:.2f}, Delta: {delta:.2f}")
         # ✅ Validate classifier signal requirement
         if self.p.min_classifier_signals > 0:
             try:
@@ -341,7 +343,7 @@ class ElasticNetStrategy(bt.Strategy):
                 xg_val = self.data.XGBoost[0]
 
                 if any(map(pd.isna, [rf_val, lt_val, xg_val])):
-                    print(f"[{dt}] 🕳️ Skipping bar — classifier signal is NaN")
+                    log.info(f"[{dt}] 🕳️ Skipping bar — classifier signal is NaN")
                     return
 
                 rf = int(rf_val)
@@ -358,7 +360,7 @@ class ElasticNetStrategy(bt.Strategy):
                 raise ValueError("❌ min_classifier_signals cannot be greater than 3.")
 
             if green_count < self.p.min_classifier_signals:
-                print(f"[{dt}] 🚫 Not enough green signals ({green_count}) for entry.")
+                log.info(f"[{dt}] 🚫 Not enough green signals ({green_count}) for entry.")
                 return
 
         tick_size = 0.25
@@ -367,7 +369,7 @@ class ElasticNetStrategy(bt.Strategy):
             stop_price = entry_price - (self.p.stop_ticks * tick_size)
             target_price = entry_price + (self.p.target_ticks * tick_size)
 
-            print(f"💥 Entry signal | Entry: {entry_price:.2f}, TP: {target_price:.2f}, SL: {stop_price:.2f}")
+            log.info(f"💥 Entry signal | Entry: {entry_price:.2f}, TP: {target_price:.2f}, SL: {stop_price:.2f}")
 
             self.order = self.buy_bracket(
                 price=entry_price,
@@ -437,7 +439,7 @@ class ElasticNetStrategy(bt.Strategy):
 
     def log(self, txt):
         dt = self.datas[0].datetime.datetime(0)
-        print(f"[{dt}] {txt}")
+        log.info(f"[{dt}] {txt}")
 
 
 # 
@@ -503,7 +505,7 @@ class CustomClassifierData(bt.feeds.PandasData):
 # Get the earliest timestamp that has classifier predictions
 if ElasticNetStrategy.params.min_classifier_signals > 0:
     classifier_start = df_classifier_preds.index.min()
-    print(f"⏳ Using classifier data from: {classifier_start}")
+    log.info(f"⏳ Using classifier data from: {classifier_start}")
 
     # Trim df_bt to only rows from that timestamp onwards
     df_bt = df_bt[df_bt.index >= classifier_start]
@@ -531,8 +533,8 @@ results = cerebro.run()
 # In[26]:
 
 
-print(df_bt[["RandomForest", "LightGBM", "XGBoost"]].notna().sum())
-print(df_bt[["RandomForest", "LightGBM", "XGBoost"]].tail(5))
+log.info(df_bt[["RandomForest", "LightGBM", "XGBoost"]].notna().sum())
+log.info(df_bt[["RandomForest", "LightGBM", "XGBoost"]].tail(5))
 
 
 # In[ ]:
@@ -548,11 +550,11 @@ print(df_bt[["RandomForest", "LightGBM", "XGBoost"]].tail(5))
 strat = results[0]
 
 
-print(f"📦 Final Portfolio Value: {cerebro.broker.getvalue():.2f}")
+log.info(f"📦 Final Portfolio Value: {cerebro.broker.getvalue():.2f}")
 
 
 # Check number of closed trades
-print(f"✅ Total Closed Trades: {len(strat.trades)}")
+log.info(f"✅ Total Closed Trades: {len(strat.trades)}")
 
 
 # In[28]:
@@ -575,7 +577,7 @@ valid_trades = trade_df[
     trade_df["entry_time"].isin(ohlc_df.index) & trade_df["exit_time"].isin(ohlc_df.index)
 ].copy()
 
-print(f"✅ Valid trades for plotting: {len(valid_trades)} / {len(trade_df)}")
+log.info(f"✅ Valid trades for plotting: {len(valid_trades)} / {len(trade_df)}")
 
 # Save for plotting
 buy_df = valid_trades.set_index("entry_time")
@@ -618,7 +620,7 @@ plot_df["lt_y"] = plot_df["Low"] - buffer * 2
 plot_df["xg_y"] = plot_df["Low"] - buffer * 3
 
 # 🔍 Confirm classifier columns present
-print("🧩 Columns in plot_df:", plot_df.columns)
+log.info("🧩 Columns in plot_df:", plot_df.columns)
 
 # ✅ Create base chart
 fig = go.Figure()
@@ -715,7 +717,7 @@ for clf, y_col, symbol in [
             showlegend=True
         ))
 
-print(f"🧮 Trades visible in Plotly chart: {visible_trades} / {len(valid_trades)}")
+log.info(f"🧮 Trades visible in Plotly chart: {visible_trades} / {len(valid_trades)}")
 
 # ✅ Layout styling
 fig.update_layout(
@@ -735,9 +737,9 @@ fig.show()
 # In[30]:
 
 
-print("✔️ RandomForest:", plot_df["RandomForest"].dropna().unique())
-print("✔️ LightGBM:", plot_df["LightGBM"].dropna().unique())
-print("✔️ XGBoost:", plot_df["XGBoost"].dropna().unique())
+log.info("✔️ RandomForest:", plot_df["RandomForest"].dropna().unique())
+log.info("✔️ LightGBM:", plot_df["LightGBM"].dropna().unique())
+log.info("✔️ XGBoost:", plot_df["XGBoost"].dropna().unique())
 
 
 # In[31]:
@@ -845,7 +847,7 @@ df_trades["bars_held"] = (df_trades["exit_time"] - df_trades["entry_time"]) / pd
 
 # ✅ Count how many trades exited after exactly 1 bar
 one_bar_trades = df_trades[df_trades["bars_held"] == 1]
-print(f"📊 Trades exited after 1 bar: {len(one_bar_trades)} / {len(df_trades)}")
+log.info(f"📊 Trades exited after 1 bar: {len(one_bar_trades)} / {len(df_trades)}")
 
 # Optional: view them
 one_bar_trades.head()
@@ -901,12 +903,12 @@ df_1min.head()
 
 
 # Show 5-min structure
-print("🕔 5-Min DataFrame (df_test_results):")
-print(df_test_results[["Date", "Time", "Open", "High", "Low", "Close"]].head(), "\n")
+log.info("🕔 5-Min DataFrame (df_test_results):")
+log.info(df_test_results[["Date", "Time", "Open", "High", "Low", "Close"]].head(), "\n")
 
 # Show 1-min structure
-print("🕐 1-Min DataFrame (df_1min):")
-print(df_1min.head())
+log.info("🕐 1-Min DataFrame (df_1min):")
+log.info(df_1min.head())
 
 
 # In[37]:
@@ -946,11 +948,11 @@ remaining_missing = sorted(set(expected_1min_timestamps) - set(df_1min.index))
 
 # Step 5: Output
 if not remaining_missing:
-    print("✅ All required 1-min bars are present.")
+    log.info("✅ All required 1-min bars are present.")
 else:
-    print("❌ Still missing the following timestamps:")
+    log.info("❌ Still missing the following timestamps:")
     for m in remaining_missing:
-        print(m)
+        log.info(m)
 
 
 # In[38]:
@@ -1028,8 +1030,8 @@ class ElasticNetIntrabarStrategy(bt.Strategy):
         dt_5min = self.datas[0].datetime.datetime(0)
         dt_1min = self.datas[1].datetime.datetime(0)
 
-        print(f"🧠 Bar time: {dt_5min} | {dt_1min}")
-        print(f"🧪 Checking bar: {dt_5min} → minute = {dt_5min.minute}")
+        log.info(f"🧠 Bar time: {dt_5min} | {dt_1min}")
+        log.info(f"🧪 Checking bar: {dt_5min} → minute = {dt_5min.minute}")
 
         # ✅ Skip if already processed this 5-min bar
         if self.last_entry_time == dt_5min:
@@ -1038,7 +1040,7 @@ class ElasticNetIntrabarStrategy(bt.Strategy):
 
         # ✅ Only allow entries at 5-minute intervals
         if dt_5min.minute % 5 != 0:
-            print(f"🚫 Skipping non-5-min bar: {dt_5min}")
+            log.info(f"🚫 Skipping non-5-min bar: {dt_5min}")
             return
 
 
@@ -1059,7 +1061,7 @@ class ElasticNetIntrabarStrategy(bt.Strategy):
         predicted = main.predicted_high[0]
         delta = predicted - close
 
-        print(f"🔬 At {dt_5min} — Close: {close:.2f}, Predicted: {predicted:.2f}, Delta: {delta:.2f}")
+        log.info(f"🔬 At {dt_5min} — Close: {close:.2f}, Predicted: {predicted:.2f}, Delta: {delta:.2f}")
 
         if self.p.min_classifier_signals > 0:
             try:
@@ -1070,7 +1072,7 @@ class ElasticNetIntrabarStrategy(bt.Strategy):
                 return
 
         if self.p.min_dist <= delta <= self.p.max_dist:
-            print(f"🔍 Trade candidate found at {dt_5min}, delta: {delta:.2f}")
+            log.info(f"🔍 Trade candidate found at {dt_5min}, delta: {delta:.2f}")
             entry_price = main.open[0] + self.p.slippage
             tp = entry_price + self.p.target_ticks * self.p.tick_size
             sl = entry_price - self.p.stop_ticks * self.p.tick_size
@@ -1081,7 +1083,7 @@ class ElasticNetIntrabarStrategy(bt.Strategy):
                     break
                 hi = intrabar.high[i]
                 lo = intrabar.low[i]
-                print(f"⏱ Scanning 1-min at {intrabar.datetime.datetime(i)} → hi: {hi}, lo: {lo}")
+                log.info(f"⏱ Scanning 1-min at {intrabar.datetime.datetime(i)} → hi: {hi}, lo: {lo}")
 
                 exit_price = None
                 if lo <= sl:
@@ -1099,7 +1101,7 @@ class ElasticNetIntrabarStrategy(bt.Strategy):
                         "exit_price": exit_price,
                         "pnl": pnl
                     })
-                    print(f"✅ Trade recorded — ENTRY: {entry_time}, EXIT: {intrabar.datetime.datetime(i)}, PnL: {pnl:.2f}")
+                    log.info(f"✅ Trade recorded — ENTRY: {entry_time}, EXIT: {intrabar.datetime.datetime(i)}, PnL: {pnl:.2f}")
                     return
 
 
@@ -1161,18 +1163,18 @@ df_classifier_preds.index = pd.to_datetime(df_classifier_preds.index)
 df_test_results.index = pd.to_datetime(df_test_results.index)
 
 # 🔍 DEBUG: Print current classifier-related columns before any drop or merge
-print("📋 BEFORE MERGE — df_test_results columns:")
-print([col for col in df_test_results.columns if "RandomForest" in col or "LightGBM" in col or "XGBoost" in col])
+log.info("📋 BEFORE MERGE — df_test_results columns:")
+log.info([col for col in df_test_results.columns if "RandomForest" in col or "LightGBM" in col or "XGBoost" in col])
 
-print("\n📋 df_classifier_preds columns:")
-print(df_classifier_preds.columns.tolist())
+log.info("\n📋 df_classifier_preds columns:")
+log.info(df_classifier_preds.columns.tolist())
 
 # 🔍 Check sample classifier values from classifier_preds (to confirm they are valid)
-print("\n🔎 Sample values from df_classifier_preds:")
-print(df_classifier_preds.dropna().head(3))
+log.info("\n🔎 Sample values from df_classifier_preds:")
+log.info(df_classifier_preds.dropna().head(3))
 
 # 🔍 Print shape before merging to ensure data volume alignment
-print(f"\n🧮 Shape before merge — df_test_results: {df_test_results.shape}, df_classifier_preds: {df_classifier_preds.shape}")
+log.info(f"\n🧮 Shape before merge — df_test_results: {df_test_results.shape}, df_classifier_preds: {df_classifier_preds.shape}")
 
 
 # 🧹 Drop all existing classifier-related columns to avoid duplicate suffix conflicts
@@ -1185,14 +1187,14 @@ df_test_results = df_test_results.merge(
 )
 
 # 👁️ Optional: print to confirm
-print("✅ After clean merge, classifier columns:")
-print([col for col in df_test_results.columns if col in ["RandomForest", "LightGBM", "XGBoost"]])
+log.info("✅ After clean merge, classifier columns:")
+log.info([col for col in df_test_results.columns if col in ["RandomForest", "LightGBM", "XGBoost"]])
 
 df_test_results["predicted_high"] = df_test_results["Predicted"]
 # ✅ Trim df_test_results if using classifier signals
 if ElasticNetIntrabarStrategy.params.min_classifier_signals > 0:
     classifier_start = df_classifier_preds.index.min()
-    print(f"⏳ Using classifier data from: {classifier_start}")
+    log.info(f"⏳ Using classifier data from: {classifier_start}")
     df_test_results = df_test_results[df_test_results.index >= classifier_start]
 
 
@@ -1235,9 +1237,9 @@ df_trades_intrabar
 
 df_test_results["predicted_high"] = df_test_results["Predicted"]
 
-print("✅ 5-min data columns:", df_test_results.columns)
-print("✅ Sample classifier values:")
-print(df_test_results[["RandomForest", "LightGBM", "XGBoost"]].dropna().head(5))
+log.info("✅ 5-min data columns:", df_test_results.columns)
+log.info("✅ Sample classifier values:")
+log.info(df_test_results[["RandomForest", "LightGBM", "XGBoost"]].dropna().head(5))
 
 
 # In[ ]:

@@ -3,7 +3,9 @@ from typing import Optional
 import pandas_ta as ta  # Ensure pandas_ta is available
 import pandas as pd
 
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 @dataclass
 class NewBar:
     """Data class to store the latest market bar for feature processing and predictions."""
@@ -64,15 +66,15 @@ class NewBar:
             adx_indicators["DMN_14"].iloc[-1]) else 0
 
         # ✅ Debugging: Print the values immediately after assignment
-        print("\n🔍 **Debugging ADX & DMI Values After Assignment:**")
-        print(f"ADX: {self.ADX}")
-        print(f"DMI_plus: {self.DMI_plus}")
-        print(f"DMI_minus: {self.DMI_minus}")
+        log.info("\n🔍 **Debugging ADX & DMI Values After Assignment:**")
+        log.info(f"ADX: {self.ADX}")
+        log.info(f"DMI_plus: {self.DMI_plus}")
+        log.info(f"DMI_minus: {self.DMI_minus}")
 
         # ✅ Debugging: Print warning if missing values
         missing_dmi = [col for col in ["ADX_14", "DMP_14", "DMN_14"] if col not in adx_indicators.columns]
         if missing_dmi:
-            print(f"⚠️ Warning: Missing ADX/DMI columns → {missing_dmi}")
+            log.info(f"⚠️ Warning: Missing ADX/DMI columns → {missing_dmi}")
 
         # ✅ Compute Aroon Indicators
         aroon_indicators = historical_data.ta.aroon()
@@ -88,9 +90,9 @@ class NewBar:
         nan_fields = [field for field in populated_fields if pd.isna(getattr(self, field))]
 
         if nan_fields:
-            print(f"⚠️ Warning: NaNs detected in {nan_fields}")
+            log.info(f"⚠️ Warning: NaNs detected in {nan_fields}")
         else:
-            print(f"✅ **Fields Populated Successfully:** {populated_fields}")
+            log.info(f"✅ **Fields Populated Successfully:** {populated_fields}")
 
     def _2_add_vwap_new_bar(self, historical_data):
         """
@@ -102,13 +104,13 @@ class NewBar:
 
         # ✅ Compute Typical Price
         self.Typical_Price = (self.High + self.Low + self.Close) / 3
-        print(f"\n📌 **New Bar - Typical Price:** {self.Typical_Price}")
+        log.info(f"\n📌 **New Bar - Typical Price:** {self.Typical_Price}")
 
         # ✅ Ensure historical data has necessary columns
         required_columns = ["High", "Low", "Close", "Volume"]
         missing_columns = [col for col in required_columns if col not in historical_data.columns]
         if missing_columns:
-            print(f"⚠️ Missing columns in historical data: {missing_columns}")
+            log.info(f"⚠️ Missing columns in historical data: {missing_columns}")
             return
 
         # ✅ Work on a copy to avoid modifying original data
@@ -123,25 +125,25 @@ class NewBar:
         last_cum_pxv = hist_copy["Cum_PxV"].iloc[-1] if not hist_copy["Cum_PxV"].isna().all() else 0
         last_cum_volume = hist_copy["Cum_Volume"].iloc[-1] if not hist_copy["Cum_Volume"].isna().all() else 0
 
-        print(f"\n🔍 **Last Known Cumulative Values Before New Bar:**")
-        print(f"   🔹 Last Cum_PxV: {last_cum_pxv}")
-        print(f"   🔹 Last Cum_Volume: {last_cum_volume}")
+        log.info(f"\n🔍 **Last Known Cumulative Values Before New Bar:**")
+        log.info(f"   🔹 Last Cum_PxV: {last_cum_pxv}")
+        log.info(f"   🔹 Last Cum_Volume: {last_cum_volume}")
 
         # ✅ Compute new cumulative values by **adding** the new bar's contribution
         self.Cum_PxV = last_cum_pxv + (self.Typical_Price * self.Volume)
         self.Cum_Volume = last_cum_volume + self.Volume
 
-        print(f"\n🔍 **New Bar Cumulative Updates:**")
-        print(f"   🔹 Updated Cum_PxV: {self.Cum_PxV}")
-        print(f"   🔹 Updated Cum_Volume: {self.Cum_Volume}")
+        log.info(f"\n🔍 **New Bar Cumulative Updates:**")
+        log.info(f"   🔹 Updated Cum_PxV: {self.Cum_PxV}")
+        log.info(f"   🔹 Updated Cum_Volume: {self.Cum_Volume}")
 
         # ✅ Compute VWAP using adjusted cumulative values
         if self.Cum_Volume != 0:
             self.VWAP = self.Cum_PxV / self.Cum_Volume
-            print(f"\n📌 **New Bar - Adjusted VWAP:** {self.VWAP}")
+            log.info(f"\n📌 **New Bar - Adjusted VWAP:** {self.VWAP}")
         else:
             self.VWAP = self.Typical_Price  # Fallback
-            print("⚠️ Warning: Cum_Volume is zero, falling back to Typical Price for VWAP.")
+            log.info("⚠️ Warning: Cum_Volume is zero, falling back to Typical Price for VWAP.")
 
         # ✅ Validate populated fields
         populated_fields = ["Typical_Price", "Cum_PxV", "Cum_Volume", "VWAP"]
@@ -150,9 +152,9 @@ class NewBar:
         nan_fields = [field for field in populated_fields if pd.isna(getattr(self, field))]
 
         if nan_fields:
-            print(f"⚠️ Warning: NaNs detected in {nan_fields}")
+            log.info(f"⚠️ Warning: NaNs detected in {nan_fields}")
         else:
-            print(f"✅ **Fields Populated Successfully:** {populated_fields}")
+            log.info(f"✅ **Fields Populated Successfully:** {populated_fields}")
 
     def _3_add_fibonacci_levels_new_bar(self, historical_data, price_high="High", price_low="Low", length=50):
         """
@@ -166,7 +168,7 @@ class NewBar:
         """
         # ✅ Ensure historical data is sufficient
         if len(historical_data) < length:
-            print(f"⚠️ Not enough data for Fibonacci Levels (Need at least {length}, have {len(historical_data)})")
+            log.info(f"⚠️ Not enough data for Fibonacci Levels (Need at least {length}, have {len(historical_data)})")
             return
 
         # ✅ Compute Fibonacci levels
@@ -184,9 +186,9 @@ class NewBar:
         nan_fields = [field for field in populated_fields if pd.isna(getattr(self, field))]
 
         if nan_fields:
-            print(f"⚠️ Warning: NaNs detected in {nan_fields}")
+            log.info(f"⚠️ Warning: NaNs detected in {nan_fields}")
         else:
-            print(f"✅ **Fields Populated:** {populated_fields}")
+            log.info(f"✅ **Fields Populated:** {populated_fields}")
 
     def _4_add_cci_average_new_bar(self, historical_data, cci_length=14, cci_avg_length=9):
         """
@@ -204,7 +206,7 @@ class NewBar:
 
         # Ensure sufficient historical data is available
         if len(historical_data) < cci_length:
-            print(f"⚠️ Not enough data for CCI calculation (Required: {cci_length}, Available: {len(historical_data)})")
+            log.info(f"⚠️ Not enough data for CCI calculation (Required: {cci_length}, Available: {len(historical_data)})")
             return
 
         # ✅ Compute CCI for the latest row (without modifying historical_data)
@@ -219,7 +221,7 @@ class NewBar:
         # ✅ Identify and print successfully populated fields
         relevant_columns = ["CCI", "CCI_Avg"]
         populated_fields = [col for col in relevant_columns if not pd.isna(getattr(self, col))]
-        print(f"\n✅ **Fields Populated:** {populated_fields}")
+        log.info(f"\n✅ **Fields Populated:** {populated_fields}")
 
     def _5_add_ichimoku_cloud_new_bar(self, historical_data, tenkan_period=9, kijun_period=26, senkou_b_period=52):
         """
@@ -234,7 +236,7 @@ class NewBar:
 
         # ✅ Ensure historical data is sufficient
         if len(historical_data) < max(tenkan_period, kijun_period, senkou_b_period):
-            print(
+            log.info(
                 f"⚠️ Not enough data for Ichimoku Cloud Calculation (Need at least {max(tenkan_period, kijun_period, senkou_b_period)}, have {len(historical_data)})")
             return
 
@@ -267,9 +269,9 @@ class NewBar:
         nan_fields = [field for field in populated_fields if pd.isna(getattr(self, field))]
 
         if nan_fields:
-            print(f"⚠️ Warning: NaNs detected in {nan_fields}")
+            log.info(f"⚠️ Warning: NaNs detected in {nan_fields}")
         else:
-            print(f"✅ **Fields Populated:** {populated_fields}")
+            log.info(f"✅ **Fields Populated:** {populated_fields}")
 
     def _6_add_atr_price_features_new_bar(self, historical_data, atr_period=14):
         """
@@ -279,11 +281,11 @@ class NewBar:
             historical_data (pd.DataFrame): Past bars used for rolling ATR calculations.
             atr_period (int, optional): ATR calculation period. Default is 14.
         """
-        print("\n🔍 **Debugging `_6_add_atr_price_features_new_bar` Method**")
+        log.info("\n🔍 **Debugging `_6_add_atr_price_features_new_bar` Method**")
 
         # ✅ Ensure historical data is sufficient
         if len(historical_data) < atr_period:
-            print(f"⚠️ Not enough data for ATR Calculation (Need at least {atr_period}, have {len(historical_data)})")
+            log.info(f"⚠️ Not enough data for ATR Calculation (Need at least {atr_period}, have {len(historical_data)})")
             return
 
         # ✅ Compute True Range (TR) **without modifying historical_data**
@@ -318,9 +320,9 @@ class NewBar:
         nan_fields = [field for field in populated_fields if pd.isna(getattr(self, field))]
 
         if nan_fields:
-            print(f"⚠️ Warning: NaNs detected in {nan_fields}")
+            log.info(f"⚠️ Warning: NaNs detected in {nan_fields}")
         else:
-            print(f"✅ **Fields Populated:** {populated_fields}")
+            log.info(f"✅ **Fields Populated:** {populated_fields}")
 
     def _7_add_multi_ema_indicators_new_bar(self, historical_data, ema_periods=None):
         """
@@ -337,7 +339,7 @@ class NewBar:
 
         # ✅ Ensure historical data is sufficient for EMA calculation
         if len(historical_data) < max(ema_periods):
-            print(
+            log.info(
                 f"⚠️ Not enough data for EMA calculations (Need at least {max(ema_periods)}, have {len(historical_data)})")
             return
 
@@ -360,7 +362,7 @@ class NewBar:
             populated_fields.extend([ema_col, close_distance_col, open_distance_col])
 
         # ✅ Print populated fields
-        print(f"✅ **Fields Populated:** {populated_fields}")
+        log.info(f"✅ **Fields Populated:** {populated_fields}")
 
     def _8_add_high_based_indicators_combined_new_bar(self, historical_data, ema_periods=None, rolling_periods=None):
         """
@@ -385,7 +387,7 @@ class NewBar:
 
         # ✅ Ensure historical data is sufficient
         if len(temp_historical) < max(rolling_periods):
-            print(
+            log.info(
                 f"⚠️ Not enough data for High-Based Indicators (Need at least {max(rolling_periods)}, have {len(temp_historical)})"
             )
             return
@@ -451,9 +453,9 @@ class NewBar:
                       getattr(self, field) is None or pd.isna(getattr(self, field))]
 
         if nan_fields:
-            print(f"⚠️ **Warning: The following fields contain NaNs after computation: {nan_fields}**")
+            log.info(f"⚠️ **Warning: The following fields contain NaNs after computation: {nan_fields}**")
         else:
-            print(f"✅ **Fields Populated Successfully:** {populated_fields}")
+            log.info(f"✅ **Fields Populated Successfully:** {populated_fields}")
 
     def _9_add_constant_columns_new_bar(self, constants=None):
         """
@@ -489,7 +491,7 @@ class NewBar:
             setattr(self, col, value)
 
         # ✅ Print populated fields
-        print(f"✅ **Constant Fields Populated:** {list(constants.keys())}")
+        log.info(f"✅ **Constant Fields Populated:** {list(constants.keys())}")
 
     def _10_add_macd_indicators_new_bar(self, macd_fast=12, macd_slow=26, macd_signal=9, historical_data=None):
         """
@@ -504,7 +506,7 @@ class NewBar:
 
         # ✅ Ensure historical data is provided
         if historical_data is None or "Close" not in historical_data.columns:
-            print("⚠️ Cannot compute MACD - Historical data is missing or incomplete.")
+            log.info("⚠️ Cannot compute MACD - Historical data is missing or incomplete.")
             return
 
         # ✅ Combine historical Close prices with the new bar Close price
@@ -526,7 +528,7 @@ class NewBar:
         self.MACDDiff = macd_diff.iloc[-1]
 
         # ✅ Print populated fields
-        print(f"✅ **Fields Populated:** ['MACD', 'MACDAvg', 'MACDDiff']")
+        log.info(f"✅ **Fields Populated:** ['MACD', 'MACDAvg', 'MACDDiff']")
 
     def _11_add_volatility_momentum_volume_features_new_bar(self, historical_data, williams_period=14,
                                                             volume_period=20):
@@ -540,7 +542,7 @@ class NewBar:
         """
         # ✅ Ensure historical data is sufficient for Williams %R calculation
         if len(historical_data) < williams_period:
-            print(
+            log.info(
                 f"⚠️ Not enough data for Williams %R Calculation (Need at least {williams_period}, have {len(historical_data)})")
             self.__dict__["Williams_R"] = float("nan")
         else:
@@ -549,8 +551,8 @@ class NewBar:
             low_n = historical_data["Low"].rolling(window=williams_period).min()
 
             if pd.isna(high_n.iloc[-1]) or pd.isna(low_n.iloc[-1]):
-                print(f"⚠️ Warning: Williams %R calculation has NaNs! Debugging:")
-                print(historical_data.tail(3))  # Print last few rows for reference
+                log.info(f"⚠️ Warning: Williams %R calculation has NaNs! Debugging:")
+                log.info(historical_data.tail(3))  # Print last few rows for reference
                 self.__dict__["Williams_R"] = float("nan")
             else:
                 self.__dict__["Williams_R"] = ((high_n.iloc[-1] - self.Close) / (
@@ -558,7 +560,7 @@ class NewBar:
 
         # ✅ Ensure historical data is sufficient for Volume calculations
         if len(historical_data) < volume_period:
-            print(
+            log.info(
                 f"⚠️ Not enough data for Relative Volume Calculation (Need at least {volume_period}, have {len(historical_data)})")
             self.__dict__["Relative_Volume"] = float("nan")
         else:
@@ -567,7 +569,7 @@ class NewBar:
                 sma_volume = historical_data["Volume"].rolling(window=volume_period).mean().iloc[-1]
                 self.__dict__["Relative_Volume"] = self.Volume / sma_volume if sma_volume > 0 else 0
             else:
-                print("⚠️ Warning: 'Volume' column not found or all zeroes. Relative Volume set to NaN.")
+                log.info("⚠️ Warning: 'Volume' column not found or all zeroes. Relative Volume set to NaN.")
                 self.__dict__["Relative_Volume"] = float("nan")
 
         # ✅ Validate populated fields
@@ -577,9 +579,9 @@ class NewBar:
         nan_fields = [field for field in populated_fields if pd.isna(getattr(self, field))]
 
         if nan_fields:
-            print(f"⚠️ Warning: NaNs detected in {nan_fields}")
+            log.info(f"⚠️ Warning: NaNs detected in {nan_fields}")
         else:
-            print(f"✅ **Fields Populated:** {populated_fields}")
+            log.info(f"✅ **Fields Populated:** {populated_fields}")
 
     def validate_new_bar(self,new_bar):
         """
@@ -600,15 +602,15 @@ class NewBar:
 
         # ✅ Check if there are missing values
         if missing_fields:
-            print("\n❌ CRITICAL ERROR: `new_bar` contains None values before conversion!")
+            log.info("\n❌ CRITICAL ERROR: `new_bar` contains None values before conversion!")
             for key, value in missing_fields.items():
-                print(f"🔹 {key}: {value}")
+                log.info(f"🔹 {key}: {value}")
 
             # 🚨 Stop execution immediately (you can choose between sys.exit() or raising an error)
             raise ValueError(f"NewBar validation failed - missing fields: {list(missing_fields.keys())}")
             # sys.exit(1)  # Alternative if you want a hard stop (works better in standalone scripts)
 
         else:
-            print("\n✅ All fields in `new_bar` are properly populated before conversion.")
+            log.info("\n✅ All fields in `new_bar` are properly populated before conversion.")
 
         return True  # Validation passed

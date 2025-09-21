@@ -18,7 +18,9 @@ from label_generator import LabelGenerator
 from functools import partial
 
 from feature_generator import FeatureGenerator
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 # === 2. Parameter Grid (Looped Testing Options) ===
 SEQUENCE_OPTIONS = [10, 15]
 LEARNING_RATES = [0.001, 0.0005]
@@ -37,12 +39,12 @@ if gpus:
             tf.config.experimental.set_memory_growth(gpu, True)
         use_gpu = True
     except RuntimeError as e:
-        print(f"❌ GPU configuration error: {e}")
+        log.info(f"❌ GPU configuration error: {e}")
 
 # === 4. Functions ===
 def selective_feature_pipeline(df_raw):
     df = df_raw.copy()
-    print("\n✅ Using raw price and volume only (no engineered features)")
+    log.info("\n✅ Using raw price and volume only (no engineered features)")
     return df
 
 def prepare_cnn_dataset(df, label_col, sequence_length=15):
@@ -105,18 +107,18 @@ if __name__ == "__main__":
     for SEQUENCE_LENGTH in SEQUENCE_OPTIONS:
         for LEARNING_RATE in LEARNING_RATES:
             for THRESHOLD in THRESHOLDS:
-                print(f"\n===== RUN: seq={SEQUENCE_LENGTH}, lr={LEARNING_RATE}, threshold={THRESHOLD} =====")
-                print("\n===== Loading Data =====")
+                log.info(f"\n===== RUN: seq={SEQUENCE_LENGTH}, lr={LEARNING_RATE}, threshold={THRESHOLD} =====")
+                log.info("\n===== Loading Data =====")
                 loader = DataLoader()
                 df_raw = loader.load_from_csv(DATA_PATH)
                 df_raw = df_raw.drop_duplicates(subset=["Date", "Time"])
 
-                print("\n===== Feature Engineering =====")
+                log.info("\n===== Feature Engineering =====")
                 df_with_features = selective_feature_pipeline(df_raw)
                 label_gen = LabelGenerator()
                 df_labeled = label_gen.green_red_bar_label_goal_d(df_with_features)
 
-                print("\n===== Preparing Dataset =====")
+                log.info("\n===== Preparing Dataset =====")
                 X, y = prepare_cnn_dataset(df_labeled, label_col=LABEL_COLUMN, sequence_length=SEQUENCE_LENGTH)
                 split_idx = int(0.8 * len(X))
                 X_train, y_train = X[:split_idx], y[:split_idx]
@@ -132,7 +134,7 @@ if __name__ == "__main__":
                 device = '/GPU:0' if use_gpu else '/CPU:0'
                 with tf.device(device):
                     model = build_cnn_model(input_shape=X_train.shape[1:], learning_rate=LEARNING_RATE)
-                    print(f"\n===== Training CNN on {device} =====")
+                    log.info(f"\n===== Training CNN on {device} =====")
                     training_start_time = time.time()
                     train_dataset = tf.data.Dataset.from_tensor_slices((X_train_final, y_train_final)).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
                     val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val)).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
@@ -148,7 +150,7 @@ if __name__ == "__main__":
                     )
                     training_time = time.time() - training_start_time
 
-                print("\n===== Evaluating Model =====")
+                log.info("\n===== Evaluating Model =====")
                 X_test_tensor = tf.convert_to_tensor(X_test, dtype=tf.float32)
                 test_dataset = tf.data.Dataset.from_tensor_slices(X_test_tensor).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
                 with tf.device(device):
@@ -157,10 +159,10 @@ if __name__ == "__main__":
                     eval_time = time.time() - eval_start_time
 
                 y_pred = (y_pred_prob > THRESHOLD).astype(int).flatten()
-                print("\n===== Classification Report =====")
-                print(classification_report(y_test, y_pred))
+                log.info("\n===== Classification Report =====")
+                log.info(classification_report(y_test, y_pred))
 
-                print("\n===== Running Feature Insight Helper =====")
+                log.info("\n===== Running Feature Insight Helper =====")
                 cnn_insight = CNNFeatureInsightHelper(
                     model,
                     torch.tensor(X_test).float(),
@@ -176,12 +178,12 @@ if __name__ == "__main__":
                     threshold=THRESHOLD
                 )
 
-                print("\n📊 To view training metrics, run:")
-                print(f"tensorboard --logdir={log_dir}")
-                print("\n===== Summary =====")
-                print(f"Device used: {device}")
-                print(f"Training time: {training_time:.2f} seconds")
-                print(f"Evaluation time: {eval_time:.2f} seconds")
+                log.info("\n📊 To view training metrics, run:")
+                log.info(f"tensorboard --logdir={log_dir}")
+                log.info("\n===== Summary =====")
+                log.info(f"Device used: {device}")
+                log.info(f"Training time: {training_time:.2f} seconds")
+                log.info(f"Evaluation time: {eval_time:.2f} seconds")
 
                 # === Collect insight data ===
                 saliency = cnn_insight.compute_saliency()
@@ -213,4 +215,4 @@ if __name__ == "__main__":
     with pd.ExcelWriter("cnn_feature_insight_all.xlsx", engine="openpyxl") as writer:
         feature_df.to_excel(writer, sheet_name="Feature Insights", index=False)
         temporal_df.to_excel(writer, sheet_name="Temporal Importance", index=False)
-    print("🧠 TF using GPU:", tf.config.list_logical_devices('GPU'))
+    log.info("🧠 TF using GPU:", tf.config.list_logical_devices('GPU'))

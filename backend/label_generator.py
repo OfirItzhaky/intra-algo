@@ -1,7 +1,9 @@
 import numpy as np
 import pandas as pd
 
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 class LabelGenerator:
     """
     LabelGenerator is responsible for generating trade labels based on predefined rules.
@@ -54,7 +56,7 @@ class LabelGenerator:
         # ✅ Ensure all rows get a valid label (change default from -1 to 0)
         df["good_bar_prediction_outside_of_boundary"] = np.select(conditions, labels, default=0)
 
-        print("✅ Successfully assigned labels without -1!")
+        log.info("✅ Successfully assigned labels without -1!")
         return df
 
     import pandas as pd
@@ -72,7 +74,7 @@ class LabelGenerator:
         df["Next_High"] = df["High"].shift(-1)  # Shift next high price
         df = df.dropna(subset=["Next_High"])  # Drop last row (NaN due to shift)
 
-        print("✅ Elastic Net label 'Next_High' added.")
+        log.info("✅ Elastic Net label 'Next_High' added.")
         return df
 
     def long_good_bar_label_all(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -93,7 +95,7 @@ class LabelGenerator:
             0
         )
 
-        print("✅ All-bar long label applied (1 = bullish + actual ≥ predicted).")
+        log.info("✅ All-bar long label applied (1 = bullish + actual ≥ predicted).")
         return df
 
     def long_good_bar_label_bullish_only(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -116,7 +118,7 @@ class LabelGenerator:
             0
         )
 
-        print("✅ Bullish-only label applied (1 = actual ≥ predicted).")
+        log.info("✅ Bullish-only label applied (1 = actual ≥ predicted).")
         return df
 
     def long_good_bar_label_bullish_only_goal_b(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -136,7 +138,7 @@ class LabelGenerator:
 
         df["long_good_bar_label"] = (df["High"] >= df["Predicted_High"]).astype(int)
 
-        print("✅ Goal B Bullish Label applied (1 = this bar's High ≥ this bar's Predicted_High).")
+        log.info("✅ Goal B Bullish Label applied (1 = this bar's High ≥ this bar's Predicted_High).")
         return df
 
     def long_good_bar_label_all_goal_b(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -153,7 +155,7 @@ class LabelGenerator:
 
         df["long_good_bar_label"] = (df["High"] >= df["Predicted_High"]).astype(int)
 
-        print("✅ Goal B ALL Label applied (1 = High ≥ Predicted_High).")
+        log.info("✅ Goal B ALL Label applied (1 = High ≥ Predicted_High).")
         return df
 
     def long_good_bar_label_all_goal_c(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -180,7 +182,7 @@ class LabelGenerator:
         # ✅ Assign label = 1 if Next_High ≥ Predicted_High
         df["long_good_bar_label"] = (df["Next_High"] >= df["Predicted_High"]).astype(int)
 
-        print("✅ Goal C ALL Label applied (1 = Next High ≥ Predicted High).")
+        log.info("✅ Goal C ALL Label applied (1 = Next High ≥ Predicted High).")
         return df
 
     def long_good_bar_label_bullish_only_goal_c(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -206,7 +208,7 @@ class LabelGenerator:
         # Assign label
         df["long_good_bar_label"] = (df["Next_High"] >= df["Predicted_High"]).astype(int)
 
-        print("✅ Goal C Bullish Label applied (1 = bullish setup + Next High ≥ Predicted High).")
+        log.info("✅ Goal C Bullish Label applied (1 = bullish setup + Next High ≥ Predicted High).")
         return df
 
     def green_red_bar_label_goal_d(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -232,7 +234,7 @@ class LabelGenerator:
 
         df = df.drop(columns=["Next_Close"], errors="ignore")  # ⛔ Prevent leakage
 
-        print("✅ Goal D Label applied (1 = green bar) TEST.")
+        log.info("✅ Goal D Label applied (1 = green bar) TEST.")
         return df
 
     def green_bar_with_tick_threshold_label(self, df: pd.DataFrame, tick_size: float = 0.5) -> pd.DataFrame:
@@ -256,7 +258,7 @@ class LabelGenerator:
         df["tick_threshold_label"] = ((df["Next_Close"] - df["Close"]) > tick_size).astype(int)
         df = df.drop(columns=["Next_Close"], errors="ignore")  # ⛔ Prevent leakage
 
-        print(f"✅ Tick-threshold label applied (tick size = {tick_size})")
+        log.info(f"✅ Tick-threshold label applied (tick size = {tick_size})")
         return df
 
     def option_d_multiclass_next_bar_movement(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -294,6 +296,6 @@ class LabelGenerator:
         # 🚫 These must not leak into training
         df.drop(columns=["Next_Open", "Next_Close", "next_bar_movement"], inplace=True)
 
-        print("✅ Option D Multi-Class Labels applied (based on next bar movement).")
+        log.info("✅ Option D Multi-Class Labels applied (based on next bar movement).")
 
         return df

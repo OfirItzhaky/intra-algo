@@ -102,7 +102,7 @@ class FiveStarAgentController:
         multimodal-capable model if a non-vision model is selected while images are present.
         """
         try:
-            print(
+            log.info(
                 f"[FiveStar][DEBUG] analyze_with_model: Session={session_id or 'default'} | "
                 f"Model selected={model_choice} | Images={image_paths} | Summary injected={bool(image_summary)}"
             )
@@ -116,7 +116,7 @@ class FiveStarAgentController:
             try:
                 summary_block = self._format_summary_block(image_summary)
                 instructions = f"{summary_block}\n\n{instructions or ''}"
-                print(f"[FiveStar][OPT] Prepended summary to instructions (no images). words={len(summary_block.split())}")
+                log.info(f"[FiveStar][OPT] Prepended summary to instructions (no images). words={len(summary_block.split())}")
             except Exception as e:
                 pass
             # Prevent duplicate injection in lower-level functions
@@ -149,18 +149,18 @@ class FiveStarAgentController:
 
             # Prefer LangChain Gemini if available to mirror OpenAI LC flow
             try:
-                print(f"[FiveStar][MODE] Gemini path selected | GOOGLE_LC_AVAILABLE={GOOGLE_LC_AVAILABLE}")
+                log.info(f"[FiveStar][MODE] Gemini path selected | GOOGLE_LC_AVAILABLE={GOOGLE_LC_AVAILABLE}")
             except Exception:
                 pass
             if GOOGLE_LC_AVAILABLE:
                 try:
-                    print("[FiveStar][MODE] Using Gemini LangChain path")
+                    log.info("[FiveStar][MODE] Using Gemini LangChain path")
                 except Exception:
                     pass
                 reply, usage = self._gemini_call_langchain(instructions, image_paths, model_used, session_id or "default", image_summary=image_summary)
             else:
                 try:
-                    print("[FiveStar][MODE] Using Gemini native SDK path")
+                    log.info("[FiveStar][MODE] Using Gemini native SDK path")
                 except Exception:
                     pass
                 reply, usage = self._gemini_call(instructions, image_paths, model_used, image_summary=image_summary)
@@ -187,10 +187,10 @@ class FiveStarAgentController:
         api_key = None
         if active_user == "itz01":
             api_key = os.getenv("ITZ_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-            print("[FiveStar][KEY] Using ITZ_OPENAI_API_KEY for user itz01")
+            log.info("[FiveStar][KEY] Using ITZ_OPENAI_API_KEY for user itz01")
         else:
             api_key = os.getenv("OPENAI_API_KEY")
-            print("[FiveStar][KEY] Using OPENAI_API_KEY for user", active_user or "(unknown)")
+            log.info("[FiveStar][KEY] Using OPENAI_API_KEY for user", active_user or "(unknown)")
         if not api_key:
             return (
                 "❌ Missing OpenAI API key. Set environment variable OPENAI_API_KEY to enable analysis.",
@@ -202,7 +202,7 @@ class FiveStarAgentController:
             llm = ChatOpenAI(model=model_used, temperature=0.2, api_key=api_key)
         except Exception as e:
             # Fallback to native path if LC model init fails
-            print(f"[FiveStar][FALLBACK] OpenAI LC init failed → native path. err={e}")
+            log.info(f"[FiveStar][FALLBACK] OpenAI LC init failed → native path. err={e}")
             return self._openai_call(instructions, image_paths, model_used, image_summary=image_summary, active_user=active_user)
 
         # Compose human content blocks (text + image urls)
@@ -238,7 +238,7 @@ class FiveStarAgentController:
         # Diagnostics: LC mode inputs
         try:
             text_len = sum(len(block.get("text", "")) for block in human_content if isinstance(block, dict) and block.get("type") == "text")
-            print(
+            log.info(
                 f"[FiveStar][OPT] LangChain Mode: Using image summary: {bool(image_summary)} | "
                 f"Image block count: {len([b for b in human_content if isinstance(b, dict) and b.get('type') == 'image_url'])} | "
                 f"Text size (chars): {text_len}"
@@ -256,16 +256,16 @@ class FiveStarAgentController:
         )
 
         try:
-            print("[FiveStar][DEBUG] Prompt breakdown:")
-            print("SystemMessage tokens:", len(tiktoken.encoding_for_model("gpt-4o").encode(MAIN_SYSTEM_PROMPT)))
-            print("HumanMessage tokens (summary + instruction):",
+            log.info("[FiveStar][DEBUG] Prompt breakdown:")
+            log.info("SystemMessage tokens:", len(tiktoken.encoding_for_model("gpt-4o").encode(MAIN_SYSTEM_PROMPT)))
+            log.info("HumanMessage tokens (summary + instruction):",
                   len(tiktoken.encoding_for_model("gpt-4o").encode(str(human_content))))
-            print("Messages length:", len(messages))
+            log.info("Messages length:", len(messages))
 
             resp = chain.invoke({"messages": messages}, config={"configurable": {"session_id": session_id}})
         except Exception as e:
             # Fallback to native path on any LC runtime issue
-            print(f"[FiveStar][FALLBACK] OpenAI LC invoke failed → native path. err={e}")
+            log.info(f"[FiveStar][FALLBACK] OpenAI LC invoke failed → native path. err={e}")
             return self._openai_call(instructions, image_paths, model_used, image_summary=image_summary, active_user=active_user)
 
         # Extract text
@@ -290,10 +290,10 @@ class FiveStarAgentController:
                 est_prompt_tokens = (len(MAIN_SYSTEM_PROMPT) + human_text_len) // 4
                 if prompt_tokens is None:
                     prompt_tokens = max(1, est_prompt_tokens)
-                    print(f"[FiveStar][OPT] LC Gemini prompt_tokens rough-estimated from chars={len(MAIN_SYSTEM_PROMPT)+human_text_len} -> tokens~{prompt_tokens}")
+                    log.info(f"[FiveStar][OPT] LC Gemini prompt_tokens rough-estimated from chars={len(MAIN_SYSTEM_PROMPT)+human_text_len} -> tokens~{prompt_tokens}")
                 if completion_tokens is None:
                     completion_tokens = max(0, len(raw_text) // 4)
-                    print(f"[FiveStar][OPT] LC Gemini completion_tokens rough-estimated from chars={len(raw_text)} -> tokens~{completion_tokens}")
+                    log.info(f"[FiveStar][OPT] LC Gemini completion_tokens rough-estimated from chars={len(raw_text)} -> tokens~{completion_tokens}")
             except Exception:
                 # Ensure integers
                 prompt_tokens = int(prompt_tokens or 0)
@@ -306,10 +306,10 @@ class FiveStarAgentController:
                 est_prompt_tokens = (len(MAIN_SYSTEM_PROMPT) + human_text_len) // 4
                 if prompt_tokens is None or int(prompt_tokens or 0) == 0:
                     prompt_tokens = max(1, est_prompt_tokens)
-                    print(f"[FiveStar][OPT] LC Gemini prompt_tokens rough-estimated from chars={len(MAIN_SYSTEM_PROMPT)+human_text_len} -> tokens~{prompt_tokens}")
+                    log.info(f"[FiveStar][OPT] LC Gemini prompt_tokens rough-estimated from chars={len(MAIN_SYSTEM_PROMPT)+human_text_len} -> tokens~{prompt_tokens}")
                 if completion_tokens is None or int(completion_tokens or 0) == 0:
                     completion_tokens = max(0, len(raw_text) // 4)
-                    print(f"[FiveStar][OPT] LC Gemini completion_tokens rough-estimated from chars={len(raw_text)} -> tokens~{completion_tokens}")
+                    log.info(f"[FiveStar][OPT] LC Gemini completion_tokens rough-estimated from chars={len(raw_text)} -> tokens~{completion_tokens}")
             except Exception:
                 # Ensure integers
                 prompt_tokens = int(prompt_tokens or 0)
@@ -317,18 +317,18 @@ class FiveStarAgentController:
 
         usage_dict = self._estimate_cost(model_used, prompt_tokens, completion_tokens)
         try:
-            print(
+            log.info(
                 f"[FiveStar][DEBUG][COST] provider=GeminiLC model={model_used} pt={prompt_tokens} ct={completion_tokens} total={usage_dict.get('total_tokens')} cost=${usage_dict.get('estimated_cost_usd')}"
             )
         except Exception:
             pass
         try:
-            print(f"[FiveStar][OPT] LC Gemini usage (final): prompt_tokens={prompt_tokens} completion_tokens={completion_tokens} est_cost=${usage_dict.get('estimated_cost_usd', 0)}")
+            log.info(f"[FiveStar][OPT] LC Gemini usage (final): prompt_tokens={prompt_tokens} completion_tokens={completion_tokens} est_cost=${usage_dict.get('estimated_cost_usd', 0)}")
         except Exception:
             pass
 
         try:
-            print(
+            log.info(
                 f"[FiveStar][OPT] LC OpenAI call OK | Model={model_used} | prompt_tokens={prompt_tokens} | completion_tokens={completion_tokens} | total={usage_dict.get('total_tokens')}"
             )
         except Exception as e:
@@ -394,10 +394,10 @@ class FiveStarAgentController:
         active_user_lc = (active_user or os.getenv("RESEARCH_AGENT_ACTIVE_USER") or os.getenv("USERNAME") or "").strip().lower()
         if active_user_lc == "itz01":
             api_key = os.getenv("ITZ_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-            print("[FiveStar][KEY] Using ITZ_OPENAI_API_KEY for user itz01")
+            log.info("[FiveStar][KEY] Using ITZ_OPENAI_API_KEY for user itz01")
         else:
             api_key = os.getenv("OPENAI_API_KEY")
-            print(f"[FiveStar][KEY] Using OPENAI_API_KEY for user {active_user_lc or '(unknown)'}")
+            log.info(f"[FiveStar][KEY] Using OPENAI_API_KEY for user {active_user_lc or '(unknown)'}")
         if not api_key:
             return (
                 "❌ Missing OpenAI API key. Set environment variable OPENAI_API_KEY to enable analysis.\n"
@@ -431,7 +431,7 @@ class FiveStarAgentController:
             })
             attached_names.append(os.path.basename(p))
         try:
-            print(f"[FiveStar][IMAGES] OpenAI payload includes image blocks: {len(attached_names) > 0}")
+            log.info(f"[FiveStar][IMAGES] OpenAI payload includes image blocks: {len(attached_names) > 0}")
         except Exception as e:
             pass
 
@@ -476,7 +476,7 @@ class FiveStarAgentController:
             # Rough content size diagnostics
             text_parts = [blk.get("text", "") for blk in content if isinstance(blk, dict) and blk.get("type") == "text"]
             text_size = sum(len(t) for t in text_parts)
-            print(
+            log.info(
                 f"[FiveStar][OPT] OpenAI call OK | Model={openai_model_returned} | prompt_tokens={prompt_tokens} | completion_tokens={completion_tokens} | total={usage_dict.get('total_tokens')} | text_size_chars={text_size} | image_blocks={len(attached_names)} | using_summary={bool(image_summary)}"
             )
         except Exception as e:
@@ -598,7 +598,7 @@ class FiveStarAgentController:
         # Diagnostics
         try:
             text_len = sum(len(block.get("text", "")) for block in human_content if isinstance(block, dict) and block.get("type") == "text")
-            print(
+            log.info(
                 f"[FiveStar][OPT] LC Gemini: Using image summary={bool(image_summary)} | images={len([b for b in human_content if isinstance(b, dict) and b.get('type')=='image_url'])} | text_chars={text_len}"
             )
         except Exception:
@@ -636,10 +636,10 @@ class FiveStarAgentController:
             if prompt_tokens is None or int(prompt_tokens or 0) == 0:
                 human_text_len = sum(len(block.get("text", "")) for block in human_content if isinstance(block, dict) and block.get("type") == "text")
                 prompt_tokens = max(1, (len(MAIN_SYSTEM_PROMPT) + human_text_len) // 4)
-                print(f"[FiveStar][OPT] LC Gemini prompt_tokens rough-estimated from chars={len(MAIN_SYSTEM_PROMPT)+human_text_len} -> tokens~{prompt_tokens}")
+                log.info(f"[FiveStar][OPT] LC Gemini prompt_tokens rough-estimated from chars={len(MAIN_SYSTEM_PROMPT)+human_text_len} -> tokens~{prompt_tokens}")
             if completion_tokens is None or int(completion_tokens or 0) == 0:
                 completion_tokens = max(0, len(raw_text) // 4)
-                print(f"[FiveStar][OPT] LC Gemini completion_tokens rough-estimated from chars={len(raw_text)} -> tokens~{completion_tokens}")
+                log.info(f"[FiveStar][OPT] LC Gemini completion_tokens rough-estimated from chars={len(raw_text)} -> tokens~{completion_tokens}")
         except Exception:
             # Ensure integers
             prompt_tokens = int(prompt_tokens or 0)
@@ -647,7 +647,7 @@ class FiveStarAgentController:
 
         usage_dict = self._estimate_cost(model_used, prompt_tokens, completion_tokens)
         try:
-            print(
+            log.info(
                 f"[FiveStar][DEBUG][COST] provider=GeminiLC model={model_used} pt={prompt_tokens} ct={completion_tokens} total={usage_dict.get('total_tokens')} cost=${usage_dict.get('estimated_cost_usd')}"
             )
         except Exception:
@@ -729,7 +729,7 @@ class FiveStarAgentController:
             # Gemini Python SDK expects snake_case keys: inline_data -> {mime_type, data}
             return {"inline_data": {"mime_type": mime_type, "data": encoded}}
         except Exception as e:
-            print(f"[FiveStar][ERROR] Failed to build Gemini inlineData for {path}: {e}")
+            log.info(f"[FiveStar][ERROR] Failed to build Gemini inlineData for {path}: {e}")
             return None
 
     def _gemini_call(self, instructions: str, image_paths: List[str], model_used: str, image_summary: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
@@ -759,9 +759,9 @@ class FiveStarAgentController:
                 parts.append(part)
                 attached_names.append(os.path.basename(p))
             else:
-                print(f"[FiveStar][WARN] Skipping empty/invalid Gemini inline_data for: {p}")
+                log.info(f"[FiveStar][WARN] Skipping empty/invalid Gemini inline_data for: {p}")
         try:
-            print(f"[FiveStar][IMAGES] Gemini payload includes image parts: {len(attached_names) > 0}")
+            log.info(f"[FiveStar][IMAGES] Gemini payload includes image parts: {len(attached_names) > 0}")
         except Exception as e:
             pass
 
@@ -773,7 +773,7 @@ class FiveStarAgentController:
                     {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model_used": model_used, "estimated_cost_usd": 0.0}
                 )
             try:
-                print(f"[FiveStar][OPT] Proceeding with text-only follow-up (no image parts). instructions_chars={len(instructions)}")
+                log.info(f"[FiveStar][OPT] Proceeding with text-only follow-up (no image parts). instructions_chars={len(instructions)}")
             except Exception:
                 pass
 
@@ -806,24 +806,24 @@ class FiveStarAgentController:
             try:
                 ct = model.count_tokens(parts)
                 prompt_tokens = int(getattr(ct, 'total_tokens', None) or ct.get('total_tokens'))
-                print(f"[FiveStar][OPT] Gemini prompt_tokens estimated via count_tokens={prompt_tokens}")
+                log.info(f"[FiveStar][OPT] Gemini prompt_tokens estimated via count_tokens={prompt_tokens}")
             except Exception:
                 try:
                     # Rough fallback: sum text char lengths / 4
                     est_chars = sum(len(prt.get('text', '')) for prt in parts if isinstance(prt, dict) and 'text' in prt)
                     prompt_tokens = max(1, est_chars // 4)
-                    print(f"[FiveStar][OPT] Gemini prompt_tokens rough-estimated from chars={est_chars} -> tokens~{prompt_tokens}")
+                    log.info(f"[FiveStar][OPT] Gemini prompt_tokens rough-estimated from chars={est_chars} -> tokens~{prompt_tokens}")
                 except Exception:
                     prompt_tokens = 0
         if completion_tokens is None:
             try:
                 ct_out = model.count_tokens(raw_text)
                 completion_tokens = int(getattr(ct_out, 'total_tokens', None) or ct_out.get('total_tokens'))
-                print(f"[FiveStar][OPT] Gemini completion_tokens estimated via count_tokens={completion_tokens}")
+                log.info(f"[FiveStar][OPT] Gemini completion_tokens estimated via count_tokens={completion_tokens}")
             except Exception:
                 try:
                     completion_tokens = max(0, len(raw_text) // 4)
-                    print(f"[FiveStar][OPT] Gemini completion_tokens rough-estimated from chars={len(raw_text)} -> tokens~{completion_tokens}")
+                    log.info(f"[FiveStar][OPT] Gemini completion_tokens rough-estimated from chars={len(raw_text)} -> tokens~{completion_tokens}")
                 except Exception:
                     completion_tokens = 0
         usage_dict = self._estimate_cost(model_used, prompt_tokens, completion_tokens)
@@ -831,7 +831,7 @@ class FiveStarAgentController:
         try:
             # Compute text size across text parts
             parts_text = "\n".join(prt.get("text", "") for prt in parts if isinstance(prt, dict) and "text" in prt)
-            print(
+            log.info(
                 f"[FiveStar][OPT] Gemini call OK | Model={model_used} | prompt_tokens={prompt_tokens} | completion_tokens={completion_tokens} | total={usage_dict.get('total_tokens')} | text_size_chars={len(parts_text)} | image_parts={len(attached_names)} | using_summary={bool(image_summary)}"
             )
         except Exception as e:

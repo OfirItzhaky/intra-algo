@@ -1,7 +1,9 @@
 import yfinance as yf
 import pandas as pd
 import os
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 class SwingGaugeLong:
     def __init__(self, symbols, image_dir=None):
         """
@@ -96,13 +98,13 @@ class SwingGaugeLong:
         """
         Simple output summary of available data, images, and scores
         """
-        print("🔹 Symbols fetched:", list(self.yf_data.keys()))
-        print("📸 Snapshot status:")
+        log.info("🔹 Symbols fetched:", list(self.yf_data.keys()))
+        log.info("📸 Snapshot status:")
         for k, v in self.image_analysis.items():
-            print(f"  - {k}: {v}")
-        print("📊 Weekly Signals:")
+            log.info(f"  - {k}: {v}")
+        log.info("📊 Weekly Signals:")
         for sym, score in self.signal_scores.items():
-            print(f"  - {sym}: {score}")
+            log.info(f"  - {sym}: {score}")
 
     def calculate_atr(self, df, period=14):
         """

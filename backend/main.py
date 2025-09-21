@@ -21,7 +21,9 @@ from fastapi.responses import Response
 import matplotlib.pyplot as plt
 from io import BytesIO
 app = FastAPI()
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 
 # CORS for frontend
 origins = [f"http://localhost:{port}" for port in range(5173, 5184)]
@@ -66,7 +68,7 @@ def load_data(
     base_folder = "data"
     full_path = os.path.join(base_folder, data_type, file_path)
 
-    print(f"🔗 Loading file from: {full_path}")
+    log.info(f"🔗 Loading file from: {full_path}")
 
     df = data_loader.load_from_csv(full_path)
 
@@ -128,7 +130,7 @@ def load_data(
         """
         with open("../frontend/src/initialData.js", "w") as js_file:
             js_file.write(demo_js_content)
-        print("🔄 Demo JS file initialized with 3 bars.")
+        log.info("🔄 Demo JS file initialized with 3 bars.")
 
     else:
         first_row, last_row = None, None  # Fallback case
@@ -145,7 +147,7 @@ def load_data(
         "overlap_fixed": overlap_fixed  # ✅ Pass overlap fix status
     }
 
-    print(f"✅ Summary: {summary}")
+    log.info(f"✅ Summary: {summary}")
 
     return {
         "status": "success",
@@ -345,7 +347,7 @@ def generate_classifier_labels(label_method: str = Query(..., description="Label
     if trainer is None or trainer.y_test_filtered is None or trainer.predictions_filtered is None:
         return {"status": "error", "message": "Classifier label generation skipped due to missing regression results."}
 
-    print(f"🏷️ Generating Classifier Labels using method: {label_method}")
+    log.info(f"🏷️ Generating Classifier Labels using method: {label_method}")
 
     if trainer.x_test_with_meta is None:
         return {"status": "error", "message": "Meta columns are missing in x_test_with_meta."}
@@ -432,7 +434,7 @@ def train_classifiers():
     if trainer is None or trainer.y_test_filtered is None or trainer.predictions_filtered is None:
         return {"status": "error", "message": "Classifier training skipped due to missing regression results."}
 
-    print("📑 Training Classifiers using pre-generated labels...")
+    log.info("📑 Training Classifiers using pre-generated labels...")
     
     # Use the pre-generated labels
     df_with_labels = labeled_data_for_training
@@ -447,14 +449,14 @@ def train_classifiers():
         split_ratio=0.8
     )
 
-    print(f"✅ Classifier Training set: {len(classifier_X_train)} samples, Test set: {len(classifier_X_test)} samples")
-    print(f"✅ Using target column: {target_column} from method: {classifier_label_method}")
+    log.info(f"✅ Classifier Training set: {len(classifier_X_train)} samples, Test set: {len(classifier_X_test)} samples")
+    log.info(f"✅ Using target column: {target_column} from method: {classifier_label_method}")
 
     # ✅ Apply SMOTE to the training data only
     smote = SMOTE(random_state=42)
     classifier_X_train_bal, classifier_y_train_bal = smote.fit_resample(classifier_X_train, classifier_y_train)
 
-    print(f"✅ SMOTE applied: Balanced training size = {len(classifier_X_train_bal)}")
+    log.info(f"✅ SMOTE applied: Balanced training size = {len(classifier_X_train_bal)}")
     # ✅ Initialize classifier trainer and train all classifiers
     classifier_trainer = ClassifierModelTrainer()
     # ✅ Extract timestamps separately
@@ -532,7 +534,7 @@ def visualize_classifiers():
     if trainer is None or classifier_trainer is None:
         return {"status": "error", "message": "Ensure both regression and classifier training are completed."}
 
-    print("📊 Generating Combined Visualization (Regression + Classifiers)...")
+    log.info("📊 Generating Combined Visualization (Regression + Classifiers)...")
 
     processor = DataProcessor()
     fig = processor.visualize_classifiers_pycharm(
@@ -648,8 +650,8 @@ def generate_new_bar(validate: bool = False):
     new_bar_df["XGBoost"] = classifier_predictions["XGBoost"]
 
     # ✅ Log Output for Debugging
-    print("\n📊 **New Bar Processed Successfully:**")
-    print(new_bar_df[["Date", "Time", "Predicted_High", "RandomForest", "LightGBM", "XGBoost"]].to_string(index=False))
+    log.info("\n📊 **New Bar Processed Successfully:**")
+    log.info(new_bar_df[["Date", "Time", "Predicted_High", "RandomForest", "LightGBM", "XGBoost"]].to_string(index=False))
 
     classifier_historical_data = pd.concat([classifier_historical_data, new_bar_df],
                                            ignore_index=True)  # ✅ Append to history
@@ -778,8 +780,8 @@ def initialize_simulation():
     if other_columns_with_nans.sum() > 0:
         raise ValueError(f"❌ Unexpected NaNs found in non-classifier columns:\n{other_columns_with_nans}")
 
-    print("✅ Final Simulation Starting Point DF:")
-    print(simulation_df_startingpoint.head())
+    log.info("✅ Final Simulation Starting Point DF:")
+    log.info(simulation_df_startingpoint.head())
     # Step 1: Add date field
     simulation_df_startingpoint["date"] = pd.to_datetime(
         simulation_df_startingpoint["Date"] + " " + simulation_df_startingpoint["Time"]
@@ -831,7 +833,7 @@ def restart_simulation():
     # ✅ Call initialize_simulation to reset the initialData.js file
     initialize_simulation()
 
-    print("🔄 Simulation restarted successfully! Simulation data and initialData.js restored.")
+    log.info("🔄 Simulation restarted successfully! Simulation data and initialData.js restored.")
 
     return {
         "status": "success",

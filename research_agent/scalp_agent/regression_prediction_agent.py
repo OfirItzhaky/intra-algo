@@ -172,10 +172,10 @@ class RegressionPredictorAgent:
             # Find the result matching the config_dict
             result = next((r for r in self.all_strategy_results if r['config'] == config_dict), None)
             if result is None:
-                print("[simulate_trades] No result found for given config.")
+                log.info("[simulate_trades] No result found for given config.")
                 return None
         else:
-            print("[simulate_trades] Must provide config_idx or config_dict.")
+            log.info("[simulate_trades] Must provide config_idx or config_dict.")
             return None
         trades = result['trades']
         config = result['config']
@@ -204,7 +204,7 @@ class RegressionPredictorAgent:
         else:
             trades_path = os.path.abspath(os.path.join(out_dir, f"exported_trades_config_{config_idx if config_idx is not None else 'custom'}.csv"))
         trades_df.to_csv(trades_path, index=False)
-        print(f"[simulate_trades] Saved trades to {trades_path}")
+        log.info(f"[simulate_trades] Saved trades to {trades_path}")
         # Instantiate AnalyzerDashboard to call instance method
         dashboard = AnalyzerDashboard(pd.DataFrame(), pd.DataFrame())
         metrics_df = dashboard.calculate_strategy_metrics_for_ui(trades_df)
@@ -291,7 +291,7 @@ class RegressionPredictorAgent:
 
 
         # Now call LLM selector
-        print('[LLM] Calling LLM for top strategy selection...')
+        log.info('[LLM] Calling LLM for top strategy selection...')
         bias_summary = llm_context.get('bias_summary')
         final_best_result = self._call_llm_and_attach(diverse_strategies, bias_summary)
 
@@ -308,8 +308,8 @@ class RegressionPredictorAgent:
 
     def _save_and_visualize_results(self, best_result, df_with_preds, results):
         df_results = pd.DataFrame(results)
-        print(f"[SUMMARY] Total rows: {len(df_results)}")
-        print(f"[SUMMARY] Columns: {df_results.columns.tolist()}")
+        log.info(f"[SUMMARY] Total rows: {len(df_results)}")
+        log.info(f"[SUMMARY] Columns: {df_results.columns.tolist()}")
         # Find best/worst by total_pnl if present, else by avg_return
         best_idx, worst_idx = None, None
         if 'avg_return' in df_results.columns and df_results['avg_return'].notnull().any():
@@ -336,7 +336,7 @@ class RegressionPredictorAgent:
         required_cols = ['long_threshold', 'short_threshold', 'min_volume_pct_change', 'bar_color_filter', 'win_rate', 'avg_pnl']
         missing_cols = [col for col in required_cols if col not in df.columns]
         if missing_cols:
-            print(f"[WARNING] Cannot plot heatmaps, missing columns: {missing_cols}")
+            log.info(f"[WARNING] Cannot plot heatmaps, missing columns: {missing_cols}")
         else:
             min_vols = sorted(df['min_volume_pct_change'].dropna().unique())
             bar_colors = sorted(df['bar_color_filter'].dropna().unique())
@@ -368,7 +368,7 @@ class RegressionPredictorAgent:
             heatmap_path = os.path.join(project_root, 'uploaded_csvs', 'heatmap_debug.png')
             plt.savefig(heatmap_path)
             plt.close()
-            print(f"[INFO] Heatmap saved to {heatmap_path}")
+            log.info(f"[INFO] Heatmap saved to {heatmap_path}")
         # After saving the heatmap, show trades and metrics visuals, then call LLM selector
         if best_result and 'trades' in best_result and best_result['trades']:
             regression_plot_path = os.path.abspath(
@@ -405,7 +405,7 @@ class RegressionPredictorAgent:
             Dictionary with config, trades, and top_strategies for _save_and_visualize_results
         """
         if not llm_output or 'llm_top_strategies' not in llm_output:
-            print("[extract_best_result_from_top_3] No LLM output or top_strategies found")
+            log.info("[extract_best_result_from_top_3] No LLM output or top_strategies found")
             return {}
 
         import json
@@ -420,17 +420,17 @@ class RegressionPredictorAgent:
                 parsed = json.loads(cleaned)
                 top_strategies = parsed.get("top_strategies", [])
             except json.JSONDecodeError as e:
-                print(f"[extract_best_result_from_top_3] JSON decode failed: {e}")
+                log.info(f"[extract_best_result_from_top_3] JSON decode failed: {e}")
                 return {}
         else:
             top_strategies = llm_top.get("top_strategies", [])
 
         if not top_strategies or len(top_strategies) == 0:
-            print("[extract_best_result_from_top_3] No top strategies found in LLM output")
+            log.info("[extract_best_result_from_top_3] No top strategies found in LLM output")
             return {}
 
         top_strategy = top_strategies[0]
-        print(f"[extract_best_result_from_top_3] Looking for match for top strategy: {top_strategy}")
+        log.info(f"[extract_best_result_from_top_3] Looking for match for top strategy: {top_strategy}")
 
         # Strategy matching logic
         matched_result = None
@@ -451,10 +451,10 @@ class RegressionPredictorAgent:
                     matched_result = result
 
         if matched_result is None:
-            print("[extract_best_result_from_top_3] No matching strategy found in all_strategy_results")
+            log.info("[extract_best_result_from_top_3] No matching strategy found in all_strategy_results")
             return {}
 
-        print(f"[extract_best_result_from_top_3] Matched strategy with config: {matched_result.get('config', {})}")
+        log.info(f"[extract_best_result_from_top_3] Matched strategy with config: {matched_result.get('config', {})}")
 
         return {
             'config': matched_result['config'],
@@ -479,7 +479,7 @@ class RegressionPredictorAgent:
             df_clean = diverse_strategies.drop(columns=['sim', 'strategy', 'cerebro'], errors='ignore')
             grid_json = df_clean.to_json(orient='records', indent=2)
         except Exception as e:
-            print(f"[LLM] Failed to serialize strategies: {e}")
+            log.info(f"[LLM] Failed to serialize strategies: {e}")
             return {"error": "Could not prepare strategy input for LLM."}
 
         # Construct the prompt
@@ -574,8 +574,8 @@ class RegressionPredictorAgent:
             else:
                 return {"error": f"Unsupported LLM provider: {provider}"}
 
-            print(f"[LLM Cost] ${cost} ({tokens} tokens from {provider})")
-            print(f"[LLM Response Preview] {content[:300]}...")
+            log.info(f"[LLM Cost] ${cost} ({tokens} tokens from {provider})")
+            log.info(f"[LLM Response Preview] {content[:300]}...")
 
             parsed = json.loads(content) if content.strip().startswith('{') else {"llm_raw_response": content}
             best_result = {
@@ -591,7 +591,7 @@ class RegressionPredictorAgent:
             return best_result
 
         except Exception as e:
-            print(f"[LLM Error] {e}")
+            log.info(f"[LLM Error] {e}")
             return {"error": str(e), "llm_prompt": llm_prompt}
 
     @staticmethod
@@ -605,7 +605,7 @@ class RegressionPredictorAgent:
         for i, (long_t, short_t, min_vol, bar_color, max_pred_low, min_pred_high) in enumerate(threshold_grid):
             # TEMP DEV MODE: Early-stop after 5 strategy simulations for faster development. Remove or increase for full runs.
             if i >= 15:
-                print("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
+                log.info("\U0001F6D1 TEMP DEV MODE: Early-stop after 5 strategy simulations.")
                 break
             metrics = {k: None for k in [
                 'profit_factor', 'avg_pnl', 'avg_return', 'direction_tag', 'risk_violations',
@@ -742,14 +742,14 @@ class RegressionPredictorAgent:
                         daily_pnl = df_trades.groupby('date')['pnl'].sum().values
                     metrics['daily_loss_violations'] = sum(abs(x) > max_daily_risk for x in daily_pnl)
                 else:
-                    print(
+                    log.info(
                         f"[WARNING] No trades or no trade signals for config: long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}")
                     # metrics fallback already defined at top of loop
-                # print(f"[Debug] Trades simulated: {len(trades)}")
+                # log.info(f"[Debug] Trades simulated: {len(trades)}")
                 # if not df_trades.empty:
-                #     print(f"[Debug] First 3 trades: {df_trades.head(3).to_dict(orient='records')}")
-                #     print(f"[Debug] Sample PnLs: {df_trades['pnl'].head(3).tolist()}")
-                # print(f"[Debug] Computed metrics: {metrics}")
+                #     log.info(f"[Debug] First 3 trades: {df_trades.head(3).to_dict(orient='records')}")
+                #     log.info(f"[Debug] Sample PnLs: {df_trades['pnl'].head(3).tolist()}")
+                # log.info(f"[Debug] Computed metrics: {metrics}")
                 # Store all results for this config
                 self.all_strategy_results.append({
                     'config': params_copy.copy(),
@@ -760,7 +760,7 @@ class RegressionPredictorAgent:
             except Exception as e:
                 import traceback
                 tb = traceback.format_exc()
-                print(
+                log.info(
                     f"\n❌ Backtest failed at config #{i + 1} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color})\n{tb}")
                 sim = {
                     'error': f'Backtest failed at config #{i + 1} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color})\n{tb}',
@@ -770,7 +770,7 @@ class RegressionPredictorAgent:
             self.user_params = old_params
             backtest_summary = sim.get('backtest_summary', {})
             # --- Debug: Print computed metrics ---
-            # print(f"[Debug] Computed metrics: {backtest_summary}")
+            # log.info(f"[Debug] Computed metrics: {backtest_summary}")
             trades = sim.get('trades', [])
             # --- Append config and metrics to results ---
             results.append({
@@ -790,11 +790,11 @@ class RegressionPredictorAgent:
             dashboard = AnalyzerDashboard(df_with_preds, pd.DataFrame(trades))
             df_trades = pd.DataFrame(trades) if trades else pd.DataFrame()
             # After filtering trades for this config, print debug info
-            # print(f"[DEBUG] Config: long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}, max_pred_low={max_pred_low}, min_pred_high={min_pred_high} | Num trades after filtering: {len(trades)}")
+            # log.info(f"[DEBUG] Config: long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}, max_pred_low={max_pred_low}, min_pred_high={min_pred_high} | Num trades after filtering: {len(trades)}")
             # if trades:
-            #     print(f"[DEBUG] First trade: {trades[0]}")
+            #     log.info(f"[DEBUG] First trade: {trades[0]}")
             # Compute metrics from per-trade DataFrame
-            # print(f"[DEBUG] df_trades columns: {df_trades.columns.tolist()} | empty: {df_trades.empty}")
+            # log.info(f"[DEBUG] df_trades columns: {df_trades.columns.tolist()} | empty: {df_trades.empty}")
             if not df_trades.empty and 'pnl' in df_trades.columns:
                 metrics_llm = dashboard.calculate_strategy_metrics_for_llm(df_trades).iloc[0]
                 # Also define these for later use
@@ -803,7 +803,7 @@ class RegressionPredictorAgent:
                 max_consec_losses = metrics_llm.get('max_consec_losses', 0)
                 outlier_count_3sigma = metrics_llm.get('outlier_count_3sigma', 0)
             else:
-                print(f"[WARNING] Skipping metrics calculation: df_trades empty or missing 'pnl'.")
+                log.info(f"[WARNING] Skipping metrics calculation: df_trades empty or missing 'pnl'.")
                 metrics_llm = {
                     'total_pnl': 0,
                     'profit_factor': 0,
@@ -900,7 +900,7 @@ class RegressionPredictorAgent:
         """
 
         if df_results is None or len(df_results) == 0:
-            print("[Strategy Picker] Warning: Empty results dataframe")
+            log.info("[Strategy Picker] Warning: Empty results dataframe")
             return df_results
             
         try:
@@ -983,13 +983,13 @@ class RegressionPredictorAgent:
             key_fields = ['long_threshold', 'short_threshold', 'bar_color_filter', 'min_volume_pct_change']
             combined_df.drop_duplicates(subset=key_fields,inplace=True)
             
-            print(f"[Strategy Picker] Selected {len(combined_df)} unique strategies from {len(all_top_strategies) * n_per_slice} candidates")
+            log.info(f"[Strategy Picker] Selected {len(combined_df)} unique strategies from {len(all_top_strategies) * n_per_slice} candidates")
             
             return combined_df
             
         except Exception as e:
-            print(f"[Strategy Picker] Error filtering strategies: {e}")
-            print(f"[Strategy Picker] Full error: {traceback.format_exc()}")
+            log.info(f"[Strategy Picker] Error filtering strategies: {e}")
+            log.info(f"[Strategy Picker] Full error: {traceback.format_exc()}")
             return df_results
 
     def _generate_threshold_grid(self, user_params):
@@ -1042,11 +1042,11 @@ class RegressionPredictorAgent:
         """
         import json
         from ..config import CONFIG
-        print('[LLM] llm_select_top_strategies_from_grid called')
-        print(f'[LLM] strategy_grid_df type: {type(strategy_grid_df)}, length: {len(strategy_grid_df) if hasattr(strategy_grid_df, "__len__") else "N/A"}')
+        log.info('[LLM] llm_select_top_strategies_from_grid called')
+        log.info(f'[LLM] strategy_grid_df type: {type(strategy_grid_df)}, length: {len(strategy_grid_df) if hasattr(strategy_grid_df, "__len__") else "N/A"}')
         # Defensive: handle None or unexpected types
         if strategy_grid_df is None:
-            print('[LLM] strategy_grid_df is None!')
+            log.info('[LLM] strategy_grid_df is None!')
             return {"error": "No strategy grid data provided to LLM selector."}
         # Accept DataFrame or list of dicts
         if hasattr(strategy_grid_df, 'to_dict'):
@@ -1057,7 +1057,7 @@ class RegressionPredictorAgent:
             try:
                 grid_list = list(strategy_grid_df)
             except Exception as e:
-                print(f'[LLM] strategy_grid_df could not be converted to list: {e}')
+                log.info(f'[LLM] strategy_grid_df could not be converted to list: {e}')
                 return {"error": f"Strategy grid data is not a DataFrame or list: {e}"}
         if len(grid_list) > 256:
             grid_list = grid_list[:256]
@@ -1073,12 +1073,12 @@ class RegressionPredictorAgent:
         llm_prompt = PROMPT_REGRESSION_AGENT.replace('{', '{{').replace('}', '}}').replace('{{grid_json}}', '{grid_json}').replace('{{bias_str}}', '{bias_str}')
         # Build prompt
         prompt = llm_prompt.format(grid_json=grid_json, bias_str=bias_str)
-        print(f'[LLM] Prompt length: {len(prompt)} chars')
+        log.info(f'[LLM] Prompt length: {len(prompt)} chars')
         # LLM config
         model_name = CONFIG.get("model_name", "gpt-4o")
         provider = CONFIG.get("model_provider", "openai")
         api_key = CONFIG.get("openai_api_key") if provider == "openai" else CONFIG.get("gemini_api_key")
-        print(f'[LLM] Provider: {provider}, Model: {model_name}')
+        log.info(f'[LLM] Provider: {provider}, Model: {model_name}')
         # Call LLM
         try:
             if provider == "google":
@@ -1097,9 +1097,9 @@ class RegressionPredictorAgent:
                 cost_gemini = total_tokens * 0.0025 / 1000  # flat $0.0025 / 1K
                 cost_usd = round(float(cost_gemini), 4)
                 self.last_llm_cost_usd = cost_usd
-                print(f"[LLM Cost] ${cost_usd} (provider: gemini)")
-                print(f"[LLM Tokens] {total_tokens} tokens (provider: gemini)")
-                print(f"[LLM Raw Response] {content[:500]}...")
+                log.info(f"[LLM Cost] ${cost_usd} (provider: gemini)")
+                log.info(f"[LLM Tokens] {total_tokens} tokens (provider: gemini)")
+                log.info(f"[LLM Raw Response] {content[:500]}...")
                 result_parsed = safe_parse_json(content)
                 if isinstance(result_parsed, dict):
                     result_parsed['llm_cost_usd'] = cost_usd
@@ -1122,19 +1122,19 @@ class RegressionPredictorAgent:
                 cost_openai = (usage.get('prompt_tokens', 0) * 0.005 + usage.get('completion_tokens', 0) * 0.015) / 1000  # $/1K tokens
                 cost_usd = round(float(cost_openai), 4)
                 self.last_llm_cost_usd = cost_usd
-                print(f"[LLM Cost] ${cost_usd} (provider: openai)")
-                print(f"[LLM Tokens] {total_tokens} tokens (provider: openai)")
-                print(f"[LLM Raw Response] {content[:500]}...")
+                log.info(f"[LLM Cost] ${cost_usd} (provider: openai)")
+                log.info(f"[LLM Tokens] {total_tokens} tokens (provider: openai)")
+                log.info(f"[LLM Raw Response] {content[:500]}...")
                 result_parsed = safe_parse_json(content)
                 if isinstance(result_parsed, dict):
                     result_parsed['llm_cost_usd'] = cost_usd
                     result_parsed['model_name'] = model_name
                     return result_parsed
                 else:
-                    print(f'[LLM] Unknown provider: {provider}')
+                    log.info(f'[LLM] Unknown provider: {provider}')
                 return {"error": f"Unknown LLM provider: {provider}"}
         except Exception as e:
-                print(f'[LLM] Exception: {e}')
+                log.info(f'[LLM] Exception: {e}')
                 return {"error": f"LLM call failed: {e}"}
 
 def _strip_json_markdown_fence(text):
@@ -1147,7 +1147,7 @@ def safe_parse_json(content):
         content_clean = re.sub(r"^```json\s*|```$", "", content.strip(), flags=re.IGNORECASE)
         return json.loads(content_clean)
     except Exception as e:
-        print(f"[WARN] Failed to parse JSON: {e}")
+        log.info(f"[WARN] Failed to parse JSON: {e}")
         return content  # fallback to raw string
 
 def parse_llm_response(raw):
@@ -1170,9 +1170,9 @@ def parse_llm_response(raw):
             if isinstance(data, dict) and 'top_strategies' in data and isinstance(data['top_strategies'], list):
                 result = data['top_strategies']
         except Exception as e:
-            print(f"[parse_llm_response] Failed to parse or extract top_strategies: {e}")
+            log.info(f"[parse_llm_response] Failed to parse or extract top_strategies: {e}")
     # If it's already a dict with 'top_strategies'
     elif isinstance(raw, dict) and 'top_strategies' in raw and isinstance(raw['top_strategies'], list):
         result = raw['top_strategies']
-    print(f"[parse_llm_response] Returning top_strategies: {result}")
+    log.info(f"[parse_llm_response] Returning top_strategies: {result}")
     return result

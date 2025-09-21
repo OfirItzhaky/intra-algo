@@ -1,4 +1,7 @@
 from backend.analyzer import analyzer_mcp_sl_tp_logic as logic
+from logging_setup import get_logger
+
+log = get_logger(__name__)
 
 ROUTER = {
     "sl_tp_fixed_dollar": logic.sl_tp_fixed_dollar,
@@ -19,9 +22,9 @@ ROUTER = {
 def dispatch(config):
     fn_name = config.get("sl_tp_function")
     if not fn_name:
-        print("[SLTP ROUTER] No function name provided in config.")
+        log.info("[SLTP ROUTER] No function name provided in config.")
         return None
     fn = ROUTER.get(fn_name)
     if not fn:
-        print(f"[SLTP ROUTER] Unknown SL/TP function: {fn_name}")
+        log.info(f"[SLTP ROUTER] Unknown SL/TP function: {fn_name}")
     return fn

@@ -1,6 +1,10 @@
 import requests
 import feedparser
 
+from logging_setup import get_logger
+
+log = get_logger(__name__)
+
 class NewsAggregator:
     def __init__(self, config):
         self.config = config
@@ -18,7 +22,7 @@ class NewsAggregator:
         """
         try:
             if not self.newsapi_key:
-                print("⚠️ NewsAPI key missing, skipping NewsAPI fetch.")
+                log.info("⚠️ NewsAPI key missing, skipping NewsAPI fetch.")
                 return
 
             url = f"https://newsapi.org/v2/top-headlines?category=business&language=en&pageSize=30&apiKey={self.newsapi_key}"
@@ -28,12 +32,12 @@ class NewsAggregator:
             if response.status_code == 200:
                 headlines = [article.get("title", "") for article in data.get("articles", [])]
                 self.headlines.extend(headlines)
-                print(f"✅ Pulled {len(headlines)} headlines from NewsAPI.")
+                log.info(f"✅ Pulled {len(headlines)} headlines from NewsAPI.")
             else:
-                print(f"⚠️ NewsAPI error: {data.get('message')}")
+                log.info(f"⚠️ NewsAPI error: {data.get('message')}")
 
         except Exception as e:
-            print(f"❌ Error fetching from NewsAPI: {e}")
+            log.info(f"❌ Error fetching from NewsAPI: {e}")
 
     def fetch_from_finnhub(self):
         """
@@ -41,7 +45,7 @@ class NewsAggregator:
         """
         try:
             if not self.finnhub_key:
-                print("⚠️ Finnhub key missing, skipping Finnhub fetch.")
+                log.info("⚠️ Finnhub key missing, skipping Finnhub fetch.")
                 return
 
             url = f"https://finnhub.io/api/v1/news?category=general&token={self.finnhub_key}"
@@ -51,12 +55,12 @@ class NewsAggregator:
             if response.status_code == 200:
                 headlines = [article.get("headline", "") for article in data]
                 self.headlines.extend(headlines)
-                print(f"✅ Pulled {len(headlines)} headlines from Finnhub.")
+                log.info(f"✅ Pulled {len(headlines)} headlines from Finnhub.")
             else:
-                print(f"⚠️ Finnhub error: {response.json().get('error')}")
+                log.info(f"⚠️ Finnhub error: {response.json().get('error')}")
 
         except Exception as e:
-            print(f"❌ Error fetching from Finnhub: {e}")
+            log.info(f"❌ Error fetching from Finnhub: {e}")
 
     def fetch_from_yahoo_finance_rss(self):
         """
@@ -68,26 +72,26 @@ class NewsAggregator:
 
             headlines = [entry.title for entry in feed.entries]
             self.headlines.extend(headlines)
-            print(f"✅ Pulled {len(headlines)} headlines from Yahoo Finance RSS.")
+            log.info(f"✅ Pulled {len(headlines)} headlines from Yahoo Finance RSS.")
 
         except Exception as e:
-            print(f"❌ Error fetching from Yahoo RSS: {e}")
+            log.info(f"❌ Error fetching from Yahoo RSS: {e}")
 
     def aggregate_news(self):
         """
         Fetch from all sources and merge headlines.
         """
-        print("📡 Aggregating news from multiple sources...")
+        log.info("📡 Aggregating news from multiple sources...")
 
         self.fetch_from_newsapi()
         self.fetch_from_finnhub()
         self.fetch_from_yahoo_finance_rss()
 
-        print(f"🧠 Total aggregated headlines: {len(self.headlines)}")
+        log.info(f"🧠 Total aggregated headlines: {len(self.headlines)}")
 
         # Remove duplicates
         merged_headlines = list(set(self.headlines))
-        print(f"🧹 After removing duplicates: {len(merged_headlines)} unique headlines.")
+        log.info(f"🧹 After removing duplicates: {len(merged_headlines)} unique headlines.")
 
         return merged_headlines
 
@@ -109,10 +113,10 @@ class NewsAggregator:
                 all_headlines.extend(feed_headlines)
     
             self.headlines.extend(all_headlines)
-            print(f"✅ Pulled {len(all_headlines)} headlines from Investing.com RSS.")
+            log.info(f"✅ Pulled {len(all_headlines)} headlines from Investing.com RSS.")
     
         except Exception as e:
-            print(f"❌ Error fetching from Investing.com RSS: {e}")
+            log.info(f"❌ Error fetching from Investing.com RSS: {e}")
     
     def fetch_company_profile(self, symbol: str) -> dict:
         """
@@ -141,11 +145,11 @@ class NewsAggregator:
                         "description": profile.get("description", "N/A")
                     }
                 else:
-                    print(f"⚠️ No profile data found for {symbol}")
+                    log.info(f"⚠️ No profile data found for {symbol}")
                     return {}
             else:
-                print(f"⚠️ Error fetching FMP profile for {symbol}: {response.status_code}")
+                log.info(f"⚠️ Error fetching FMP profile for {symbol}: {response.status_code}")
                 return {}
         except Exception as e:
-            print(f"⚠️ Exception during FMP profile fetch: {e}")
+            log.info(f"⚠️ Exception during FMP profile fetch: {e}")
         return {} 

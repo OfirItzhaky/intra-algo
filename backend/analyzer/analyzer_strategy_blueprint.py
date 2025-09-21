@@ -4,7 +4,9 @@ import pytz
 import datetime
 
 from research_agent.config import REGRESSION_STRATEGY_DEFAULTS
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 
 class ElasticNetStrategy(bt.Strategy):
     """
@@ -51,7 +53,7 @@ class ElasticNetStrategy(bt.Strategy):
 
         # Exit at session end
         if self.position and self.p.force_exit and current_time >= self.p.session_end:
-            print(f"[{dt}] ⏹️ Session end. Closing position.")
+            log.info(f"[{dt}] ⏹️ Session end. Closing position.")
             self.close()
             self.order = None
             return
@@ -66,7 +68,7 @@ class ElasticNetStrategy(bt.Strategy):
         predicted = self.data.predicted_high[0]
         delta = predicted - close
 
-        print(f"[{dt}] Close: {close:.2f}, Predicted: {predicted:.2f}, Delta: {delta:.2f}")
+        log.info(f"[{dt}] Close: {close:.2f}, Predicted: {predicted:.2f}, Delta: {delta:.2f}")
 
         if self.p.min_classifier_signals > 0:
             try:
@@ -75,7 +77,7 @@ class ElasticNetStrategy(bt.Strategy):
                 xg_val = self.data.XGBoost[0]
 
                 if any(map(pd.isna, [rf_val, lt_val, xg_val])):
-                    print(f"[{dt}] 🕳️ Skipping bar — classifier signal is NaN")
+                    log.info(f"[{dt}] 🕳️ Skipping bar — classifier signal is NaN")
                     return
 
                 rf = int(rf_val)
@@ -91,29 +93,29 @@ class ElasticNetStrategy(bt.Strategy):
                 raise ValueError("❌ min_classifier_signals cannot be greater than 3.")
 
             if green_count < self.p.min_classifier_signals:
-                print(f"[{dt}] 🚫 Not enough green signals ({green_count}) for entry.")
+                log.info(f"[{dt}] 🚫 Not enough green signals ({green_count}) for entry.")
                 return
 
         if self.p.use_multi_class:
-            print(f"[{dt}] 🔄 Using multi-class signals with threshold {self.p.multi_class_threshold}")
+            log.info(f"[{dt}] 🔄 Using multi-class signals with threshold {self.p.multi_class_threshold}")
             # Multi-class approach
             if hasattr(self.data, 'multi_class_label'):
                 multi_class_value = self.data.multi_class_label[0]
                 if pd.isna(multi_class_value):
-                    print(f"🕳️ Skipping bar — multi_class_label is NaN")
+                    log.info(f"🕳️ Skipping bar — multi_class_label is NaN")
                     return
                 
                 # Check if the class value meets or exceeds our threshold
                 if multi_class_value < self.p.multi_class_threshold:
-                    print(f"🚫 Multi-class signal ({multi_class_value}) below threshold ({self.p.multi_class_threshold})")
+                    log.info(f"🚫 Multi-class signal ({multi_class_value}) below threshold ({self.p.multi_class_threshold})")
                     return
                 else:
-                    print(f"✅ Multi-class signal ({multi_class_value}) meets threshold")
+                    log.info(f"✅ Multi-class signal ({multi_class_value}) meets threshold")
             else:
-                print(f"❌ multi_class_label not available")
+                log.info(f"❌ multi_class_label not available")
                 return
         else:
-            print(f"[{dt}] 🔄 Using binary classification signals")
+            log.info(f"[{dt}] 🔄 Using binary classification signals")
             # Original binary approach
             signal_count = sum(
                 int(getattr(self.data, clf, [0])[0] == 1)
@@ -129,7 +131,7 @@ class ElasticNetStrategy(bt.Strategy):
             stop_price = entry_price - (self.p.stop_ticks * tick_size)
             target_price = entry_price + (self.p.target_ticks * tick_size)
 
-            print(f"💥 Entry signal | Entry: {entry_price:.2f}, TP: {target_price:.2f}, SL: {stop_price:.2f}")
+            log.info(f"💥 Entry signal | Entry: {entry_price:.2f}, TP: {target_price:.2f}, SL: {stop_price:.2f}")
 
             self.order = self.buy_bracket(
                 price=entry_price,
@@ -147,11 +149,11 @@ class ElasticNetStrategy(bt.Strategy):
         Tracks entry and exit execution, and records PnL for closed trades.
         """
         if order.status in [order.Submitted, order.Accepted]:
-            print(f"[ORDER DEBUG] Order submitted/accepted: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}")
+            log.info(f"[ORDER DEBUG] Order submitted/accepted: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}")
             return
 
         if order.status in [order.Completed]:
-            print(f"[ORDER DEBUG] Order completed: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}, executed price={order.executed.price}")
+            log.info(f"[ORDER DEBUG] Order completed: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}, executed price={order.executed.price}")
             if order.isbuy():
                 self.log(f"✅ BUY EXECUTED @ {order.executed.price:.2f}")
                 self.entry_price = order.executed.price
@@ -181,7 +183,7 @@ class ElasticNetStrategy(bt.Strategy):
         Logs a message with current bar timestamp.
         """
         dt = self.datas[0].datetime.datetime(0)
-        print(f"[{dt}] {txt}")
+        log.info(f"[{dt}] {txt}")
 
 class Long5min1minStrategy(bt.Strategy):
     params = dict(
@@ -219,9 +221,9 @@ class Long5min1minStrategy(bt.Strategy):
         if self.current_trade_date != dt.date():
             self.current_trade_date = dt.date()
             self.daily_pnl = 0
-            # print(f"📅 New trading day: {dt.date()}, Daily PnL reset to 0")
+            # log.info(f"📅 New trading day: {dt.date()}, Daily PnL reset to 0")
 
-        print(f"🕒 Current dt: {dt}, Previous bar time: {self.last_bar_time}")
+        log.info(f"🕒 Current dt: {dt}, Previous bar time: {self.last_bar_time}")
 
         if self.last_bar_time == dt:
             return
@@ -238,7 +240,7 @@ class Long5min1minStrategy(bt.Strategy):
 
         if self.position and self.position.size > 0 and self.last_entry_price is None:
             self.last_entry_price = self.position.price
-            # print(f"📥 Position opened at {self.last_entry_price:.2f}")
+            # log.info(f"📥 Position opened at {self.last_entry_price:.2f}")
             return
         if self.position or self.order:
             return
@@ -247,14 +249,14 @@ class Long5min1minStrategy(bt.Strategy):
             return
 
         if self.daily_pnl >= self.p.max_daily_profit:
-            # print(f"💰 Max daily profit reached (${self.daily_pnl:.2f}). No new trades.")
+            # log.info(f"💰 Max daily profit reached (${self.daily_pnl:.2f}). No new trades.")
             return
         if self.daily_pnl <= self.p.max_daily_loss:
-            # print(f"⚠️ Max daily loss reached (${self.daily_pnl:.2f}). No new trades.")
+            # log.info(f"⚠️ Max daily loss reached (${self.daily_pnl:.2f}). No new trades.")
             return
 
         pred = self.data.predicted_high[0]
-        print(f"🔍 At {self.datas[0].datetime.datetime(0)}, Predicted High = {pred}")
+        log.info(f"🔍 At {self.datas[0].datetime.datetime(0)}, Predicted High = {pred}")
         close = self.data.close[0]
         if pred is None or pd.isna(pred):
             return
@@ -268,17 +270,17 @@ class Long5min1minStrategy(bt.Strategy):
                     if hasattr(self.data, 'multi_class_label'):
                         multi_class_value = self.data.multi_class_label[0]
                         if pd.isna(multi_class_value):
-                            # print(f"🕳️ Skipping bar — multi_class_label is NaN")
+                            # log.info(f"🕳️ Skipping bar — multi_class_label is NaN")
                             return
                         
                         if multi_class_value < self.p.multi_class_threshold:
-                            # print(f"🚫 Multi-class signal ({multi_class_value}) below threshold ({self.p.multi_class_threshold})")
+                            # log.info(f"🚫 Multi-class signal ({multi_class_value}) below threshold ({self.p.multi_class_threshold})")
                             return
                         else:
-                            # print(f"✅ Multi-class signal ({multi_class_value}) meets threshold")
+                            # log.info(f"✅ Multi-class signal ({multi_class_value}) meets threshold")
                             pass
                     else:
-                        # print(f"❌ multi_class_label not available")
+                        # log.info(f"❌ multi_class_label not available")
                         return
                 else:
                     signal_count = sum(
@@ -289,7 +291,7 @@ class Long5min1minStrategy(bt.Strategy):
                     if signal_count < self.p.min_classifier_signals:
                         return
 
-            print(f"🟡 SIGNAL MATCH at {dt} → delta: {delta:.2f}, close: {close:.2f}, predicted: {pred:.2f}")
+            log.info(f"🟡 SIGNAL MATCH at {dt} → delta: {delta:.2f}, close: {close:.2f}, predicted: {pred:.2f}")
             tp = close + self.p.target_ticks * self.p.tick_size
             sl = close - self.p.stop_ticks * self.p.tick_size
 
@@ -310,7 +312,7 @@ class Long5min1minStrategy(bt.Strategy):
                 'filled_price': o.executed.price if o.status == bt.Order.Completed else None,
                 'executed_dt': bt.num2date(o.executed.dt) if o.status == bt.Order.Completed else None
             } for o in orders])
-            print("test")
+            log.info("test")
 
     def notify_trade(self, trade):
         if trade.isclosed:
@@ -320,12 +322,12 @@ class Long5min1minStrategy(bt.Strategy):
             exit_price = self.last_exit_price if self.last_exit_price is not None else trade.price
             side = self.entry_side
             # Debug: show raw trade entry/exit and stored entry
-            print(f"[DEBUG] Raw trade exit price from trade object: {getattr(trade, 'price', 'N/A')}, Stored last_entry_price: {entry_price}, Stored last_exit_price: {self.last_exit_price}")
-            print(f"[DEBUG] Calculated tick delta: {(exit_price - entry_price) / self.p.tick_size if entry_price is not None else 'N/A'}")
+            log.info(f"[DEBUG] Raw trade exit price from trade object: {getattr(trade, 'price', 'N/A')}, Stored last_entry_price: {entry_price}, Stored last_exit_price: {self.last_exit_price}")
+            log.info(f"[DEBUG] Calculated tick delta: {(exit_price - entry_price) / self.p.tick_size if entry_price is not None else 'N/A'}")
             # Manual PnL calculation
             direction_multiplier = 1 if side == 'long' else -1 if side == 'short' else 0
             pnl_dollars = (exit_price - entry_price) * direction_multiplier * self.p.tick_value / self.p.tick_size
-            print(f"[DEBUG] Manual PnL: {pnl_dollars:.2f}")
+            log.info(f"[DEBUG] Manual PnL: {pnl_dollars:.2f}")
             # Compute TP/SL for this trade
             tp_offset_ticks = 10
             sl_offset_ticks = 10
@@ -342,12 +344,12 @@ class Long5min1minStrategy(bt.Strategy):
             if hasattr(trade, 'dtopen') and hasattr(trade, 'dtclose'):
                 trade_duration = trade.dtclose - trade.dtopen
             # Print trade summary
-            print(f"\n🔻 TRADE COMPLETED")
-            print(f"Entry: {entry_price:.2f}  14 Exit: {exit_price:.2f} | Side: {side} | PnL: {pnl_dollars:.2f}")
-            print(f"TP Level: {tp_level:.2f} | SL Level: {sl_level:.2f}")
-            print(f"Trade Duration: {trade_duration if trade_duration is not None else 'N/A'} bars")
-            print(f"Entry Time: {entry_time}, Exit Time: {exit_time}")
-            print(f"---")
+            log.info(f"\n🔻 TRADE COMPLETED")
+            log.info(f"Entry: {entry_price:.2f}  14 Exit: {exit_price:.2f} | Side: {side} | PnL: {pnl_dollars:.2f}")
+            log.info(f"TP Level: {tp_level:.2f} | SL Level: {sl_level:.2f}")
+            log.info(f"Trade Duration: {trade_duration if trade_duration is not None else 'N/A'} bars")
+            log.info(f"Entry Time: {entry_time}, Exit Time: {exit_time}")
+            log.info(f"---")
             self.trades.append({
                 "entry_time": entry_time,
                 "exit_time": exit_time,
@@ -362,10 +364,10 @@ class Long5min1minStrategy(bt.Strategy):
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
-            print(f"[ORDER DEBUG] Order submitted/accepted: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}")
+            log.info(f"[ORDER DEBUG] Order submitted/accepted: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}")
             return
         if order.status in [order.Completed]:
-            print(f"[ORDER DEBUG] Order completed: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}, executed price={order.executed.price}")
+            log.info(f"[ORDER DEBUG] Order completed: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}, executed price={order.executed.price}")
             # If this is a closing order (not the entry order), update last_exit_price
             if order.isbuy() or order.issell():
                 # Heuristic: if we already have an entry price and side, and this is not the entry order, treat as exit
@@ -373,12 +375,12 @@ class Long5min1minStrategy(bt.Strategy):
                     self.last_exit_price = order.executed.price
             self.order = None
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            print(f"[ORDER DEBUG] Order failed: ref={order.ref}, status={order.getstatusname()}")
+            log.info(f"[ORDER DEBUG] Order failed: ref={order.ref}, status={order.getstatusname()}")
             self.order = None
 
     def log(self, txt: str) -> None:
         dt = self.datas[0].datetime.datetime(0)
-        print(f"[{dt}] {txt}")
+        log.info(f"[{dt}] {txt}")
 
 
 import backtrader as bt
@@ -459,7 +461,7 @@ class RegressionScalpingStrategy(bt.Strategy):
         if self.current_trade_date != dt5.date():
             self.current_trade_date = dt5.date()
             self.daily_pnl = 0
-            # print(f"📅 New trading day: {dt5.date()}, Daily PnL reset to 0")
+            # log.info(f"📅 New trading day: {dt5.date()}, Daily PnL reset to 0")
 
         # Session time checks
         current_time = dt5.time()
@@ -492,7 +494,7 @@ class RegressionScalpingStrategy(bt.Strategy):
             pred_high = self.datas[0].predicted_high[0]
             pred_low = self.datas[0].predicted_low[0]
         except AttributeError:
-            print("[ERROR] Data feed is missing 'predicted_high' or 'predicted_low' columns. Ensure your PandasData feed includes these as custom lines.")
+            log.info("[ERROR] Data feed is missing 'predicted_high' or 'predicted_low' columns. Ensure your PandasData feed includes these as custom lines.")
             return
         close5 = self.datas[0].close[0]
         long_signal = (pred_high - close5) > self.p.long_threshold
@@ -540,14 +542,14 @@ class RegressionScalpingStrategy(bt.Strategy):
 
         # Only print entry debug when a trade is about to be placed
         # try:
-        #     print(f"\n🟢 ENTRY SIGNAL @ {self.datas[0].datetime.datetime(0)} | Side: {'LONG' if long_signal else 'SHORT'}")
-        #     print(f"Close: {close5}, PredHigh: {pred_high}, PredLow: {pred_low}")
+        #     log.info(f"\n🟢 ENTRY SIGNAL @ {self.datas[0].datetime.datetime(0)} | Side: {'LONG' if long_signal else 'SHORT'}")
+        #     log.info(f"Close: {close5}, PredHigh: {pred_high}, PredLow: {pred_low}")
         #     if self.p.bar_color_filter:
-        #         print(f"Candle Color: {'Green' if close > open_ else 'Red' if close < open_ else 'Doji'}")
-        #     print(f"Entry: {entry_price:.2f}, TP: {tp:.2f}, SL: {sl:.2f}")
-        #     print(f"---")
+        #         log.info(f"Candle Color: {'Green' if close > open_ else 'Red' if close < open_ else 'Doji'}")
+        #     log.info(f"Entry: {entry_price:.2f}, TP: {tp:.2f}, SL: {sl:.2f}")
+        #     log.info(f"---")
         # except Exception as e:
-        #     print(f"[DEBUG] Could not print entry signal values: {e}")
+        #     log.info(f"[DEBUG] Could not print entry signal values: {e}")
 
         # Clear any stale state before placing a new order
         self.entry_side = None
@@ -585,12 +587,12 @@ class RegressionScalpingStrategy(bt.Strategy):
             exit_price = self.last_exit_price if self.last_exit_price is not None else trade.price
             side = self.entry_side
             # Debug: show raw trade entry/exit and stored entry
-            # print(f"[DEBUG] Raw trade exit price from trade object: {getattr(trade, 'price', 'N/A')}, Stored last_entry_price: {entry_price}, Stored last_exit_price: {self.last_exit_price}")
-            # print(f"[DEBUG] Calculated tick delta: {(exit_price - entry_price) / self.p.tick_size if entry_price is not None else 'N/A'}")
+            # log.info(f"[DEBUG] Raw trade exit price from trade object: {getattr(trade, 'price', 'N/A')}, Stored last_entry_price: {entry_price}, Stored last_exit_price: {self.last_exit_price}")
+            # log.info(f"[DEBUG] Calculated tick delta: {(exit_price - entry_price) / self.p.tick_size if entry_price is not None else 'N/A'}")
             # Manual PnL calculation
             direction_multiplier = 1 if side == 'long' else -1 if side == 'short' else 0
             pnl_dollars = (exit_price - entry_price) * direction_multiplier * self.p.tick_value / self.p.tick_size
-            # print(f"[DEBUG] Manual PnL: {pnl_dollars:.2f}")
+            # log.info(f"[DEBUG] Manual PnL: {pnl_dollars:.2f}")
             # Compute TP/SL for this trade
             tp_offset_ticks = 10
             sl_offset_ticks = 10
@@ -607,12 +609,12 @@ class RegressionScalpingStrategy(bt.Strategy):
             if hasattr(trade, 'dtopen') and hasattr(trade, 'dtclose'):
                 trade_duration = trade.dtclose - trade.dtopen
             # Print trade summary
-            # print(f"\n🔻 TRADE COMPLETED")
-            # print(f"Entry: {entry_price:.2f}  14 Exit: {exit_price:.2f} | Side: {side} | PnL: {pnl_dollars:.2f}")
-            # print(f"TP Level: {tp_level:.2f} | SL Level: {sl_level:.2f}")
-            # print(f"Trade Duration: {trade_duration if trade_duration is not None else 'N/A'} bars")
-            # print(f"Entry Time: {entry_time}, Exit Time: {exit_time}")
-            # print(f"---")
+            # log.info(f"\n🔻 TRADE COMPLETED")
+            # log.info(f"Entry: {entry_price:.2f}  14 Exit: {exit_price:.2f} | Side: {side} | PnL: {pnl_dollars:.2f}")
+            # log.info(f"TP Level: {tp_level:.2f} | SL Level: {sl_level:.2f}")
+            # log.info(f"Trade Duration: {trade_duration if trade_duration is not None else 'N/A'} bars")
+            # log.info(f"Entry Time: {entry_time}, Exit Time: {exit_time}")
+            # log.info(f"---")
             self.trades.append({
                 "entry_time": entry_time,
                 "exit_time": exit_time,
@@ -627,10 +629,10 @@ class RegressionScalpingStrategy(bt.Strategy):
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
-            # print(f"[ORDER DEBUG] Order submitted/accepted: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}")
+            # log.info(f"[ORDER DEBUG] Order submitted/accepted: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}")
             return
         if order.status in [order.Completed]:
-            # print(f"[ORDER DEBUG] Order completed: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}, executed price={order.executed.price}")
+            # log.info(f"[ORDER DEBUG] Order completed: ref={order.ref}, status={order.getstatusname()}, type={'BUY' if order.isbuy() else 'SELL'}, executed price={order.executed.price}")
             # If this is a closing order (not the entry order), update last_exit_price
             if order.isbuy() or order.issell():
                 # Heuristic: if we already have an entry price and side, and this is not the entry order, treat as exit
@@ -638,12 +640,12 @@ class RegressionScalpingStrategy(bt.Strategy):
                     self.last_exit_price = order.executed.price
             self.order = None
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            # print(f"[ORDER DEBUG] Order failed: ref={order.ref}, status={order.getstatusname()}")
+            # log.info(f"[ORDER DEBUG] Order failed: ref={order.ref}, status={order.getstatusname()}")
             self.order = None
 
     def log(self, txt: str) -> None:
         dt = self.datas[0].datetime.datetime(0)
-        print(f"[{dt}] {txt}")
+        log.info(f"[{dt}] {txt}")
 
 
 

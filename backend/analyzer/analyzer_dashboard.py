@@ -3,7 +3,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import backtrader as bt
 import plotly.io as pio
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 
 class AnalyzerDashboard:
     """
@@ -46,7 +48,7 @@ class AnalyzerDashboard:
 
         valid_trades =trade_df[trade_df["entry_time"].isin(self.df_strategy.index)].copy()
 
-        print(f"✅ Valid trades for plotting: {len(valid_trades)} / {len(trade_df)}")
+        log.info(f"✅ Valid trades for plotting: {len(valid_trades)} / {len(trade_df)}")
         return valid_trades
 
     def plot_trades_and_predictions(self, trade_df: pd.DataFrame) -> None:
@@ -192,7 +194,7 @@ class AnalyzerDashboard:
                     showlegend=True
                 ))
 
-        print(f"🧮 Trades visible in Plotly chart: {visible_trades} / {len(trade_df)}")
+        log.info(f"🧮 Trades visible in Plotly chart: {visible_trades} / {len(trade_df)}")
 
         # Step 7: Layout styling
         fig.update_layout(
@@ -305,8 +307,8 @@ class AnalyzerDashboard:
         bucket_df.columns = ["duration_bucket", "count"]
 
         # Print summary
-        print("📊 Trade Duration Distribution (minutes):")
-        print(bucket_df.set_index("duration_bucket")["count"])
+        log.info("📊 Trade Duration Distribution (minutes):")
+        log.info(bucket_df.set_index("duration_bucket")["count"])
 
         # Plot
         import plotly.express as px
@@ -731,7 +733,7 @@ class AnalyzerDashboard:
             ))
             visible_trades += 1
 
-        print(f"🧮 Trades plotted on chart: {visible_trades} / {len(trade_df)}")
+        log.info(f"🧮 Trades plotted on chart: {visible_trades} / {len(trade_df)}")
         y_min = min(df_1min["Low"].min(), trade_df["entry_price"].min(), trade_df["exit_price"].min())
         y_max = max(df_1min["High"].max(), trade_df["entry_price"].max(), trade_df["exit_price"].max())
 
@@ -782,9 +784,9 @@ class AnalyzerDashboard:
         Returns:
             pd.DataFrame: Clean trade log with entry/exit times, prices, PnL, duration.
         """
-        print(f"🔧 Received {len(order_list)} orders for processing.")
+        log.info(f"🔧 Received {len(order_list)} orders for processing.")
         if len(order_list) == 0:
-            print("⚠️ No orders found — skipping trade DataFrame creation.")
+            log.info("⚠️ No orders found — skipping trade DataFrame creation.")
 
         orders_df = pd.DataFrame([{
             'ref': o.ref,
@@ -799,8 +801,8 @@ class AnalyzerDashboard:
         # Filter only completed and sort
         orders_df = orders_df[orders_df['status'] == 'Completed'].copy()
         orders_df.sort_values(by='executed_dt', inplace=True)
-        print("[DEBUG] Orders DataFrame after filtering:")
-        print(orders_df[['ref', 'type', 'filled_price', 'executed_dt']])
+        log.info("[DEBUG] Orders DataFrame after filtering:")
+        log.info(orders_df[['ref', 'type', 'filled_price', 'executed_dt']])
 
         trades = []
         open_long = None
@@ -814,7 +816,7 @@ class AnalyzerDashboard:
                     entry_price = open_short['filled_price']
                     exit_price = row['filled_price']
                     pnl = (entry_price - exit_price) * tick_value * contract_size
-                    print(f"[DEBUG] SHORT trade: entry={entry_price}, exit={exit_price}, pnl={pnl}")
+                    log.info(f"[DEBUG] SHORT trade: entry={entry_price}, exit={exit_price}, pnl={pnl}")
                     trades.append({
                         'entry_time': entry_time,
                         'exit_time': exit_time,
@@ -834,7 +836,7 @@ class AnalyzerDashboard:
                     entry_price = open_long['filled_price']
                     exit_price = row['filled_price']
                     pnl = (exit_price - entry_price) * tick_value * contract_size
-                    print(f"[DEBUG] LONG trade: entry={entry_price}, exit={exit_price}, pnl={pnl}")
+                    log.info(f"[DEBUG] LONG trade: entry={entry_price}, exit={exit_price}, pnl={pnl}")
                     trades.append({
                         'entry_time': entry_time,
                         'exit_time': exit_time,
@@ -846,7 +848,7 @@ class AnalyzerDashboard:
                     open_long = None
                 else:
                     open_short = row
-        print(f"[DEBUG] Total trades built: {len(trades)}")
+        log.info(f"[DEBUG] Total trades built: {len(trades)}")
         return pd.DataFrame(trades)
 
     def plot_trades_and_predictions_regression_agent(self, trade_df: pd.DataFrame, max_trades: int = 50, save_path: str = None) -> None:
@@ -990,7 +992,7 @@ class AnalyzerDashboard:
                     showlegend=False
                 ))
 
-        print(f"🧮 Trades visible in Plotly chart: {visible_trades} / {len(trade_df)}")
+        log.info(f"🧮 Trades visible in Plotly chart: {visible_trades} / {len(trade_df)}")
         # Step 4: Layout styling
         fig.update_layout(
             title="📈 Trades + Predictions (Regression Agent)",
@@ -1009,17 +1011,17 @@ class AnalyzerDashboard:
         # fig.write_html(save_path)
 
         # Debug: print columns before plotting
-        print('[DEBUG] plot_df columns before plotting:', list(plot_df.columns))
+        log.info('[DEBUG] plot_df columns before plotting:', list(plot_df.columns))
         if 'predicted_high' not in plot_df.columns:
-            print('[WARNING] plot_df is missing predicted_high column!')
+            log.info('[WARNING] plot_df is missing predicted_high column!')
         if 'predicted_low' not in plot_df.columns:
-            print('[WARNING] plot_df is missing predicted_low column!')
+            log.info('[WARNING] plot_df is missing predicted_low column!')
         else:
-            print('[DEBUG] plot_df["predicted_low"] head:', plot_df['predicted_low'].head())
+            log.info('[DEBUG] plot_df["predicted_low"] head:', plot_df['predicted_low'].head())
         if 'actual_Low' not in plot_df.columns:
-            print('[WARNING] plot_df is missing actual_Low column!')
+            log.info('[WARNING] plot_df is missing actual_Low column!')
         else:
-            print('[DEBUG] plot_df["actual_Low"] head:', plot_df['actual_Low'].head())
+            log.info('[DEBUG] plot_df["actual_Low"] head:', plot_df['actual_Low'].head())
 
     def parse_optimization_reports_from_tradestation_to_df(self, file_paths):
         """

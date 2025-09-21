@@ -15,6 +15,10 @@ from backend.label_generator import LabelGenerator
 from backend.feature_generator import FeatureGenerator
 from backend.regression_model_trainer import RegressionModelTrainer
 
+from logging_setup import get_logger
+
+log = get_logger(__name__)
+
 TRAIN_MODEL_FROM_SCRATCH = 1  # Set to 1 to train model from scratch; set to 0 to use pre-trained flow
 GROUP1_FEATURES = ['FastAvg', 'Close_vs_EMA_10', 'High_15Min', 'MACD', 'High_vs_EMA_5_High', 'ATR']
 
@@ -52,7 +56,7 @@ def run_analyzer_with_pretrained():
 
 def run_analyzer_with_training():
     """Train new models and prepare them for analysis."""
-    print(f"\nStarting training phase using {TRAINING_DATA_PATH}")
+    log.info(f"\nStarting training phase using {TRAINING_DATA_PATH}")
     
     # Initialize classes
     data_loader = DataLoader()
@@ -153,20 +157,20 @@ def run_analyzer_with_training():
         
         joblib.dump(regression_trainer.model, regression_path)
         joblib.dump(classifier_trainer.model, classifier_path)
-        print(f"Saved models:\n- {regression_path}\n- {classifier_path}")
+        log.info(f"Saved models:\n- {regression_path}\n- {classifier_path}")
     
     # Create classifier predictions dataframe
     df_classifier_preds = classifier_trainer.classifier_predictions_df
     
     # Handle multi-class vs binary classification
     if USE_MULTI_CLASS:
-        print(f"🔀 Using multi-class labels with threshold {MULTI_CLASS_THRESHOLD}")
+        log.info(f"🔀 Using multi-class labels with threshold {MULTI_CLASS_THRESHOLD}")
         if hasattr(classifier_trainer, 'multi_class_label') and classifier_trainer.multi_class_label is not None:
             df_classifier_preds['multi_class_label'] = classifier_trainer.multi_class_label
         else:
-            print("⚠️ Warning: Multi-class labels not found in classifier trainer.")
+            log.info("⚠️ Warning: Multi-class labels not found in classifier trainer.")
     else:
-        print("🔢 Using binary classification.")
+        log.info("🔢 Using binary classification.")
     
     # Create regression predictions dataframe
     df_regression_preds = regression_trainer.x_test_with_meta[["Date", "Time", "Open", "High", "Low", "Close"]].copy()
@@ -301,7 +305,7 @@ if __name__ == "__main__":
         df_strategy=df_regression_preds,
         df_classifiers=df_classifier_preds
     )
-    print(f"📦 Total broker orders: {len(cerebro.broker.orders)}")
+    log.info(f"📦 Total broker orders: {len(cerebro.broker.orders)}")
 
     df_trades_intrabar = dashboard_intrabar.build_trade_dataframe_from_orders(list(cerebro.broker.orders))
 
@@ -309,7 +313,7 @@ if __name__ == "__main__":
 
     final_value_intrabar = final_value = cerebro.broker.getvalue()
 
-    print(f"📦 Final Portfolio Value (Intrabar): {final_value_intrabar:.2f}")
+    log.info(f"📦 Final Portfolio Value (Intrabar): {final_value_intrabar:.2f}")
 
     dashboard_intrabar.plot_equity_curve_with_drawdown(df_trades_intrabar)
 
@@ -358,4 +362,4 @@ if __name__ == "__main__":
     }
     dashboard_intrabar.display_strategy_and_metrics_side_by_side(df_metrics, strategy_params)
 
-    print("Done")
+    log.info("Done")

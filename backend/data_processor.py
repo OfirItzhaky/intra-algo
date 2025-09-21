@@ -4,7 +4,9 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 import matplotlib.dates as mdates
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 
 class DataProcessor:
     """
@@ -28,7 +30,7 @@ class DataProcessor:
         # Remove columns that are in the list and exist in the DataFrame
         df_cleaned = df.drop(columns=[col for col in redundant_columns if col in df], errors='ignore')
 
-        print(f"Removed {len(redundant_columns)} redundant columns.")
+        log.info(f"Removed {len(redundant_columns)} redundant columns.")
         return df_cleaned
 
     # Other methods like validate_data, etc.
@@ -40,7 +42,7 @@ class DataProcessor:
         @return: The cleaned DataFrame without missing values.
         """
         data_cleaned = data.dropna()
-        print(f"Removed {data.shape[0] - data_cleaned.shape[0]} rows with missing values.")
+        log.info(f"Removed {data.shape[0] - data_cleaned.shape[0]} rows with missing values.")
         return data_cleaned
 
     def scale_data(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -51,7 +53,7 @@ class DataProcessor:
         scaler = StandardScaler()
         numeric_columns = data.select_dtypes(include=['float64', 'int64']).columns
         data[numeric_columns] = scaler.fit_transform(data[numeric_columns])
-        print(f"Scaled {len(numeric_columns)} numerical columns.")
+        log.info(f"Scaled {len(numeric_columns)} numerical columns.")
         return data
 
     def remove_correlated_features(self, data: pd.DataFrame, threshold: float = 0.9) -> pd.DataFrame:
@@ -66,7 +68,7 @@ class DataProcessor:
         )
         to_drop = [column for column in upper_triangle.columns if any(upper_triangle[column] > threshold)]
         data_cleaned = data.drop(columns=to_drop)
-        print(f"Removed {len(to_drop)} highly correlated features.")
+        log.info(f"Removed {len(to_drop)} highly correlated features.")
         return data_cleaned
 
 
@@ -83,14 +85,14 @@ class DataProcessor:
         zero_rows = (data == 0).all(axis=1).sum()
 
         # Display the results
-        print(f"Start Date: {start_date}")
-        print(f"End Date: {end_date}")
-        print(f"Total Bars: {bar_count}")
-        print(f"Rows with any Null values: {null_count}")
-        print(f"Rows where all values are Zero: {zero_rows}")
+        log.info(f"Start Date: {start_date}")
+        log.info(f"End Date: {end_date}")
+        log.info(f"Total Bars: {bar_count}")
+        log.info(f"Rows with any Null values: {null_count}")
+        log.info(f"Rows where all values are Zero: {zero_rows}")
 
         # Explanation for why there are more bars than requested
-        print("The number of bars retrieved may be more than the specified count due to the data "
+        log.info("The number of bars retrieved may be more than the specified count due to the data "
               "aggregation behavior of the Yahoo Finance API, especially around the beginning or end of trading sessions.")
 
     # Add another method to the DataProcessor class
@@ -100,7 +102,7 @@ class DataProcessor:
         """
         data['MovementSize'] = (data['High'] - data['Low']) * ticks_per_point
         avg_movement = data['MovementSize'].mean()
-        print(f"Average Movement Size: {avg_movement:.2f} ticks")
+        log.info(f"Average Movement Size: {avg_movement:.2f} ticks")
 
         if plot:
             import matplotlib.pyplot as plt
@@ -133,8 +135,8 @@ class DataProcessor:
         plt.show()
 
         # Also, print the distribution statistics
-        print(f"Label Distribution:\n{label_distribution}\n")
-        print(f"\nPercentage Distribution:\n{(label_distribution / len(data) * 100).round(2)}")
+        log.info(f"Label Distribution:\n{label_distribution}\n")
+        log.info(f"\nPercentage Distribution:\n{(label_distribution / len(data) * 100).round(2)}")
 
 
 
@@ -169,7 +171,7 @@ class DataProcessor:
         unique_day_of_week_count = unique_dates.apply(lambda x: pd.to_datetime(x).day_name()).value_counts()
 
         # Display the results
-        print(unique_day_of_week_count)
+        log.info(unique_day_of_week_count)
 
         # Step 1: Loop over the columns (days of the week) in the corrected_label_avg_per_window
         for day, count in unique_day_of_week_count.items():
@@ -239,7 +241,7 @@ class DataProcessor:
             # Check if there are any non-numeric columns that were excluded
             non_numeric_columns = data.select_dtypes(exclude=[np.number]).columns
             if len(non_numeric_columns) > 0:
-                print(f"Excluded non-numeric columns: {non_numeric_columns}")
+                log.info(f"Excluded non-numeric columns: {non_numeric_columns}")
 
             # Calculate correlation matrix
             corr_matrix = numeric_data.corr()
@@ -250,7 +252,7 @@ class DataProcessor:
             plt.title('Feature Correlation Matrix')
             plt.show()
         except Exception as e:
-            print(f"An error occurred: {e}")
+            log.info(f"An error occurred: {e}")
 
     def remove_highly_correlated(self, data, threshold=1.0):
         """Remove features that have a correlation coefficient of the specified threshold or higher."""
@@ -259,12 +261,12 @@ class DataProcessor:
         # Check if there are any non-numeric columns that were excluded
         non_numeric_columns = data.select_dtypes(exclude=[np.number]).columns
         if len(non_numeric_columns) > 0:
-            print(f"Excluded non-numeric columns: {non_numeric_columns}")
+            log.info(f"Excluded non-numeric columns: {non_numeric_columns}")
         corr_matrix = numeric_data.corr()
         upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
         to_drop = [column for column in upper.columns if any(upper[column] >= threshold)]
         reduced_data = data.drop(to_drop, axis=1)
-        print(f"Removed columns: {to_drop}")
+        log.info(f"Removed columns: {to_drop}")
         return reduced_data
 
     def prepare_dataset_for_regression_sequential(self, data: pd.DataFrame, target_column: str = 'Next_High',
@@ -301,12 +303,12 @@ class DataProcessor:
         X_test, y_test = extract_features_and_target(test_data, target_column, drop_target)
 
         # ✅ Step 5: Debugging sample check
-        print("\n✅ Sample Data Alignment Check:")
+        log.info("\n✅ Sample Data Alignment Check:")
         comparison_df = pd.DataFrame({
             "Sample Target (y_test)": y_test.head(5).tolist(),
             "Corresponding Feature Row": X_test.head(5).index.tolist()
         })
-        print(comparison_df)
+        log.info(comparison_df)
 
         return X_train, y_train, X_test, y_test
 
@@ -321,7 +323,7 @@ class DataProcessor:
         df_to_visualize = aligned_data.tail(n)
 
         if df_to_visualize.empty:
-            print("Warning: The DataFrame for visualization is empty. Check your data alignment or filtering criteria.")
+            log.info("Warning: The DataFrame for visualization is empty. Check your data alignment or filtering criteria.")
             return None
 
         # ✅ Convert timestamp for plotting
@@ -402,11 +404,11 @@ class DataProcessor:
             fig: Matplotlib figure containing the combined visualization.
         """
 
-        print("📊 Debugging visualize_classifiers_pycharm...")
+        log.info("📊 Debugging visualize_classifiers_pycharm...")
 
         # ✅ Extract stored regression figure
         if trainer.regression_figure is None:
-            print("⚠️ No stored regression figure! Showing classifier plot only.")
+            log.info("⚠️ No stored regression figure! Showing classifier plot only.")
             return None
 
         # ✅ Get regression data for the last `n` bars
@@ -416,7 +418,7 @@ class DataProcessor:
         df_to_visualize = df_to_visualize.tail(n)  # ✅ Only last `n` bars
 
         if df_to_visualize.empty:
-            print("❌ Regression data for visualization is empty!")
+            log.info("❌ Regression data for visualization is empty!")
             return None
 
         # ✅ Convert 'Date' and 'Time' columns into a proper DatetimeIndex if available
@@ -429,11 +431,11 @@ class DataProcessor:
         classifier_df = classifier_df.reindex(df_to_visualize.index).tail(n)  # Align and limit
 
         if classifier_df.empty:
-            print("❌ No classifier predictions found!")
+            log.info("❌ No classifier predictions found!")
             return None
 
-        print("✅ Checking df_to_visualize shape:", df_to_visualize.shape)
-        print("✅ Checking classifier_df shape before reindexing:", classifier_df.shape)
+        log.info("✅ Checking df_to_visualize shape:", df_to_visualize.shape)
+        log.info("✅ Checking classifier_df shape before reindexing:", classifier_df.shape)
 
         # ✅ Round classifier values to ensure binary classification (0 or 1)
         classifier_df = classifier_df.round()
@@ -557,25 +559,25 @@ class DataProcessor:
             prev_bar = last_training_bar.copy()
 
             # ✅ Add the found previous bar back if it exists
-            print("\n📊 BEFORE Adding prev_bar_df:")
-            print(cleaned_simulation_df.head(3))  # Print first 3 rows for visibility
+            log.info("\n📊 BEFORE Adding prev_bar_df:")
+            log.info(cleaned_simulation_df.head(3))  # Print first 3 rows for visibility
 
             if not prev_bar.empty:
                 prev_bar_df = prev_bar.to_frame().T.reset_index(drop=True)
                 cleaned_simulation_df = pd.concat([prev_bar_df, cleaned_simulation_df], ignore_index=True)
 
-            print("\n📊 AFTER Adding prev_bar_df:")
-            print(cleaned_simulation_df.head(3))  # Check if duplicates appear
+            log.info("\n📊 AFTER Adding prev_bar_df:")
+            log.info(cleaned_simulation_df.head(3))  # Check if duplicates appear
 
         original_size = len(simulation_df)
         sliced_size = len(cleaned_simulation_df)
 
-        print(f"🔍 Debug: Original Simulation Size -> {original_size}")
-        print(f"🔍 Debug: Sliced Simulation Size -> {sliced_size}")
+        log.info(f"🔍 Debug: Original Simulation Size -> {original_size}")
+        log.info(f"🔍 Debug: Sliced Simulation Size -> {sliced_size}")
 
         # ✅ Ensure overlap fix is correctly detected
         overlap_fixed = sliced_size < original_size
-        print(f"✅ Debug: Overlap Fixed Status -> {overlap_fixed}")
+        log.info(f"✅ Debug: Overlap Fixed Status -> {overlap_fixed}")
         return {
             "missing_data_warning": missing_data_alert,
             "insufficient_simulation_warning": insufficient_simulation_alert,

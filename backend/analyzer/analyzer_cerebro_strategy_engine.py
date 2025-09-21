@@ -4,7 +4,9 @@ import pandas as pd
 from backend.analyzer.analyzer_cerebro_custom_feeds import CustomClassifierData, CustomRegressionData, CustomVWAPData
 from backend.analyzer.analyzer_strategy_blueprint import ElasticNetStrategy
 from backend.analyzer.analyzer_blueprint_vwap_strategy import VWAPBounceStrategy
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 
 class CerebroStrategyEngine:
     """
@@ -69,7 +71,7 @@ class CerebroStrategyEngine:
         
         if ElasticNetStrategy.params.min_classifier_signals > 0:
             start_idx = self.df_classifiers.index.min()
-            print(f"⏳ Classifier signals begin at: {start_idx}")
+            log.info(f"⏳ Classifier signals begin at: {start_idx}")
             self.df_strategy = self.df_strategy[self.df_strategy.index >= start_idx]
 
         return self.df_strategy
@@ -99,7 +101,7 @@ class CerebroStrategyEngine:
         self.cerebro.broker.setcash(self.initial_cash)
         self.cerebro.broker.setcommission(commission=0.0, mult=1 * 1.25 / 0.25)
 
-        print("🚀 Running backtest...")
+        log.info("🚀 Running backtest...")
         self.results = self.cerebro.run()
         return self.results
 
@@ -150,7 +152,7 @@ class CerebroStrategyEngine:
         cerebro.adddata(data_1min)  # Intrabar data feed
         cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
 
-        print("🚀 Running Long5min1minStrategy backtest...")
+        log.info("🚀 Running Long5min1minStrategy backtest...")
         results = cerebro.run()
         return results, cerebro
 
@@ -196,7 +198,7 @@ class CerebroStrategyEngine:
         # Add only the 5m feed
         cerebro.adddata(data_5min)  # data0: 5m
         # Add strategy
-        # print(f"[DEBUG] Params sent to RegressionScalpingStrategy: {params}")
+        # log.info(f"[DEBUG] Params sent to RegressionScalpingStrategy: {params}")
         # Add cross-filter params if present
         if max_pred_low is not None:
             params['max_predicted_low_for_long'] = max_pred_low
@@ -213,19 +215,19 @@ class CerebroStrategyEngine:
         except ImportError:
             psutil = None
             mem_before = None
-            print("[DEBUG] psutil not available, skipping memory logging", flush=True)
-            print("[ERROR] psutil is required for memory logging. Please install it with: pip install psutil", flush=True)
+            log.info("[DEBUG] psutil not available, skipping memory logging", flush=True)
+            log.info("[ERROR] psutil is required for memory logging. Please install it with: pip install psutil", flush=True)
         # Run
         if config_index is not None and total_configs is not None:
-            print(f"🚀 Running RegressionScalpingStrategy backtest {config_index+1}/{total_configs} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}) ...")
+            log.info(f"🚀 Running RegressionScalpingStrategy backtest {config_index+1}/{total_configs} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}) ...")
         else:
-            print("🚀 Running RegressionScalpingStrategy backtest (CustomRegressionData)...")
+            log.info("🚀 Running RegressionScalpingStrategy backtest (CustomRegressionData)...")
         results = cerebro.run()
         # Memory usage after cerebro.run()
         if psutil:
             mem_after = process.memory_info().rss / 1024 / 1024
             mem_delta = mem_after - mem_before if mem_before is not None else 0
-            print(f"[Memory] Config {config_index+1 if config_index is not None else '?'} — long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}: {mem_before:.1f} MB -> {mem_after:.1f} MB (delta: {mem_delta:+.1f} MB)", flush=True)
+            log.info(f"[Memory] Config {config_index+1 if config_index is not None else '?'} — long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}: {mem_before:.1f} MB -> {mem_after:.1f} MB (delta: {mem_delta:+.1f} MB)", flush=True)
         # Get the strategy instance (first in results)
         strategy_instance = results[0] if results else None
         # Print a single summary line per iteration
@@ -234,7 +236,7 @@ class CerebroStrategyEngine:
             num_trades = len(trades_attr)
         else:
             num_trades = 0
-        print(f"✅ Finished RegressionScalpingStrategy backtest {config_index+1}/{total_configs} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}) | Trades: {num_trades}")
+        log.info(f"✅ Finished RegressionScalpingStrategy backtest {config_index+1}/{total_configs} (long={long_t}, short={short_t}, min_vol={min_vol}, bar_color={bar_color}) | Trades: {num_trades}")
         # Always return a dict as the first value for downstream code
         if isinstance(results, list) and (not results or not isinstance(results[0], dict)):
             strategy_instance = results[0] if results else None
@@ -280,7 +282,7 @@ def run_backtest_VWAPStrategy(config_dict, df_5m):
         cerebro = bt.Cerebro()
         cerebro.adddata(data_5min)
         # Print debug info
-        print(f"[VWAP_BACKTEST] Running strategy: {config_dict.get('strategy_name', 'VWAP_Bounce')}")
+        log.info(f"[VWAP_BACKTEST] Running strategy: {config_dict.get('strategy_name', 'VWAP_Bounce')}")
         # Add strategy with config_dict as params
         cerebro.addstrategy(VWAPBounceStrategy, **config_dict)
         # Run
@@ -288,8 +290,8 @@ def run_backtest_VWAPStrategy(config_dict, df_5m):
         strat = results[0]
         trades = getattr(strat, 'trades', [])
         metrics = getattr(strat, 'metrics', {})
-        print(f"[VWAP_BACKTEST] Done. Trades: {len(trades)}, PnL: {metrics.get('PnL')}, Win rate: {metrics.get('win_rate')}, Max DD: {metrics.get('max_drawdown')}")
+        log.info(f"[VWAP_BACKTEST] Done. Trades: {len(trades)}, PnL: {metrics.get('PnL')}, Win rate: {metrics.get('win_rate')}, Max DD: {metrics.get('max_drawdown')}")
         return {"metrics": metrics, "trades": trades}
     except Exception as e:
-        print(f"[VWAP_BACKTEST] ERROR: {e}")
+        log.info(f"[VWAP_BACKTEST] ERROR: {e}")
         return {"metrics": {"error": str(e)}, "trades": []}

@@ -14,7 +14,9 @@ from feature_generator import FeatureGenerator
 from label_generator import LabelGenerator
 from regression_model_trainer import RegressionModelTrainer
 import warnings
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 # Import ARIMA models
 try:
     from statsmodels.tsa.arima.model import ARIMA
@@ -22,52 +24,52 @@ try:
     arima_available = True
 except ImportError:
     arima_available = False
-    print("⚠️ Warning: statsmodels not available. ARIMA models will be skipped.")
+    log.info("⚠️ Warning: statsmodels not available. ARIMA models will be skipped.")
 
-print("🚀 Starting ElasticNet Regression Benchmark for Time Series Prediction")
+log.info("🚀 Starting ElasticNet Regression Benchmark for Time Series Prediction")
 
 # ===== Step 1: Load CSV using DataLoader =====
-print("\n📁 Step 1: Loading CSV data...")
+log.info("\n📁 Step 1: Loading CSV data...")
 loader = DataLoader()
 training_df_raw = loader.load_from_csv("data/training/mes_2_new.csv")
 
 if training_df_raw.empty:
-    print("❌ Error: Failed to load training data!")
+    log.info("❌ Error: Failed to load training data!")
     exit(1)
 
-print(f"✅ Data loaded successfully: {training_df_raw.shape}")
-print(f"   Columns: {list(training_df_raw.columns)}")
+log.info(f"✅ Data loaded successfully: {training_df_raw.shape}")
+log.info(f"   Columns: {list(training_df_raw.columns)}")
 
 # ===== Step 2: Drop duplicate rows using Date and Time =====
-print("\n🔍 Step 2: Removing duplicate timestamps...")
+log.info("\n🔍 Step 2: Removing duplicate timestamps...")
 initial_rows = len(training_df_raw)
 training_df_raw = training_df_raw.drop_duplicates(subset=["Date", "Time"])
 final_rows = len(training_df_raw)
 duplicates_removed = initial_rows - final_rows
 
-print(f"✅ Duplicates removed: {duplicates_removed}")
-print(f"   Final dataset: {final_rows} rows")
+log.info(f"✅ Duplicates removed: {duplicates_removed}")
+log.info(f"   Final dataset: {final_rows} rows")
 
 # ===== Step 3: Generate all features using FeatureGenerator =====
-print("\n⚙️ Step 3: Generating technical features...")
+log.info("\n⚙️ Step 3: Generating technical features...")
 feature_generator = FeatureGenerator()
 training_df_features = feature_generator.create_all_features(training_df_raw.copy())
 
-print(f"✅ Features generated: {training_df_features.shape[1]} total columns")
+log.info(f"✅ Features generated: {training_df_features.shape[1]} total columns")
 new_features = training_df_features.shape[1] - training_df_raw.shape[1]
-print(f"   New features added: {new_features}")
+log.info(f"   New features added: {new_features}")
 
 # ===== Step 4: Generate regression labels using LabelGenerator =====
-print("\n🏷️ Step 4: Generating regression labels...")
+log.info("\n🏷️ Step 4: Generating regression labels...")
 label_generator = LabelGenerator()
 training_df_labeled = label_generator.elasticnet_label_next_high(training_df_features.copy())
 training_df_labeled = training_df_labeled.tail(500).copy()
 
-print(f"✅ Labels generated: 'Next_High' column added")
-print(f"   Labeled dataset: {training_df_labeled.shape}")
+log.info(f"✅ Labels generated: 'Next_High' column added")
+log.info(f"   Labeled dataset: {training_df_labeled.shape}")
 
 # ===== Step 5: Train ElasticNet regression model =====
-print("\n🤖 Step 5: Training ElasticNet regression model...")
+log.info("\n🤖 Step 5: Training ElasticNet regression model...")
 
 
 trainer = RegressionModelTrainer(
@@ -85,30 +87,30 @@ trainer.train_model()
 # Make predictions
 trainer.make_predictions()
 
-print(f"✅ Model trained successfully!")
-print(f"   Training samples: {len(trainer.x_train)}")
-print(f"   Test samples: {len(trainer.x_test)}")
-print(f"   Features used: {trainer.x_train.shape[1]}")
+log.info(f"✅ Model trained successfully!")
+log.info(f"   Training samples: {len(trainer.x_train)}")
+log.info(f"   Test samples: {len(trainer.x_test)}")
+log.info(f"   Features used: {trainer.x_train.shape[1]}")
 
 # ===== Step 6: Evaluate model using MSE and R² =====
-print("\n📊 Step 6: Evaluating model performance...")
+log.info("\n📊 Step 6: Evaluating model performance...")
 
 # Calculate metrics
 mse = mean_squared_error(trainer.y_test, trainer.predictions)
 r2 = r2_score(trainer.y_test, trainer.predictions)
 
 # Print evaluation results
-print("=" * 50)
-print("📈 ELASTICNET REGRESSION BENCHMARK RESULTS")
-print("=" * 50)
-print(f"MSE (Mean Squared Error): {mse:.3f}")
-print(f"R² (R-squared Score): {r2:.3f}")
-print(f"Number of Test Samples: {len(trainer.y_test)}")
-print(f"Number of Features: {trainer.x_train.shape[1]}")
-print("=" * 50)
+log.info("=" * 50)
+log.info("📈 ELASTICNET REGRESSION BENCHMARK RESULTS")
+log.info("=" * 50)
+log.info(f"MSE (Mean Squared Error): {mse:.3f}")
+log.info(f"R² (R-squared Score): {r2:.3f}")
+log.info(f"Number of Test Samples: {len(trainer.y_test)}")
+log.info(f"Number of Features: {trainer.x_train.shape[1]}")
+log.info("=" * 50)
 
 # ===== Extract Top ElasticNet Features =====
-print("\n🧠 Extracting Top ElasticNet Features by Importance...")
+log.info("\n🧠 Extracting Top ElasticNet Features by Importance...")
 
 # Get the trained ElasticNet model coefficients
 elasticnet_coefficients = trainer.model.coef_
@@ -121,20 +123,20 @@ feature_importance_sorted = sorted(feature_importance, key=lambda x: abs(x[1]), 
 # Extract top 10 features
 top_10_features = feature_importance_sorted[:10]
 
-print("\n📌 Top ElasticNet Features by Importance:")
-print("-" * 50)
+log.info("\n📌 Top ElasticNet Features by Importance:")
+log.info("-" * 50)
 for i, (feature_name, coef) in enumerate(top_10_features, 1):
-    print(f"{i:2d}. {feature_name:<25}: Coef = {coef:>8.4f}")
-print("-" * 50)
+    log.info(f"{i:2d}. {feature_name:<25}: Coef = {coef:>8.4f}")
+log.info("-" * 50)
 
 # Store top features for future use (ARIMAX/SARIMAX testing)
 top_elasticnet_features = [feature_name for feature_name, _ in top_10_features]
 
-print(f"✅ Top {len(top_elasticnet_features)} features extracted and stored for future ARIMAX/SARIMAX testing")
+log.info(f"✅ Top {len(top_elasticnet_features)} features extracted and stored for future ARIMAX/SARIMAX testing")
 
 # ===== Step 7: Apply post-prediction error filter =====
-print("\n🔍 Step 7: Applying post-prediction error filter...")
-print(f"   Filter threshold: {trainer.filter_threshold} points")
+log.info("\n🔍 Step 7: Applying post-prediction error filter...")
+log.info(f"   Filter threshold: {trainer.filter_threshold} points")
 
 # Compute absolute prediction errors
 prediction_errors = abs(trainer.y_test - trainer.predictions)
@@ -149,37 +151,37 @@ total_samples = len(trainer.y_test)
 filtered_samples = len(y_test_filtered)
 removed_samples = total_samples - filtered_samples
 
-print(f"✅ Error filtering applied:")
-print(f"   Original samples: {total_samples}")
-print(f"   Filtered samples: {filtered_samples}")
-print(f"   Removed samples: {removed_samples} ({removed_samples/total_samples*100:.1f}%)")
+log.info(f"✅ Error filtering applied:")
+log.info(f"   Original samples: {total_samples}")
+log.info(f"   Filtered samples: {filtered_samples}")
+log.info(f"   Removed samples: {removed_samples} ({removed_samples/total_samples*100:.1f}%)")
 
 # Recalculate metrics on filtered data
 mse_filtered = mean_squared_error(y_test_filtered, predictions_filtered)
 r2_filtered = r2_score(y_test_filtered, predictions_filtered)
 
 # Print filtered evaluation results
-print("\n" + "=" * 50)
-print("📉 ELASTICNET FILTERED EVALUATION RESULTS")
-print("=" * 50)
-print(f"Filtered Sample Count: {filtered_samples}")
-print(f"Filtered MSE: {mse_filtered:.3f}")
-print(f"Filtered R²: {r2_filtered:.3f}")
-print("=" * 50)
+log.info("\n" + "=" * 50)
+log.info("📉 ELASTICNET FILTERED EVALUATION RESULTS")
+log.info("=" * 50)
+log.info(f"Filtered Sample Count: {filtered_samples}")
+log.info(f"Filtered MSE: {mse_filtered:.3f}")
+log.info(f"Filtered R²: {r2_filtered:.3f}")
+log.info("=" * 50)
 
 # ===== Step 8: Add ARIMA and ARIMAX benchmark models =====
 if arima_available:
-    print("\n📈 Step 8: Training ARIMA and ARIMAX benchmark models...")
+    log.info("\n📈 Step 8: Training ARIMA and ARIMAX benchmark models...")
     
     # Get the same train/test split indices as ElasticNet
     train_size = len(trainer.x_train)
     test_size = len(trainer.x_test)
     total_size = train_size + test_size
     
-    print(f"   Using same split: {train_size} train, {test_size} test samples")
+    log.info(f"   Using same split: {train_size} train, {test_size} test samples")
     
     # ===== MODEL 1: ARIMA (Univariate) =====
-    print("\n🔵 Training ARIMA (Univariate) model...")
+    log.info("\n🔵 Training ARIMA (Univariate) model...")
     try:
         # Use High column from the labeled dataset, matching the split
         high_series = training_df_labeled["High"].iloc[:total_size].copy()
@@ -201,15 +203,15 @@ if arima_available:
         arima_mse = mean_squared_error(trainer.y_test, arima_predictions)
         arima_r2 = r2_score(trainer.y_test, arima_predictions)
         
-        print(f"✅ ARIMA model trained successfully")
-        print(f"   MSE: {arima_mse:.3f}, R²: {arima_r2:.3f}")
+        log.info(f"✅ ARIMA model trained successfully")
+        log.info(f"   MSE: {arima_mse:.3f}, R²: {arima_r2:.3f}")
         
     except Exception as e:
-        print(f"❌ ARIMA training failed: {e}")
+        log.info(f"❌ ARIMA training failed: {e}")
         arima_mse, arima_r2 = float('nan'), float('nan')
     
     # ===== MODEL 2: ARIMAX (Multivariate) =====
-    print("\n🟡 Training ARIMAX (Multivariate) model...")
+    log.info("\n🟡 Training ARIMAX (Multivariate) model...")
     try:
         # Select top 5-10 features for ARIMAX
         feature_cols = trainer.x_train.columns
@@ -231,7 +233,7 @@ if arima_available:
         # Limit to 8 features to avoid overfitting
         selected_features = selected_features[:8]
         
-        print(f"   Selected features: {selected_features}")
+        log.info(f"   Selected features: {selected_features}")
         
         # Get the exogenous variables from the same dataset split
         X_train_arimax = trainer.x_train[selected_features].copy()
@@ -258,15 +260,15 @@ if arima_available:
         arimax_mse = mean_squared_error(trainer.y_test, arimax_predictions)
         arimax_r2 = r2_score(trainer.y_test, arimax_predictions)
         
-        print(f"✅ ARIMAX model trained successfully")
-        print(f"   MSE: {arimax_mse:.3f}, R²: {arimax_r2:.3f}")
+        log.info(f"✅ ARIMAX model trained successfully")
+        log.info(f"   MSE: {arimax_mse:.3f}, R²: {arimax_r2:.3f}")
         
     except Exception as e:
-        print(f"❌ ARIMAX training failed: {e}")
+        log.info(f"❌ ARIMAX training failed: {e}")
         arimax_mse, arimax_r2 = float('nan'), float('nan')
     
     # ===== Apply Error Filtering to ARIMA/ARIMAX (Same as ElasticNet) =====
-    print("\n🔍 Applying error filtering to ARIMA/ARIMAX predictions...")
+    log.info("\n🔍 Applying error filtering to ARIMA/ARIMAX predictions...")
     
     # Reuse the existing ElasticNet filter mask from Step 7
     filter_mask = abs(trainer.y_test - trainer.predictions) <= trainer.filter_threshold
@@ -277,7 +279,7 @@ if arima_available:
         arima_filtered_preds = pd.Series(arima_predictions).reset_index(drop=True)[filter_mask.reset_index(drop=True)]
         filtered_arima_mse = mean_squared_error(y_test_filtered_step8, arima_filtered_preds)
         filtered_arima_r2 = r2_score(y_test_filtered_step8, arima_filtered_preds)
-        print(f"✅ ARIMA filtered: MSE={filtered_arima_mse:.3f}, R²={filtered_arima_r2:.3f}")
+        log.info(f"✅ ARIMA filtered: MSE={filtered_arima_mse:.3f}, R²={filtered_arima_r2:.3f}")
     else:
         filtered_arima_mse, filtered_arima_r2 = float('nan'), float('nan')
 
@@ -286,33 +288,33 @@ if arima_available:
         arimax_filtered_preds = pd.Series(arimax_predictions).reset_index(drop=True)[filter_mask.reset_index(drop=True)]
         filtered_arimax_mse = mean_squared_error(y_test_filtered_step8, arimax_filtered_preds)
         filtered_arimax_r2 = r2_score(y_test_filtered_step8, arimax_filtered_preds)
-        print(f"✅ ARIMAX filtered: MSE={filtered_arimax_mse:.3f}, R²={filtered_arimax_r2:.3f}")
+        log.info(f"✅ ARIMAX filtered: MSE={filtered_arimax_mse:.3f}, R²={filtered_arimax_r2:.3f}")
     else:
         filtered_arimax_mse, filtered_arimax_r2 = float('nan'), float('nan')
 
-    print(f"   Filter applied: {len(y_test_filtered_step8)}/{len(trainer.y_test)} samples retained")
+    log.info(f"   Filter applied: {len(y_test_filtered_step8)}/{len(trainer.y_test)} samples retained")
     
     # ===== Model Comparison Summary =====
-    print("\n" + "=" * 50)
-    print("📊 MODEL COMPARISON SUMMARY")
-    print("=" * 50)
-    print(f"{'Model':<12} {'MSE':<8} {'R²':<8} {'Samples':<8}")
-    print("-" * 50)
-    print(f"{'ElasticNet':<12} {mse:<8.3f} {r2:<8.3f} {len(trainer.y_test):<8}")
-    print(f"{'ARIMA':<12} {arima_mse:<8.3f} {arima_r2:<8.3f} {len(trainer.y_test):<8}")
-    print(f"{'ARIMAX':<12} {arimax_mse:<8.3f} {arimax_r2:<8.3f} {len(trainer.y_test):<8}")
-    print("=" * 50)
+    log.info("\n" + "=" * 50)
+    log.info("📊 MODEL COMPARISON SUMMARY")
+    log.info("=" * 50)
+    log.info(f"{'Model':<12} {'MSE':<8} {'R²':<8} {'Samples':<8}")
+    log.info("-" * 50)
+    log.info(f"{'ElasticNet':<12} {mse:<8.3f} {r2:<8.3f} {len(trainer.y_test):<8}")
+    log.info(f"{'ARIMA':<12} {arima_mse:<8.3f} {arima_r2:<8.3f} {len(trainer.y_test):<8}")
+    log.info(f"{'ARIMAX':<12} {arimax_mse:<8.3f} {arimax_r2:<8.3f} {len(trainer.y_test):<8}")
+    log.info("=" * 50)
     
     # ===== Filtered Model Comparison =====
-    print("\n" + "=" * 50)
-    print("📉 FILTERED MODEL COMPARISON")
-    print("=" * 50)
-    print(f"{'Model':<12} | {'Filtered MSE':<12} | {'Filtered R²':<11} | {'Samples':<8}")
-    print("-" * 50)
-    print(f"{'ElasticNet':<12} | {mse_filtered:<12.3f} | {r2_filtered:<11.3f} | {len(y_test_filtered_step8):<8}")
-    print(f"{'ARIMA':<12} | {filtered_arima_mse:<12.3f} | {filtered_arima_r2:<11.3f} | {len(y_test_filtered_step8):<8}")
-    print(f"{'ARIMAX':<12} | {filtered_arimax_mse:<12.3f} | {filtered_arimax_r2:<11.3f} | {len(y_test_filtered_step8):<8}")
-    print("=" * 50)
+    log.info("\n" + "=" * 50)
+    log.info("📉 FILTERED MODEL COMPARISON")
+    log.info("=" * 50)
+    log.info(f"{'Model':<12} | {'Filtered MSE':<12} | {'Filtered R²':<11} | {'Samples':<8}")
+    log.info("-" * 50)
+    log.info(f"{'ElasticNet':<12} | {mse_filtered:<12.3f} | {r2_filtered:<11.3f} | {len(y_test_filtered_step8):<8}")
+    log.info(f"{'ARIMA':<12} | {filtered_arima_mse:<12.3f} | {filtered_arima_r2:<11.3f} | {len(y_test_filtered_step8):<8}")
+    log.info(f"{'ARIMAX':<12} | {filtered_arimax_mse:<12.3f} | {filtered_arimax_r2:<11.3f} | {len(y_test_filtered_step8):<8}")
+    log.info("=" * 50)
     
     # Determine best model (unfiltered)
     models_results = [
@@ -333,20 +335,20 @@ if arima_available:
     
     if valid_models:
         best_model = max(valid_models, key=lambda x: x[2])
-        print(f"\n🏆 Best unfiltered model: {best_model[0]} (R² = {best_model[2]:.3f})")
+        log.info(f"\n🏆 Best unfiltered model: {best_model[0]} (R² = {best_model[2]:.3f})")
     
     # Find best model by R² (higher is better) - filtered
     valid_filtered_models = [(name, mse_val, r2_val) for name, mse_val, r2_val in filtered_models_results if not np.isnan(r2_val)]
     
     if valid_filtered_models:
         best_filtered_model = max(valid_filtered_models, key=lambda x: x[2])
-        print(f"🏆 Best filtered model: {best_filtered_model[0]} (R² = {best_filtered_model[2]:.3f})")
+        log.info(f"🏆 Best filtered model: {best_filtered_model[0]} (R² = {best_filtered_model[2]:.3f})")
 
     # ===== Step 10: Group-Based Model Benchmarking =====
-    print("\n🧪 Step 10: Group-Based Model Benchmarking...")
+    log.info("\n🧪 Step 10: Group-Based Model Benchmarking...")
     training_df_labeled["High - Low"] = training_df_labeled["High"] - training_df_labeled["Low"]
     training_df_labeled["Close - Open"] = training_df_labeled["Close"] - training_df_labeled["Open"]
-    print("\n🧪 Step 10: Group-Based Model Benchmarking...")
+    log.info("\n🧪 Step 10: Group-Based Model Benchmarking...")
 
     # Core bar calculations
     training_df_labeled["High - Low"] = training_df_labeled["High"] - training_df_labeled["Low"]
@@ -411,25 +413,25 @@ if arima_available:
     test_size = len(trainer.x_test)
     total_size = train_size + test_size
     
-    print(f"   Evaluating {len(feature_groups)} feature groups...")
-    print(f"   Using same split: {train_size} train, {test_size} test samples")
+    log.info(f"   Evaluating {len(feature_groups)} feature groups...")
+    log.info(f"   Using same split: {train_size} train, {test_size} test samples")
     
     for group_name, feature_list in feature_groups.items():
-        print(f"\n🔍 Evaluating {group_name}...")
+        log.info(f"\n🔍 Evaluating {group_name}...")
         
         # Check which features exist in the dataset
         available_features = [f for f in feature_list if f in training_df_labeled.columns]
         missing_features = [f for f in feature_list if f not in training_df_labeled.columns]
         
         if len(available_features) < 2:
-            print(f"   ⚠️ Skipping {group_name}: insufficient features ({len(available_features)}/5)")
+            log.info(f"   ⚠️ Skipping {group_name}: insufficient features ({len(available_features)}/5)")
             group_results.append([group_name, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", len(available_features)])
             continue
         
         if missing_features:
-            print(f"   ⚠️ Missing features: {missing_features}")
+            log.info(f"   ⚠️ Missing features: {missing_features}")
         
-        print(f"   ✅ Using {len(available_features)} features: {available_features}")
+        log.info(f"   ✅ Using {len(available_features)} features: {available_features}")
         
         # Create subset DataFrame with available features
         try:
@@ -453,7 +455,7 @@ if arima_available:
             elasticnet_group_mse = mean_squared_error(group_trainer.y_test, group_trainer.predictions)
             elasticnet_group_r2 = r2_score(group_trainer.y_test, group_trainer.predictions)
             
-            print(f"      ElasticNet: MSE={elasticnet_group_mse:.3f}, R²={elasticnet_group_r2:.3f}")
+            log.info(f"      ElasticNet: MSE={elasticnet_group_mse:.3f}, R²={elasticnet_group_r2:.3f}")
 
             # === ARIMAX on this group ===
             try:
@@ -477,10 +479,10 @@ if arima_available:
                 arimax_group_mse = mean_squared_error(high_test_group, arimax_group_predictions)
                 arimax_group_r2 = r2_score(high_test_group, arimax_group_predictions)
 
-                print(f"      ARIMAX: MSE={arimax_group_mse:.3f}, R²={arimax_group_r2:.3f}")
+                log.info(f"      ARIMAX: MSE={arimax_group_mse:.3f}, R²={arimax_group_r2:.3f}")
 
             except Exception as e:
-                print(f"      ARIMAX failed: {str(e)[:50]}...")
+                log.info(f"      ARIMAX failed: {str(e)[:50]}...")
                 arimax_group_mse, arimax_group_r2 = float('nan'), float('nan')
 
             # === SARIMAX on this group ===
@@ -497,10 +499,10 @@ if arima_available:
                 sarimax_group_mse = mean_squared_error(high_test_group, sarimax_group_predictions)
                 sarimax_group_r2 = r2_score(high_test_group, sarimax_group_predictions)
 
-                print(f"      SARIMAX: MSE={sarimax_group_mse:.3f}, R²={sarimax_group_r2:.3f}")
+                log.info(f"      SARIMAX: MSE={sarimax_group_mse:.3f}, R²={sarimax_group_r2:.3f}")
 
             except Exception as e:
-                print(f"      SARIMAX failed: {str(e)[:50]}...")
+                log.info(f"      SARIMAX failed: {str(e)[:50]}...")
                 sarimax_group_mse, sarimax_group_r2 = float('nan'), float('nan')
 
             # Store results
@@ -513,15 +515,15 @@ if arima_available:
             ])
             
         except Exception as e:
-            print(f"   ❌ Group evaluation failed: {e}")
+            log.info(f"   ❌ Group evaluation failed: {e}")
             group_results.append([group_name, "ERROR", "ERROR", "ERROR", "ERROR", "ERROR", "ERROR", 0])
     
     # === Print Group Comparison Summary ===
-    print("\n" + "=" * 100)
-    print("🧪 GROUP-BASED MODEL BENCHMARKING RESULTS")
-    print("=" * 100)
-    print(f"{'Group':<25} | {'ElasticNet MSE':<13} | {'ElasticNet R²':<12} | {'ARIMAX MSE':<11} | {'ARIMAX R²':<10} | {'SARIMAX MSE':<11} | {'SARIMAX R²':<10} | {'Features':<8}")
-    print("-" * 100)
+    log.info("\n" + "=" * 100)
+    log.info("🧪 GROUP-BASED MODEL BENCHMARKING RESULTS")
+    log.info("=" * 100)
+    log.info(f"{'Group':<25} | {'ElasticNet MSE':<13} | {'ElasticNet R²':<12} | {'ARIMAX MSE':<11} | {'ARIMAX R²':<10} | {'SARIMAX MSE':<11} | {'SARIMAX R²':<10} | {'Features':<8}")
+    log.info("-" * 100)
     
     for result in group_results:
         group_name, en_mse, en_r2, ar_mse, ar_r2, sar_mse, sar_r2, feat_count = result
@@ -532,36 +534,36 @@ if arima_available:
                 return "N/A"
             return f"{val:.3f}"
         
-        print(f"{group_name:<25} | {format_val(en_mse):<13} | {format_val(en_r2):<12} | {format_val(ar_mse):<11} | {format_val(ar_r2):<10} | {format_val(sar_mse):<11} | {format_val(sar_r2):<10} | {feat_count:<8}")
+        log.info(f"{group_name:<25} | {format_val(en_mse):<13} | {format_val(en_r2):<12} | {format_val(ar_mse):<11} | {format_val(ar_r2):<10} | {format_val(sar_mse):<11} | {format_val(sar_r2):<10} | {feat_count:<8}")
     
-    print("=" * 100)
+    log.info("=" * 100)
     
     # Find best performing group for each model type
     valid_results = [r for r in group_results if isinstance(r[1], float) and not np.isnan(r[1])]
     
     if valid_results:
         best_elasticnet = min(valid_results, key=lambda x: x[1])  # Lowest MSE
-        print(f"\n🏆 Best ElasticNet group: {best_elasticnet[0]} (MSE = {best_elasticnet[1]:.3f})")
+        log.info(f"\n🏆 Best ElasticNet group: {best_elasticnet[0]} (MSE = {best_elasticnet[1]:.3f})")
         
         arimax_valid = [r for r in valid_results if isinstance(r[3], float) and not np.isnan(r[3])]
         if arimax_valid:
             best_arimax = min(arimax_valid, key=lambda x: x[3])  # Lowest MSE
-            print(f"🏆 Best ARIMAX group: {best_arimax[0]} (MSE = {best_arimax[3]:.3f})")
+            log.info(f"🏆 Best ARIMAX group: {best_arimax[0]} (MSE = {best_arimax[3]:.3f})")
         
         sarimax_valid = [r for r in valid_results if isinstance(r[5], float) and not np.isnan(r[5])]
         if sarimax_valid:
             best_sarimax = min(sarimax_valid, key=lambda x: x[5])  # Lowest MSE
-            print(f"🏆 Best SARIMAX group: {best_sarimax[0]} (MSE = {best_sarimax[5]:.3f})")
+            log.info(f"🏆 Best SARIMAX group: {best_sarimax[0]} (MSE = {best_sarimax[5]:.3f})")
     
 else:
-    print("\n⚠️ Steps 8-10 skipped: statsmodels not available for ARIMA modeling")
+    log.info("\n⚠️ Steps 8-10 skipped: statsmodels not available for ARIMA modeling")
 
 # === Optional RMSE Table ===
-print("\n" + "=" * 100)
-print("📉 GROUP-BASED RMSE RESULTS")
-print("=" * 100)
-print(f"{'Group':<25} | {'ElasticNet RMSE':<16} | {'ARIMAX RMSE':<13} | {'SARIMAX RMSE':<13}")
-print("-" * 100)
+log.info("\n" + "=" * 100)
+log.info("📉 GROUP-BASED RMSE RESULTS")
+log.info("=" * 100)
+log.info(f"{'Group':<25} | {'ElasticNet RMSE':<16} | {'ARIMAX RMSE':<13} | {'SARIMAX RMSE':<13}")
+log.info("-" * 100)
 
 for result in group_results:
     group_name, en_mse, _, ar_mse, _, sar_mse, _, _ = result
@@ -577,16 +579,16 @@ for result in group_results:
     def format_rmse(val):
         return f"{val:.3f}" if isinstance(val, float) else "N/A"
 
-    print(f"{group_name:<25} | {format_rmse(en_rmse):<16} | {format_rmse(ar_rmse):<13} | {format_rmse(sar_rmse):<13}")
+    log.info(f"{group_name:<25} | {format_rmse(en_rmse):<16} | {format_rmse(ar_rmse):<13} | {format_rmse(sar_rmse):<13}")
 
-print("=" * 100)
+log.info("=" * 100)
 
-print("\n✅ Time series prediction benchmark completed successfully!")
-print("📌 ElasticNet baseline established and compared with ARIMA models.")
-print("📌 Ready for DeepAR and advanced time series models in future steps.")
+log.info("\n✅ Time series prediction benchmark completed successfully!")
+log.info("📌 ElasticNet baseline established and compared with ARIMA models.")
+log.info("📌 Ready for DeepAR and advanced time series models in future steps.")
 
 # ===== Step 11: Sliding Window Stability Test for Top Groups =====
-print("\n🪟 Step 11: Sliding Window Evaluation for Top Groups")
+log.info("\n🪟 Step 11: Sliding Window Evaluation for Top Groups")
 
 import random
 from datetime import datetime
@@ -622,7 +624,7 @@ while len(valid_indices) < NUM_SAMPLES:
 window_results = []
 
 for i, start in enumerate(valid_indices):
-    print(f"\n🧪 Window {i+1} | Index range: {start}-{start+WINDOW_SIZE}")
+    log.info(f"\n🧪 Window {i+1} | Index range: {start}-{start+WINDOW_SIZE}")
     window_df = valid_df.iloc[start:start + WINDOW_SIZE].copy()
 
     # Generate features and labels
@@ -665,10 +667,10 @@ for i, start in enumerate(valid_indices):
         ])
 
 # Print summary
-print("\n\n📊 SLIDING WINDOW RESULTS")
-print("=" * 70)
-print(f"{'Window':<10} | {'Group':<30} | {'MSE':<10} | {'RMSE':<10} | {'R²':<10}")
-print("-" * 70)
+log.info("\n\n📊 SLIDING WINDOW RESULTS")
+log.info("=" * 70)
+log.info(f"{'Window':<10} | {'Group':<30} | {'MSE':<10} | {'RMSE':<10} | {'R²':<10}")
+log.info("-" * 70)
 for row in window_results:
-    print(f"{row[0]:<10} | {row[1]:<30} | {row[2]:<10.4f} | {row[3]:<10.4f} | {row[4]:<10.4f}")
+    log.info(f"{row[0]:<10} | {row[1]:<30} | {row[2]:<10.4f} | {row[3]:<10.4f} | {row[4]:<10.4f}")
 

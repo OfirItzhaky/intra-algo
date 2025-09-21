@@ -1,7 +1,9 @@
 
 import sys
 import os
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 # Ensure root path is added
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
@@ -74,7 +76,7 @@ class VWAPBounceStrategy(bt.Strategy):
             return  # skip non-important logs
 
         dt = dt or self.datas[0].datetime.datetime(0)
-        print(f"[{dt}] {txt}")
+        log.info(f"[{dt}] {txt}")
 
     def check_entry_signal_vwap_bounce_both_directions(self, df: pd.DataFrame, i: int) -> list:
         """
@@ -415,7 +417,7 @@ class VWAPReclaimStrategy(bt.Strategy):
             return  # skip non-important logs
 
         dt = dt or self.datas[0].datetime.datetime(0)
-        print(f"[{dt}] {txt}")
+        log.info(f"[{dt}] {txt}")
 
     from typing import Tuple, Optional
     import pandas as pd

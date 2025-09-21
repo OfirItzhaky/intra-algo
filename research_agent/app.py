@@ -29,6 +29,11 @@ from research_agent.config import CONFIG, SUMMARY_CACHE, EVENT_CACHE, REGRESSION
 import logging
 from research_agent.five_star_agent.five_star_agent_controller import FiveStarAgentController
 from research_agent.company_calendar import CompanyCalendarError
+import sys, io
+sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8', errors='ignore')
+from logging_setup import setup_logging, get_logger
+setup_logging()
+log = get_logger("web")
 
 
 # === Runtime Constants ===
@@ -150,7 +155,7 @@ def _get_session_id():
         if not sid:
             sid = uuid4().hex
             session['fivestar_sid'] = sid
-            print(f"[FiveStar][DEBUG] Issued new fivestar_sid={sid}")
+            log.info(f"[FiveStar][DEBUG] Issued new fivestar_sid={sid}")
         return sid
     except Exception:
         return 'fivestar'
@@ -282,20 +287,20 @@ def api_five_star_report_bias():
 
 @app.route("/upload_csv", methods=["POST"])
 def upload_csv():
-    print("===== UPLOAD_CSV ROUTE CALLED =====")
-    print(f"Request method: {request.method}")
-    print(f"Request files: {len(request.files)}")
+    log.info("===== UPLOAD_CSV ROUTE CALLED =====")
+    log.info(f"Request method: {request.method}")
+    log.info(f"Request files: {len(request.files)}")
     
     files = request.files.getlist("csv_files")
     
     # Instead of creating a new file_info list, retrieve the existing one or create empty
     file_info = app.config.get('FILE_INFO', []) 
-    print(f"Existing file info entries: {len(file_info)}")
+    log.info(f"Existing file info entries: {len(file_info)}")
     
     for file in files:
         filename = file.filename
         try:
-            print(f"Processing file: {filename}")
+            log.info(f"Processing file: {filename}")
             # Extract symbol from filename 
             symbol = filename
             
@@ -318,19 +323,19 @@ def upload_csv():
                 if vol_col and vol_col != 'volume':
                     df.rename(columns={vol_col: 'volume'}, inplace=True)
                 
-                print(f"Successfully read file. Shape: {df.shape}")
+                log.info(f"Successfully read file. Shape: {df.shape}")
                 
                 # Validate data - check minimum requirements
                 if df.shape[0] < 20:
                     raise Exception(f"Insufficient data points (minimum 20 required, found {df.shape[0]})")
                 
             except Exception as e:
-                print(f"Error reading file: {str(e)}")
+                log.info(f"Error reading file: {str(e)}")
                 raise Exception(f"Failed to parse file: {str(e)}")
             
             if len(df.columns) > 0:
                 df.columns = [col.strip().capitalize() for col in df.columns]
-                print(f"Columns: {list(df.columns)}")
+                log.info(f"Columns: {list(df.columns)}")
                 
                 # Try to identify date column
                 date_columns = [col for col in df.columns if any(date_term in col.lower() 
@@ -338,29 +343,29 @@ def upload_csv():
                 
                 if date_columns:
                     date_col = date_columns[0]
-                    print(f"Found date column: {date_col}")
+                    log.info(f"Found date column: {date_col}")
                     # Convert to datetime if it's not already
                     df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
                     # Sort by date to ensure we get the correct last date
                     df = df.sort_values(by=date_col)
                 elif isinstance(df.index, pd.DatetimeIndex):
-                    print("Using DatetimeIndex")
+                    log.info("Using DatetimeIndex")
                     # If the index is a datetime index
                     date_col = 'index'
                 else:
                     # Try to convert the first column to datetime as a fallback
                     try:
                         first_col = df.columns[0]
-                        print(f"Trying to convert first column '{first_col}' to datetime")
+                        log.info(f"Trying to convert first column '{first_col}' to datetime")
                         df[first_col] = pd.to_datetime(df[first_col], errors='coerce')
                         if not df[first_col].isna().all():  # At least some values converted successfully
                             date_col = first_col
-                            print(f"Successfully used first column as date")
+                            log.info(f"Successfully used first column as date")
                         else:
                             date_col = None
-                            print("First column cannot be parsed as dates")
+                            log.info("First column cannot be parsed as dates")
                     except Exception as date_err:
-                        print(f"Error with first column: {str(date_err)}")
+                        log.info(f"Error with first column: {str(date_err)}")
                         date_col = None
                 
                 # Determine time interval
@@ -373,7 +378,7 @@ def upload_csv():
                     else:
                         dates = df[date_col].dropna()  # Remove NaT values
                     
-                    print(f"Found {len(dates)} valid dates")
+                    log.info(f"Found {len(dates)} valid dates")
                     num_days = (max(dates) - min(dates)).days if len(dates) > 1 else 0
                     
                     if len(dates) > 1:
@@ -393,12 +398,12 @@ def upload_csv():
                                            (sorted_dates.iloc[i] if hasattr(sorted_dates, 'iloc') else sorted_dates[i])
                                     date_diffs.append(diff.total_seconds())
                                 except Exception as diff_err:
-                                    print(f"Error calculating difference: {str(diff_err)}")
+                                    log.info(f"Error calculating difference: {str(diff_err)}")
                             
                             if date_diffs:
                                 # Most common difference in seconds
                                 most_common_diff = pd.Series(date_diffs).mode()[0]
-                                print(f"Most common diff: {most_common_diff} seconds")
+                                log.info(f"Most common diff: {most_common_diff} seconds")
                                 
                                 # Determine interval based on seconds
                                 seconds_in_day = 86400
@@ -459,12 +464,12 @@ def upload_csv():
                                     interval_status = "error"
                                     interval_message = "Invalid interval (0s) - data may have duplicate timestamps"
                             else:
-                                print("No date diffs could be calculated")
+                                log.info("No date diffs could be calculated")
                                 interval = "Unknown"
                                 interval_status = "error"
                                 interval_message = "Could not determine data interval"
                         except Exception as diff_err:
-                            print(f"Error determining interval: {str(diff_err)}")
+                            log.info(f"Error determining interval: {str(diff_err)}")
                             interval = "Error determining interval"
                             interval_status = "error"
                             interval_message = f"Error: {str(diff_err)}"
@@ -494,7 +499,7 @@ def upload_csv():
                     'status': interval_status,
                     'message': interval_message
                 })
-                print(f"Updated existing entry for: {filename}")
+                log.info(f"Updated existing entry for: {filename}")
             else:
                 # Add new entry
                 file_info.append({
@@ -504,12 +509,12 @@ def upload_csv():
                     'status': interval_status,
                     'message': interval_message
                 })
-                print(f"Added new entry for: {filename}")
+                log.info(f"Added new entry for: {filename}")
             
-            print(f"Successfully processed file: {filename}")
+            log.info(f"Successfully processed file: {filename}")
             
         except Exception as e:
-            print(f"Error processing file {filename}: {str(e)}")
+            log.info(f"Error processing file {filename}: {str(e)}")
             
             # Check if this file already exists in our list
             existing_error_entry = next((item for item in file_info if item["symbol"] == filename), None)
@@ -534,18 +539,18 @@ def upload_csv():
     
     # Save the updated file_info back to app config
     app.config['FILE_INFO'] = file_info
-    print(f"Total files in memory after processing: {len(file_info)}")
+    log.info(f"Total files in memory after processing: {len(file_info)}")
     
     return redirect(url_for("index", no_reset="true"))
 
 @app.route("/", methods=["GET"])
 def index():
-    print("===== INDEX ROUTE CALLED =====")
+    log.info("===== INDEX ROUTE CALLED =====")
     
     # Perform a soft reset when the page is loaded
     # This ensures that refreshing the page gives a fresh start
     if request.args.get('no_reset') != 'true':
-        print("Performing soft reset on page load")
+        log.info("Performing soft reset on page load")
         global daily_results, image_results, symbol_data
         
         # Clear in-memory data
@@ -561,8 +566,8 @@ def index():
     file_info = app.config.get('FILE_INFO', [])
     upload_error = app.config.pop('UPLOAD_ERROR', None)
     
-    print(f"File info: {file_info}")
-    print(f"Upload error: {upload_error}")
+    log.info(f"File info: {file_info}")
+    log.info(f"Upload error: {upload_error}")
     
     return render_template_string(
         HTML_TEMPLATE, 
@@ -576,7 +581,7 @@ def index():
 
 @app.route("/daily_analysis", methods=["POST"])
 def daily_analysis():
-    print("===== DAILY_ANALYSIS ROUTE CALLED =====")
+    log.info("===== DAILY_ANALYSIS ROUTE CALLED =====")
     global daily_results
     
     try:
@@ -621,7 +626,7 @@ def daily_analysis():
     except Exception as e:
         error_details = traceback.format_exc()
         error_message = f"Error in daily analysis: {str(e)}\n\nStacktrace:\n{error_details}"
-        print(error_message)  # Log to console/logs
+        log.info(error_message)  # Log to console/logs
         
         # Add error to daily_results
         daily_results = [{
@@ -652,7 +657,7 @@ def daily_analysis():
 
 @app.route("/momentum_analysis", methods=["POST"])
 def momentum_analysis():
-    print("===== MOMENTUM_ANALYSIS ROUTE CALLED =====")
+    log.info("===== MOMENTUM_ANALYSIS ROUTE CALLED =====")
     global daily_results
 
     try:
@@ -716,7 +721,7 @@ def momentum_analysis():
 
         class UploadedDataMomentumScorer(MarketMomentumScorer):
             def fetch_data(self):
-                print("Using uploaded data instead of fetching from external sources")
+                log.info("Using uploaded data instead of fetching from external sources")
                 # Process uploaded data
                 for symbol in self.symbols:
                     # Look for weekly data
@@ -730,10 +735,10 @@ def momentum_analysis():
                             for interval, df in data_dict.items():
                                 if interval == "Weekly" or "_weekly" in file_lower:
                                     weekly_df = df.copy()
-                                    print(f"Using {filename} as weekly data for {symbol}")
+                                    log.info(f"Using {filename} as weekly data for {symbol}")
                                 elif interval == "Daily" or "_daily" in file_lower:
                                     daily_df = df.copy()
-                                    print(f"Using {filename} as daily data for {symbol}")
+                                    log.info(f"Using {filename} as daily data for {symbol}")
                     
                     # Store the data
                     if weekly_df is not None:
@@ -758,7 +763,7 @@ def momentum_analysis():
                         
                         self.daily_data[symbol] = daily_df
                         
-                print(f"Processed {len(self.weekly_data)} weekly and {len(self.daily_data)} daily datasets")
+                log.info(f"Processed {len(self.weekly_data)} weekly and {len(self.daily_data)} daily datasets")
                 
         scorer = UploadedDataMomentumScorer(symbols=symbols_from_files)
         scorer.fetch_data()
@@ -854,7 +859,7 @@ def momentum_analysis():
     except Exception as e:
         error_details = traceback.format_exc()
         error_message = f"Error in momentum analysis: {str(e)}\n\nStacktrace:\n{error_details}"
-        print(error_message)  # Log to console/logs
+        log.info(error_message)  # Log to console/logs
         
         # Add error to daily_results
         daily_results = [{
@@ -904,7 +909,7 @@ def reset():
             file_path = os.path.join(UPLOAD_FOLDER, filename)
             if os.path.isfile(file_path):
                 os.unlink(file_path)
-                print(f"Deleted: {file_path}")
+                log.info(f"Deleted: {file_path}")
                 
         # Clear temp_uploads directory if it exists
         temp_dir = os.path.abspath("temp_uploads")
@@ -913,11 +918,11 @@ def reset():
                 file_path = os.path.join(temp_dir, filename)
                 if os.path.isfile(file_path):
                     os.unlink(file_path)
-                    print(f"Deleted: {file_path}")
+                    log.info(f"Deleted: {file_path}")
     except Exception as e:
-        print(f"Error clearing files: {str(e)}")
+        log.info(f"Error clearing files: {str(e)}")
     
-    print("Reset: Cleared all data and files")
+    log.info("Reset: Cleared all data and files")
     return redirect(url_for("index"))
 
 @app.route("/symbol_chart")
@@ -1244,7 +1249,7 @@ def five_star_analyze():
     Agent controller (OpenAI-backed), appends the agent message, and returns
     JSON with success/error.
     """
-    print("[FiveStar] /five_star/analyze called")
+    log.info("[FiveStar] /five_star/analyze called")
     # Dynamically import controller (support both folder names: five_star_agent / 5_star_agent)
     import importlib.util as _ilu
     base_dir = os.path.dirname(__file__)
@@ -1263,19 +1268,19 @@ def five_star_analyze():
             spec.loader.exec_module(module)
             break
     if module is None:
-        print("[FiveStar][ERROR] Controller not found in:", candidate_paths)
+        log.info("[FiveStar][ERROR] Controller not found in:", candidate_paths)
         return jsonify({"ok": False, "error": "FiveStarAgent controller not found."}), 500
     FiveStarAgentController = getattr(module, "FiveStarAgentController", None)
     if FiveStarAgentController is None:
-        print(f"[FiveStar][ERROR] FiveStarAgentController class missing in {chosen_path}")
+        log.info(f"[FiveStar][ERROR] FiveStarAgentController class missing in {chosen_path}")
         return jsonify({"ok": False, "error": "Controller class missing."}), 500
 
     try:
         instructions = request.form.get('instructions', '')
         model_choice = request.form.get('model_choice', '')
-        print(f"[FiveStar] model_choice={model_choice!r}")
+        log.info(f"[FiveStar] model_choice={model_choice!r}")
         files = request.files.getlist('images') if 'images' in request.files or hasattr(request.files, 'getlist') else []
-        print(f"[FiveStar] received {len(files)} files")
+        log.info(f"[FiveStar] received {len(files)} files")
 
         saved_filepaths = []
         saved_names = []
@@ -1296,7 +1301,7 @@ def five_star_analyze():
             f.save(save_path)
             saved_filepaths.append(save_path)
             saved_names.append(filename)
-        print(f"[FiveStar][IMAGES] New uploaded files: {saved_filepaths}")
+        log.info(f"[FiveStar][IMAGES] New uploaded files: {saved_filepaths}")
 
         # Determine prior session paths (if any) from server store, and sanitize
         sid = _get_session_id()
@@ -1308,21 +1313,21 @@ def five_star_analyze():
         # If no new images this turn, reuse prior (already sanitized)
         reused_from_session = False
         if len(saved_filepaths) == 0 and prior_filepaths:
-            print(f"[FiveStar] no new images uploaded; reusing prior {len(prior_filepaths)} images")
+            log.info(f"[FiveStar] no new images uploaded; reusing prior {len(prior_filepaths)} images")
             saved_filepaths = prior_filepaths
             saved_names = prior_names
             reused_from_session = True
-            print(f"[FiveStar][IMAGES] Reused from session: {prior_filepaths}")
+            log.info(f"[FiveStar][IMAGES] Reused from session: {prior_filepaths}")
 
         # Final sanitize for current set (only store/keep paths that exist)
         saved_filepaths = [p for p in saved_filepaths if os.path.exists(p)]
         saved_names = [os.path.basename(p) for p in saved_filepaths]
-        print(f"[FiveStar][IMAGES] Sent to LLM: {saved_filepaths}")
+        log.info(f"[FiveStar][IMAGES] Sent to LLM: {saved_filepaths}")
 
         # If still none, return helpful error
         if len(saved_filepaths) == 0:
             msg = "Please paste or upload at least one weekly chart image to analyze."
-            print(f"[FiveStar][WARN] {msg}")
+            log.info(f"[FiveStar][WARN] {msg}")
             return jsonify({"ok": False, "error": msg, "code": "NO_IMAGES"}), 400
 
         # Append user message to chat history only if we can proceed
@@ -1333,13 +1338,13 @@ def five_star_analyze():
         # Update server-side store (not client cookie)
         store_entry['images'] = list(saved_filepaths)
         FIVESTAR_STORE[sid] = store_entry
-        print(f"[FiveStar] server store images set: {store_entry['images']}")
+        log.info(f"[FiveStar] server store images set: {store_entry['images']}")
 
         # Call controller with LLM
         try:
             controller = FiveStarAgentController()
         except Exception as e:
-            print(f"[FiveStar][ERROR] Failed to init controller: {e}")
+            log.info(f"[FiveStar][ERROR] Failed to init controller: {e}")
             return jsonify({"ok": False, "error": f"Failed to init controller: {e}"}), 500
         try:
             session_id = sid
@@ -1348,9 +1353,9 @@ def five_star_analyze():
             inject_summary = False
             if reused_from_session and image_summary:
                 inject_summary = True
-                print(f"[FiveStar][OPT] Reusing summary instead of images. words={len(str(image_summary).split())}")
+                log.info(f"[FiveStar][OPT] Reusing summary instead of images. words={len(str(image_summary).split())}")
             elif reused_from_session and not image_summary:
-                print("[FiveStar][OPT] No summary available; images will be sent to preserve context.")
+                log.info("[FiveStar][OPT] No summary available; images will be sent to preserve context.")
             if model_choice:
                 agent_reply, model_used, usage = controller.analyze_with_model(
                     instructions=instructions,
@@ -1384,28 +1389,28 @@ def five_star_analyze():
                 store_entry['image_summary'] = agent_reply[:max_chars]
                 FIVESTAR_STORE[sid] = store_entry
                 try:
-                    print(f"[FiveStar][OPT] Cached summary (capped) from first image turn. words={len(agent_reply.split())} chars={len(agent_reply)} -> stored_chars={len(store_entry['image_summary'])}")
+                    log.info(f"[FiveStar][OPT] Cached summary (capped) from first image turn. words={len(agent_reply.split())} chars={len(agent_reply)} -> stored_chars={len(store_entry['image_summary'])}")
                 except Exception:
                     pass
         except Exception as e:
             provider = 'Gemini' if (model_choice or '').lower().startswith('gemini') else 'OpenAI'
             import traceback as _tb
-            print(f"[FiveStar][ERROR] analyze_with_model failed ({provider}): {e}")
-            print(f"[FiveStar][TRACE] {_tb.format_exc()}")
+            log.info(f"[FiveStar][ERROR] analyze_with_model failed ({provider}): {e}")
+            log.info(f"[FiveStar][TRACE] {_tb.format_exc()}")
             return jsonify({"ok": False, "error": f"{provider} inference failed: {e}"}), 500
         # Append to chat including model used (already appended in reply, but keep metadata minimal)
         _append_fivestar_message('agent', agent_reply)
 
-        print(f"[FiveStar] Model used: {model_used}")
+        log.info(f"[FiveStar] Model used: {model_used}")
         # Log response sizes; session cookie should remain small now that data is server-side
         try:
             import json as _json
             payload_bytes = len(_json.dumps({"agent_reply": agent_reply, "usage": usage}, ensure_ascii=False).encode('utf-8'))
-            print(f"[FiveStar][DEBUG] Response payload (partial) size: {payload_bytes} bytes")
+            log.info(f"[FiveStar][DEBUG] Response payload (partial) size: {payload_bytes} bytes")
             # We no longer store large data in Flask client-side session
-            print(f"[FiveStar][DEBUG] Session cookie remains minimal; large data kept server-side for sid={sid}")
+            log.info(f"[FiveStar][DEBUG] Session cookie remains minimal; large data kept server-side for sid={sid}")
         except Exception as _e:
-            print(f"[FiveStar][WARN] Size logging failed: {_e}")
+            log.info(f"[FiveStar][WARN] Size logging failed: {_e}")
         return jsonify({
             "ok": True,
             "agent_reply": agent_reply,
@@ -1414,8 +1419,8 @@ def five_star_analyze():
         })
     except Exception as e:
         import traceback as _tb
-        print(f"[FiveStar][ERROR] Unexpected: {e}")
-        print(f"[FiveStar][TRACE] {_tb.format_exc()}")
+        log.info(f"[FiveStar][ERROR] Unexpected: {e}")
+        log.info(f"[FiveStar][TRACE] {_tb.format_exc()}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
@@ -1424,9 +1429,9 @@ from flask import session, redirect
 
 @app.route('/five_star/reset', methods=['POST'])
 def reset_five_star_session():
-    print("[FiveStar][RESET] Clearing session memory and uploaded images")
+    log.info("[FiveStar][RESET] Clearing session memory and uploaded images")
     try:
-        print(f"[FiveStar][RESET] Current session paths: {session.get('five_star_agent_images', [])}")
+        log.info(f"[FiveStar][RESET] Current session paths: {session.get('five_star_agent_images', [])}")
     except Exception:
         pass
 
@@ -1440,9 +1445,9 @@ def reset_five_star_session():
     for path in image_paths:
         try:
             os.remove(path)
-            print(f"[FiveStar][RESET] Deleted file: {path}")
+            log.info(f"[FiveStar][RESET] Deleted file: {path}")
         except Exception as e:
-            print(f"[FiveStar][RESET] Failed to delete file {path}: {e}")
+            log.info(f"[FiveStar][RESET] Failed to delete file {path}: {e}")
 
     # Clear chat memory and server-side store
     session.pop('five_star_agent_chat', None)
@@ -1752,12 +1757,12 @@ def start_multitimeframe_agent():
 
 @app.route("/run_regression_predictor", methods=["POST"])
 def run_regression_predictor():
-    print("[run_regression_predictor] Endpoint called.")
+    log.info("[run_regression_predictor] Endpoint called.")
     import pandas as pd
     # Accept multiple files and select the 5m file by content
     files = request.files.getlist('csv_files')
     if not files or all(f.filename == '' for f in files):
-        print("[run_regression_predictor] No CSV files uploaded.")
+        log.info("[run_regression_predictor] No CSV files uploaded.")
         return jsonify({'feedback': 'No CSV files uploaded. Please upload at least one CSV to run regression strategy.'})
     def infer_interval_from_df(df, filename=None):
         # Try to infer interval from the time column and date column
@@ -1768,13 +1773,13 @@ def run_regression_predictor():
                 time_col = c
             if c.lower() == 'date':
                 date_col = c
-        print(f"[interval_detect] {filename}: columns={list(df.columns)}, time_col={time_col}, date_col={date_col}, n_rows={len(df)}")
+        log.info(f"[interval_detect] {filename}: columns={list(df.columns)}, time_col={time_col}, date_col={date_col}, n_rows={len(df)}")
         if not time_col:
-            print(f"[interval_detect] {filename}: No time column found.")
+            log.info(f"[interval_detect] {filename}: No time column found.")
             return None
         n = len(df)
         if n < 2:
-            print(f"[interval_detect] {filename}: Not enough rows.")
+            log.info(f"[interval_detect] {filename}: Not enough rows.")
             return None
         # Use last 5 bars if possible
         last_rows = df.iloc[-5:] if n >= 5 else df.iloc[-2:]
@@ -1783,14 +1788,14 @@ def run_regression_predictor():
             # All same date, use all rows
             times = last_rows[time_col].astype(str).tolist()
             dates = last_rows[date_col].astype(str).tolist()
-            print(f"[interval_detect] {filename}: Using last 5 times (same date): {times}, date: {dates[0] if dates else 'N/A'}")
+            log.info(f"[interval_detect] {filename}: Using last 5 times (same date): {times}, date: {dates[0] if dates else 'N/A'}")
         else:
             # Use only last 2 bars
             times = df.iloc[-2:][time_col].astype(str).tolist()
             dates = df.iloc[-2:][date_col].astype(str).tolist() if date_col else ['N/A', 'N/A']
-            print(f"[interval_detect] {filename}: Using last 2 times (diff date): {times}, dates: {dates}")
+            log.info(f"[interval_detect] {filename}: Using last 2 times (diff date): {times}, dates: {dates}")
         if len(times) < 2:
-            print(f"[interval_detect] {filename}: Not enough times for diff.")
+            log.info(f"[interval_detect] {filename}: Not enough times for diff.")
             return None
         import re
         mins = []
@@ -1800,39 +1805,39 @@ def run_regression_predictor():
                 h = int(m[1]); m2 = int(m[2]); s = int(m[3]) if m[3] else 0
                 mins.append(h * 60 + m2 + s / 60)
             else:
-                print(f"[interval_detect] {filename}: Could not parse time '{t}'")
-        print(f"[interval_detect] {filename}: minute values: {mins}")
+                log.info(f"[interval_detect] {filename}: Could not parse time '{t}'")
+        log.info(f"[interval_detect] {filename}: minute values: {mins}")
         if len(mins) < 2:
-            print(f"[interval_detect] {filename}: Not enough valid minute values.")
+            log.info(f"[interval_detect] {filename}: Not enough valid minute values.")
             return None
         diffs = [mins[i+1] - mins[i] for i in range(len(mins)-1)]
-        print(f"[interval_detect] {filename}: diffs: {diffs}")
+        log.info(f"[interval_detect] {filename}: diffs: {diffs}")
         # Only consider positive diffs
         pos_diffs = [d for d in diffs if d > 0]
-        print(f"[interval_detect] {filename}: positive diffs: {pos_diffs}")
+        log.info(f"[interval_detect] {filename}: positive diffs: {pos_diffs}")
         if not pos_diffs:
-            print(f"[interval_detect] {filename}: No positive diffs.")
+            log.info(f"[interval_detect] {filename}: No positive diffs.")
             return None
         # Use mode (most common) difference
         from collections import Counter
         mode_diff, _ = Counter(pos_diffs).most_common(1)[0]
-        print(f"[interval_detect] {filename}: mode_diff: {mode_diff}")
+        log.info(f"[interval_detect] {filename}: mode_diff: {mode_diff}")
         if abs(mode_diff - 1) < 0.1:
-            print(f"[interval_detect] {filename}: Detected interval: 1m")
+            log.info(f"[interval_detect] {filename}: Detected interval: 1m")
             return '1m'
         if abs(mode_diff - 5) < 0.1:
-            print(f"[interval_detect] {filename}: Detected interval: 5m")
+            log.info(f"[interval_detect] {filename}: Detected interval: 5m")
             return '5m'
         if abs(mode_diff - 15) < 0.1:
-            print(f"[interval_detect] {filename}: Detected interval: 15m")
+            log.info(f"[interval_detect] {filename}: Detected interval: 15m")
             return '15m'
         if abs(mode_diff - 30) < 0.1:
-            print(f"[interval_detect] {filename}: Detected interval: 30m")
+            log.info(f"[interval_detect] {filename}: Detected interval: 30m")
             return '30m'
         if abs(mode_diff - 60) < 1:
-            print(f"[interval_detect] {filename}: Detected interval: 60m")
+            log.info(f"[interval_detect] {filename}: Detected interval: 60m")
             return '60m'
-        print(f"[interval_detect] {filename}: Detected interval: {mode_diff}m")
+        log.info(f"[interval_detect] {filename}: Detected interval: {mode_diff}m")
         return f'{mode_diff}m'
     file_5m = None
     for f in files:
@@ -1847,26 +1852,26 @@ def run_regression_predictor():
             else:
                 raise ValueError(f"No volume column found in uploaded file {f.filename}. Columns: {list(df.columns)}")
             interval = infer_interval_from_df(df, filename=f.filename)
-            print(f"[run_regression_predictor] {f.filename} interval detected: {interval}")
+            log.info(f"[run_regression_predictor] {f.filename} interval detected: {interval}")
             if interval == '5m' and file_5m is None:
                 file_5m = (f, df)
         except Exception as e:
-            print(f"[run_regression_predictor] Failed to read {f.filename}: {e}")
+            log.info(f"[run_regression_predictor] Failed to read {f.filename}: {e}")
     if not file_5m:
         return jsonify({'feedback': 'A 5-minute CSV is required for regression simulation. Please upload a 5-minute interval CSV.'})
     f_5m, df_5m = file_5m
     df_5m.columns = [col.lower() for col in df_5m.columns]
-    print(f"[run_regression_predictor] Using 5m file: {f_5m.filename}, shape: {df_5m.shape}")
+    log.info(f"[run_regression_predictor] Using 5m file: {f_5m.filename}, shape: {df_5m.shape}")
     # Optionally, get user_params from form
     user_params = {}
     for k in ['max_risk_per_trade', 'max_daily_risk', 'long_threshold', 'short_threshold']:
         v = request.form.get(k)
         if v is not None:
             user_params[k] = v
-    print(f"[run_regression_predictor] user_params: {user_params}")
+    log.info(f"[run_regression_predictor] user_params: {user_params}")
     agent = RegressionPredictorAgent(user_params=user_params)
     fit_result = agent.fit(df_5m)
-    print(f"[run_regression_predictor] agent.fit() returned: {fit_result}")
+    log.info(f"[run_regression_predictor] agent.fit() returned: {fit_result}")
     # --- Progress tracker setup ---
     regression_backtest_tracker.update({
         "current": 0,
@@ -1877,8 +1882,8 @@ def run_regression_predictor():
     })
     result = agent.find_best_threshold_strategy(df_5m, user_params=user_params)
     regression_backtest_tracker["status"] = "done"
-    print(f"[run_regression_predictor] agent.find_best_threshold_strategy() returned keys: {list(result.keys())}")
-    print(f"[run_regression_predictor] Returning result to client.")
+    log.info(f"[run_regression_predictor] agent.find_best_threshold_strategy() returned keys: {list(result.keys())}")
+    log.info(f"[run_regression_predictor] Returning result to client.")
 
     result = to_serializable(result)
     # Pass through regression_trades_plot_path if present in best_result
@@ -1985,7 +1990,7 @@ def run_vwap_agent():
         if selected_model:
             model_override = selected_model
             provider_override = 'gemini' if selected_model.startswith('gemini') else 'openai'
-            print(f"[VWAP_AGENT] User selected model: {selected_model} (provider: {provider_override})")
+            log.info(f"[VWAP_AGENT] User selected model: {selected_model} (provider: {provider_override})")
 
         # Convert images to bytes
         image_bytes_list = []
@@ -2012,11 +2017,11 @@ def run_vwap_agent():
             vwap_agent.model_name = model_override
             vwap_agent.provider = provider_override
         result = vwap_agent.run(images=image_bytes_list, df_5m=df_ohlcv)
-        print(f"[VWAP_AGENT] LLM provider used: {vwap_agent.provider}, model: {vwap_agent.model_name}")
+        log.info(f"[VWAP_AGENT] LLM provider used: {vwap_agent.provider}, model: {vwap_agent.model_name}")
         return jsonify(result)
 
     except Exception as e:
-        print(f"[VWAP_AGENT] Error: {e}\n{traceback.format_exc()}")
+        log.info(f"[VWAP_AGENT] Error: {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
 
@@ -2042,7 +2047,7 @@ def run_vwap_renko_agent():
         if selected_model:
             model_override = selected_model
             provider_override = 'gemini' if selected_model.startswith('gemini') else 'openai'
-            print(f"[VWAP_RENKO_AGENT] User selected model: {selected_model} (provider: {provider_override})")
+            log.info(f"[VWAP_RENKO_AGENT] User selected model: {selected_model} (provider: {provider_override})")
         
         # Get optional user notes
         user_notes = request.form.get('notes', '').strip()
@@ -2091,13 +2096,13 @@ def run_vwap_renko_agent():
             context['provider'] = llm_result.get('provider', context['provider'])
             context['model_name'] = llm_result.get('model_name', context['model_name'])
             
-            print(f"[VWAP_RENKO_AGENT] LLM provider used: {context['provider']}, model: {context['model_name']}")
+            log.info(f"[VWAP_RENKO_AGENT] LLM provider used: {context['provider']}, model: {context['model_name']}")
         
         # Render results in new tab
         return render_template('vwap_renko.html', **context)
         
     except Exception as e:
-        print(f"[VWAP_RENKO_AGENT] Error: {e}\n{traceback.format_exc()}")
+        log.info(f"[VWAP_RENKO_AGENT] Error: {e}\n{traceback.format_exc()}")
         # Return error page instead of JSON
         return render_template('vwap_renko.html', 
                              warning=f"Error: {str(e)}", 
@@ -2131,7 +2136,7 @@ def serve_heatmap():
     img_dir = os.path.join(os.path.dirname(__file__), 'uploaded_csvs')
     filename = 'heatmap_debug.png'
     # Debug print to verify path
-    print(f"[DEBUG] Serving heatmap from: {img_dir}, file: {filename}")
+    log.info(f"[DEBUG] Serving heatmap from: {img_dir}, file: {filename}")
     return send_from_directory(img_dir, filename)
 
 @app.route('/uploaded_csvs/<path:filename>')

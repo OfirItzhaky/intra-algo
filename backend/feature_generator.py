@@ -1,6 +1,9 @@
 import numpy as np
 import pandas as pd
 import pandas_ta as ta
+from logging_setup import get_logger
+
+log = get_logger(__name__)
 class FeatureGenerator:
     """
     A class to generate technical indicators and features for trading simulations.
@@ -12,7 +15,7 @@ class FeatureGenerator:
         """
         self.df_with_labels = None  # ✅ Store processed dataset for classification
 
-        print("✅ FeatureGenerator initialized!")
+        log.info("✅ FeatureGenerator initialized!")
 
     def calculate_indicators(self, df):
         """
@@ -46,7 +49,7 @@ class FeatureGenerator:
         df["AroonDn"] = aroon_indicators["AROOND_14"]
         df["AroonOsc"] = aroon_indicators["AROONOSC_14"]
 
-        print("✅ Successfully calculated all technical indicators with correct column names!")
+        log.info("✅ Successfully calculated all technical indicators with correct column names!")
         return df
 
     def calculate_indicators(self, df):
@@ -82,7 +85,7 @@ class FeatureGenerator:
         df["AroonDn"] = aroon_indicators["AROOND_14"]
         df["AroonOsc"] = aroon_indicators["AROONOSC_14"]
 
-        print("✅ Successfully calculated all technical indicators with correct column names!")
+        log.info("✅ Successfully calculated all technical indicators with correct column names!")
         return df
 
     def add_constant_columns(self, df, constants=None):
@@ -122,7 +125,7 @@ class FeatureGenerator:
         for col, value in constants.items():
             df[col] = value
 
-        print(f"✅ Added constant columns: {list(constants.keys())}")
+        log.info(f"✅ Added constant columns: {list(constants.keys())}")
         return df
 
 
@@ -151,7 +154,7 @@ class FeatureGenerator:
         # ✅ Compute MACD Histogram (MACD - MACD Signal Line)
         df["MACDDiff"] = df["MACD"] - df["MACDAvg"]
 
-        print("✅ Successfully added MACD indicators!")
+        log.info("✅ Successfully added MACD indicators!")
         return df
 
     def add_multi_ema_indicators(self, df, ema_periods=None):
@@ -185,7 +188,7 @@ class FeatureGenerator:
             df[close_distance_col] = df["Close"] - df[ema_col]
             df[open_distance_col] = df["Open"] - df[ema_col]
 
-        print("✅ Added EMAs (5-50) and their Distances (Close/Open) Successfully!")
+        log.info("✅ Added EMAs (5-50) and their Distances (Close/Open) Successfully!")
         return df
 
     def add_high_based_indicators_combined(self, df, ema_periods=None, rolling_periods=None):
@@ -247,7 +250,7 @@ class FeatureGenerator:
         # Drop NaN values that may arise from rolling calculations
         # df = df.dropna()
 
-        print("✅ Successfully added High-Based Indicators (Unified Method)!")
+        log.info("✅ Successfully added High-Based Indicators (Unified Method)!")
         return df
 
     def remove_exactly_correlated_features(self, df):   #todo:currently not used
@@ -272,7 +275,7 @@ class FeatureGenerator:
             if correlated_features:
                 features_to_drop.add(column)
 
-        print(f"📊 Removing {len(features_to_drop)} features with perfect correlation (1.0): {features_to_drop}")
+        log.info(f"📊 Removing {len(features_to_drop)} features with perfect correlation (1.0): {features_to_drop}")
 
         # Drop the selected features
         df = df.drop(columns=features_to_drop, errors="ignore")
@@ -293,7 +296,7 @@ class FeatureGenerator:
 
         # ✅ Ensure ATR is already computed
         if "ATR" not in df.columns:
-            print("⚠️ ATR is missing! Ensure ATR is computed before adding volatility features.")
+            log.info("⚠️ ATR is missing! Ensure ATR is computed before adding volatility features.")
             return df
 
         # ✅ Compute Williams %R
@@ -306,12 +309,12 @@ class FeatureGenerator:
             df["SMA_Volume"] = df["Volume"].rolling(window=volume_period).mean()
             df["Relative_Volume"] = df["Volume"] / df["SMA_Volume"]
         else:
-            print("⚠️ Warning: 'Volume' column not found, Relative Volume not calculated!")
+            log.info("⚠️ Warning: 'Volume' column not found, Relative Volume not calculated!")
 
         # ✅ Drop intermediate calculation columns
         df = df.drop(columns=["SMA_Volume"], errors="ignore")
 
-        print("✅ Successfully added volatility, Williams %R, and Relative Volume features!")
+        log.info("✅ Successfully added volatility, Williams %R, and Relative Volume features!")
         return df
 
     def add_ichimoku_cloud(self, df, price_high="High", price_low="Low", price_close="Close", tenkan_period=9,
@@ -345,7 +348,7 @@ class FeatureGenerator:
             "Tenkan", "Kijun", "Chikou", "SenkouSpan_A", "SenkouSpan_B"
         ], errors="ignore", inplace=True)
 
-        print("✅ Ichimoku Cloud indicators added successfully (Top 5 features only)!")
+        log.info("✅ Ichimoku Cloud indicators added successfully (Top 5 features only)!")
         return df
 
     import pandas_ta as ta
@@ -375,7 +378,7 @@ class FeatureGenerator:
 
         # ✅ Ensure ATR is available before creating new features
         if df["ATR"].isna().all():
-            print("⚠️ ATR calculation failed! Ensure input data is valid.")
+            log.info("⚠️ ATR calculation failed! Ensure input data is valid.")
             return df
 
         # ✅ Compute ATR-based price levels
@@ -385,7 +388,7 @@ class FeatureGenerator:
         df["ATR+ Open"] = df["Open"] + df["ATR"]
 
 
-        print("✅ Successfully computed ATR and added ATR-adjusted price features!")
+        log.info("✅ Successfully computed ATR and added ATR-adjusted price features!")
         return df
 
     def add_vwap_features(self, df):
@@ -413,7 +416,7 @@ class FeatureGenerator:
         df["VWAP"] = df["Cum_PxV"] / df["Cum_Volume"]
 
 
-        print("✅ VWAP added successfully!")
+        log.info("✅ VWAP added successfully!")
         return df
 
     def add_cci_average(self, df, cci_length=14, cci_avg_length=9):
@@ -430,13 +433,13 @@ class FeatureGenerator:
         """
 
         # ✅ Always Compute CCI (Even if it already exists)
-        print(f"🔹 Computing CCI with length={cci_length}...")
+        log.info(f"🔹 Computing CCI with length={cci_length}...")
         df["CCI"] = df.ta.cci(length=cci_length)
 
         # ✅ Compute CCI Average (Rolling mean of CCI)
         df["CCI_Avg"] = df["CCI"].rolling(window=cci_avg_length).mean()
 
-        print(f"✅ Successfully computed CCI and CCI_Avg (CCI: {cci_length}, CCI_Avg: {cci_avg_length})")
+        log.info(f"✅ Successfully computed CCI and CCI_Avg (CCI: {cci_length}, CCI_Avg: {cci_avg_length})")
         return df
 
     def add_fibonacci_levels(self, df, price_high="High", price_low="Low", length=50, retrace=0.382):
@@ -458,7 +461,7 @@ class FeatureGenerator:
         df["UpperBand.2"] = df["Fibo_High"]
         df["LowerBand.2"] = df["Fibo_Low"]
 
-        print(f"✅ Fibonacci levels added successfully! (Length={length}, Retrace={retrace})")
+        log.info(f"✅ Fibonacci levels added successfully! (Length={length}, Retrace={retrace})")
         return df
 
     def create_all_features(self, df):
@@ -468,7 +471,7 @@ class FeatureGenerator:
         @param df: The DataFrame containing raw market data (Date, Time, Open, High, Low, Close, Volume).
         @return: Processed DataFrame with all added features.
         """
-        print("🚀 Starting full feature generation pipeline...")
+        log.info("🚀 Starting full feature generation pipeline...")
 
         # Step 1: Start with price-only data (this is already the input `df`)
         df_features = df.copy()
@@ -507,7 +510,7 @@ class FeatureGenerator:
         df_features = self.add_volatility_momentum_volume_features(df_features)
 
         # ✅ Print Summary of Features
-        print(f"✅ Feature generation complete! Final DataFrame: {df_features.shape[1]} columns")
+        log.info(f"✅ Feature generation complete! Final DataFrame: {df_features.shape[1]} columns")
 
         return df_features
 

@@ -1,6 +1,9 @@
 from IPython.display import display, HTML
 import ipywidgets as widgets
 
+from logging_setup import get_logger
+
+log = get_logger(__name__)
 def create_snapshot_counter():
     """
     Create a simple snapshot counter widget for Jupyter notebooks.
@@ -32,7 +35,7 @@ def create_snapshot_counter():
             content = text_area.value.strip()
             
             if not content:
-                print("No snapshots pasted.")
+                log.info("No snapshots pasted.")
                 return
                 
             # A simple heuristic to count snapshots - assuming each snapshot 
@@ -41,9 +44,9 @@ def create_snapshot_counter():
             count = len(snapshots)
             
             if count == 1:
-                print(f"You pasted 1 snapshot.")
+                log.info(f"You pasted 1 snapshot.")
             else:
-                print(f"You pasted {count} snapshots.")
+                log.info(f"You pasted {count} snapshots.")
 
     # Connect the button to the function
     button.on_click(count_snapshots)
@@ -66,7 +69,7 @@ def count_snapshots_input():
     Returns:
         int: The number of snapshots detected
     """
-    print("Please paste your snapshots below and press Ctrl+D (or Ctrl+Z on Windows) when finished:")
+    log.info("Please paste your snapshots below and press Ctrl+D (or Ctrl+Z on Windows) when finished:")
     
     snapshots = []
     try:
@@ -82,9 +85,9 @@ def count_snapshots_input():
     snapshot_count = len([s for s in text.split('\n\n') if s.strip()])
     
     if snapshot_count == 1:
-        print(f"You pasted 1 snapshot.")
+        log.info(f"You pasted 1 snapshot.")
     else:
-        print(f"You pasted {snapshot_count} snapshots.")
+        log.info(f"You pasted {snapshot_count} snapshots.")
     
     return snapshot_count
 
@@ -117,8 +120,8 @@ def count_snapshots_simple(snapshots_text=None):
     snapshot_count = len([s for s in snapshots_text.split('\n\n') if s.strip()])
     
     if snapshot_count == 1:
-        print(f"You pasted 1 snapshot.")
+        log.info(f"You pasted 1 snapshot.")
     else:
-        print(f"You pasted {snapshot_count} snapshots.")
+        log.info(f"You pasted {snapshot_count} snapshots.")
     
     return snapshot_count 

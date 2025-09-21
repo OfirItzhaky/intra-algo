@@ -18,7 +18,9 @@ Output:
 
 from typing import Dict, Optional
 import pandas as pd
+from logging_setup import get_logger
 
+log = get_logger(__name__)
 
 def calc_exit_by_r_multiple(
     df: pd.DataFrame,
@@ -106,20 +108,20 @@ def calc_exit_on_vwap_loss(df, entry_index, entry_price, side):
             ts = row.name
 
             if side == "long" and close < vwap:
-                print(f"[EXIT FOUND] VWAP loss for LONG at index {i} ({ts}): Close={close:.2f} < VWAP={vwap:.2f}")
+                log.info(f"[EXIT FOUND] VWAP loss for LONG at index {i} ({ts}): Close={close:.2f} < VWAP={vwap:.2f}")
                 return {"sl": close, "tp": None, "exit_index":i}
 
             elif side == "short" and close > vwap:
-                print(f"[EXIT FOUND] VWAP loss for SHORT at index {i} ({ts}): Close={close:.2f} > VWAP={vwap:.2f}")
+                log.info(f"[EXIT FOUND] VWAP loss for SHORT at index {i} ({ts}): Close={close:.2f} > VWAP={vwap:.2f}")
                 return {"sl": close, "tp": None, "exit_index":i}
 
         # === No VWAP loss detected in window ===
-        print(f"[DEBUG] No VWAP loss exit found for {side.upper()} trade starting at index {entry_index} ({df.index[entry_index]})")
+        log.info(f"[DEBUG] No VWAP loss exit found for {side.upper()} trade starting at index {entry_index} ({df.index[entry_index]})")
         fallback_exit = df.iloc[min(entry_index + max_lookahead, len(df)-1)]["Close"]
         return {"sl": fallback_exit, "tp": None}
 
     except Exception as e:
-        print(f"[ERROR] VWAP loss calculation failed: {e}")
+        log.info(f"[ERROR] VWAP loss calculation failed: {e}")
         return {"sl": None, "tp": None}
 
 

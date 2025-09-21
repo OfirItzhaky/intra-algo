@@ -1,5 +1,9 @@
 import pandas as pd
 
+from logging_setup import get_logger
+
+log = get_logger(__name__)
+
 SYMBOL_LIST = [
     "SPY", "QQQ", "RSP", "SDS", "SQQQ", "TLT", "GLD", "IBIT",
     "SOXL", "UUP", "DBC", "UVXY", "XBI", "AAPL", "NVDA", "TSLA", "EEM", "EFA"
@@ -20,7 +24,7 @@ class MarketMomentumScorer:
 
 
     def compute_indicators(self):
-        print("\n📊 Computing SMA and Pivot indicators...")
+        log.info("\n📊 Computing SMA and Pivot indicators...")
         for name, dataset in [("weekly", self.weekly_data), ("daily", self.daily_data)]:
             for symbol, df in dataset.items():
                 if df.empty:
@@ -31,7 +35,7 @@ class MarketMomentumScorer:
 
                 df["Pivot"] = (df["High"] + df["Low"] + df["Close"]) / 3
                 dataset[symbol] = df
-                print(f"🔍 {symbol} [{name}] → Columns: {list(df.columns)}")
+                log.info(f"🔍 {symbol} [{name}] → Columns: {list(df.columns)}")
 
     def get_momentum_color(self, df):
         latest = df.iloc[-1]

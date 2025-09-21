@@ -6,6 +6,11 @@ import xgboost as xgb
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import classification_report
 from imblearn.over_sampling import SMOTE
+
+from logging_setup import get_logger
+
+log = get_logger(__name__)
+
 class ClassifierModelTrainer:
     """
     A class to train and evaluate classifiers for predicting 'good bar' classifications.
@@ -23,14 +28,14 @@ class ClassifierModelTrainer:
         # ✅ Store combined predictions for visualization
         self.classifier_predictions_df = None
 
-        print("✅ ClassifierModelTrainer initialized!")
+        log.info("✅ ClassifierModelTrainer initialized!")
 
     def copy(self):
         import copy
         return copy.deepcopy(self)
 
     def train_random_forest(self, X_train, y_train, X_test, y_test):
-        print("\n🚀 Training RandomForest...")
+        log.info("\n🚀 Training RandomForest...")
 
         rf_model = RandomForestClassifier(
             class_weight="balanced",
@@ -45,9 +50,9 @@ class ClassifierModelTrainer:
         predictions = rf_model.predict(X_test)
         accuracy = accuracy_score(y_test, predictions)
 
-        print("\n📊 RandomForest Evaluation:")
-        print(classification_report(y_test, predictions))
-        print(f"\n🎯 RandomForest Accuracy: {accuracy:.4f}")
+        log.info("\n📊 RandomForest Evaluation:")
+        log.info(classification_report(y_test, predictions))
+        log.info(f"\n🎯 RandomForest Accuracy: {accuracy:.4f}")
 
         return {
             "model": rf_model,
@@ -57,7 +62,7 @@ class ClassifierModelTrainer:
         }
 
     def train_lightgbm(self, X_train, y_train, X_test, y_test):
-        print("\n🚀 Training LightGBM...")
+        log.info("\n🚀 Training LightGBM...")
 
         lgbm_model = lgb.LGBMClassifier(
             objective="binary",
@@ -75,9 +80,9 @@ class ClassifierModelTrainer:
         predictions = (probabilities >= 0.5).astype(int)
         accuracy = accuracy_score(y_test, predictions)
 
-        print("\n📊 LightGBM Evaluation:")
-        print(classification_report(y_test, predictions))
-        print(f"\n🎯 LightGBM Accuracy: {accuracy:.4f}")
+        log.info("\n📊 LightGBM Evaluation:")
+        log.info(classification_report(y_test, predictions))
+        log.info(f"\n🎯 LightGBM Accuracy: {accuracy:.4f}")
 
         return {
             "model": lgbm_model,
@@ -87,7 +92,7 @@ class ClassifierModelTrainer:
         }
 
     def train_xgboost(self, X_train, y_train, X_test, y_test):
-        print("\n🚀 Training XGBoost...")
+        log.info("\n🚀 Training XGBoost...")
 
         # ✅ Choose objective based on number of classes
         if self.xgboost_num_classes > 2:
@@ -128,9 +133,9 @@ class ClassifierModelTrainer:
 
         accuracy = accuracy_score(y_test, predictions)
 
-        print("\n📊 XGBoost Evaluation:")
-        print(classification_report(y_test, predictions, zero_division=0))
-        print(f"\n🎯 XGBoost Accuracy: {accuracy:.4f}")
+        log.info("\n📊 XGBoost Evaluation:")
+        log.info(classification_report(y_test, predictions, zero_division=0))
+        log.info(f"\n🎯 XGBoost Accuracy: {accuracy:.4f}")
 
         return {
             "model": xgb_model,
@@ -148,7 +153,7 @@ class ClassifierModelTrainer:
             X_test, y_test: Test dataset
             meta_timestamps_df: DataFrame with ['Date', 'Time'], aligned with X_test
         """
-        print("\n🚀 Training all classifiers...")
+        log.info("\n🚀 Training all classifiers...")
 
         self.rf_results = self.train_random_forest(X_train, y_train, X_test, y_test)
         self.lgbm_results = self.train_lightgbm(X_train, y_train, X_test, y_test)
@@ -165,7 +170,7 @@ class ClassifierModelTrainer:
             "XGBoost": self.xgb_results["predictions"]
         }, index=timestamps)
 
-        print("✅ All classifier predictions stored successfully!")
+        log.info("✅ All classifier predictions stored successfully!")
 
     def predict_all_classifiers(self, X_input: pd.DataFrame):
         """
@@ -180,7 +185,7 @@ class ClassifierModelTrainer:
         if self.rf_results is None or self.lgbm_results is None or self.xgb_results is None:
             raise ValueError("❌ Classifier models are not trained! Call `train_all_classifiers` first.")
 
-        print("\n🚀 Running classifier predictions...")
+        log.info("\n🚀 Running classifier predictions...")
 
         # Use RF feature list as reference (all models now use wrappers)
         required_features = self.rf_results["model"].feature_names_in_
@@ -190,7 +195,7 @@ class ClassifierModelTrainer:
         lgbm_pred = (self.lgbm_results["model"].predict_proba(X_input)[:, 1] >= 0.5).astype(int)
         xgb_pred = (self.xgb_results["model"].predict_proba(X_input)[:, 1] >= 0.5).astype(int)
 
-        print("✅ Predictions generated for all classifiers!")
+        log.info("✅ Predictions generated for all classifiers!")
 
         return {
             "RandomForest": rf_pred[0],
@@ -210,7 +215,7 @@ class ClassifierModelTrainer:
         Returns:
             List[Dict]: Metrics per model (F1, Precision for Label 1 & 0)
         """
-        print(f"\n📊 CV + SMOTE Evaluation – {label}")
+        log.info(f"\n📊 CV + SMOTE Evaluation – {label}")
 
         # ✅ Use tuned model builders (same params as your main training flow)
         model_builders = {
@@ -274,7 +279,7 @@ class ClassifierModelTrainer:
                 "Precision_Label_1": report['1']['precision'],
                 "Precision_Label_0": report['0']['precision']
             })
-            print(
+            log.info(
                 f"  ✅ {model_name} | F1: {report['1']['f1-score']:.3f} | Prec1: {report['1']['precision']:.3f} | Prec0: {report['0']['precision']:.3f}"
             )
 

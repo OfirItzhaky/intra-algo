@@ -6,6 +6,9 @@ import matplotlib
 matplotlib.use("TkAgg")  # Ensure using Tk backend
 import matplotlib.pyplot as plt
 plt.ion()  # Interactive mode ON
+from logging_setup import get_logger
+
+log = get_logger(__name__)
 
 
 class ModelLoaderAndExplorer:
@@ -22,18 +25,18 @@ class ModelLoaderAndExplorer:
         # === Load Regression Model ===
         with open(self.regression_path, "rb") as f:
             regression_model = pickle.load(f)
-        print("\n📦 Regression Model Attributes:")
+        log.info("\n📦 Regression Model Attributes:")
         for attr in dir(regression_model):
             if not attr.startswith("__"):
-                print(f"🔹 {attr}: {type(getattr(regression_model, attr))}")
+                log.info(f"🔹 {attr}: {type(getattr(regression_model, attr))}")
 
         # === Load Classifier Model ===
         with open(self.classifier_path, "rb") as f:
             classifier_model = pickle.load(f)
-        print("\n📦 Classifier Model Attributes:")
+        log.info("\n📦 Classifier Model Attributes:")
         for attr in dir(classifier_model):
             if not attr.startswith("__"):
-                print(f"🔸 {attr}: {type(getattr(classifier_model, attr))}")
+                log.info(f"🔸 {attr}: {type(getattr(classifier_model, attr))}")
 
         # === Extract Classifier Predictions ===
         df_classifier_preds = classifier_model.classifier_predictions_df.copy()
@@ -107,9 +110,9 @@ class ModelLoaderAndExplorer:
         num_good = high_conf_preds["Is_Good"].sum()
         percent_good = 100 * num_good / total_candidates if total_candidates > 0 else 0
 
-        print(f"📈 Total predictions >= {threshold:.2f} points: {total_candidates}")
-        print(f"✅ Number of 'good' bars (Actual >= Close + {threshold:.2f}): {num_good}")
-        print(f"🎯 Percentage good: {percent_good:.2f}%")
+        log.info(f"📈 Total predictions >= {threshold:.2f} points: {total_candidates}")
+        log.info(f"✅ Number of 'good' bars (Actual >= Close + {threshold:.2f}): {num_good}")
+        log.info(f"🎯 Percentage good: {percent_good:.2f}%")
 
         return high_conf_preds
 
@@ -280,12 +283,12 @@ class ModelLoaderAndExplorer:
 
         # Print results
         if filled:
-            print("🛠️ Artificially filled 23:00 bars using 22:59:")
+            log.info("🛠️ Artificially filled 23:00 bars using 22:59:")
             for ts in filled:
-                print(ts)
+                log.info(ts)
 
         if session_missing:
-            print("⚠️ Warning: Some 1-min bars are missing. This may impact intrabar exits.")
+            log.info("⚠️ Warning: Some 1-min bars are missing. This may impact intrabar exits.")
 
             # TODO: Add user-facing alert system if trades fall on these times.
             # Suggestion: block execution or alert in UI if exits cannot be simulated accurately.
@@ -351,5 +354,5 @@ class ModelLoaderAndExplorer:
             if 'multi_class_label' in df_all_preds.columns:
                 df_1min.loc[mask, 'multi_class_label'] = df_all_preds.loc[idx, 'multi_class_label']
         
-        print("✅ 1-minute bars enriched with predictions.")
+        log.info("✅ 1-minute bars enriched with predictions.")
         return df_1min
