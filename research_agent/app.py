@@ -2242,9 +2242,9 @@ if __name__ == "__main__":
     #     port = int(os.environ.get("PORT", 8080))
     #     # 👇 add use_reloader=False and debug=False so it’s a single process
     #     app.run(host="0.0.0.0", port=port, use_reloader=False, debug=False)
-    app.run(host="0.0.0.0", port=8080, use_reloader=False, debug=True)
+    # app.run(host="0.0.0.0", port=8080, use_reloader=False, debug=True)
 
     #TODO: DO NOT DEPLOY THE DEBUGGER PART MAIN (ABOVE) ONLY THE COMMENTED OUT PART (BELOW ) TO AVOID BREAKS!!!
 
-    # port = int(os.environ.get("PORT", 8080))
-    # app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
