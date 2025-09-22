@@ -87,7 +87,15 @@ gcloud run deploy intra-algo-service \
   --port=8080 \
   --set-env-vars="OPENAI_API_KEY=sk-...,GEMINI_API_KEY=...,FINNHUB_KEY=...,FMP_KEY=...,REDDIT_CLIENT_ID=...,REDDIT_CLIENT_SECRET=...,REDDIT_PASSWORD=...,REDDIT_USER_AGENT=...,REDDIT_USERNAME=...,ITZ_OPENAI_API_KEY=..."
 ```
-
+   or if no changes to env vars can also deploy using this:
+```bash
+gcloud run deploy intra-algo-service \
+  --image=europe-west4-docker.pkg.dev/research-agent-459210/intra-algo-repo/intra-algo-app \
+  --platform=managed \
+  --region=europe-west4 \
+  --allow-unauthenticated \
+  --port=8080
+```
 ✅ Note: You can also store env vars in `.env.yaml` and use `--env-vars-file=.env.yaml` for cleaner reuse.
 
 ## 🧪 8. Final Test (Production)
