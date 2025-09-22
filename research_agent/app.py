@@ -1,4 +1,15 @@
-# Import the numpy patch to fix NaN issue
+import os
+
+import pandas as pd
+
+from logging_setup import setup_logging, get_logger
+from flask import current_app
+
+# init logging for the running process (with simple format for development)
+setup_logging(level="INFO", use_json=False)        # or "INFO"
+log = get_logger(__name__)
+log.info("logging configured (app boot)")
+
 
 from flask import Flask, request, render_template_string, url_for,jsonify, render_template, send_from_directory
 from datetime import datetime
@@ -8,8 +19,7 @@ import pandas_ta as ta
 from research_agent.research_fetchers import ResearchFetchers, summarize_with_cache, summarize_economic_events_with_cache
 from research_agent.research_analyzer import ResearchAnalyzer
 from research_agent.news_aggregator import NewsAggregator
-import os
-import pandas as pd
+
 
 from research_agent.scalp_agent.multitimeframe3strategies_agent import MultiTimeframe3StrategiesAgent
 from research_agent.templates import HTML_TEMPLATE
@@ -29,11 +39,7 @@ from research_agent.config import CONFIG, SUMMARY_CACHE, EVENT_CACHE, REGRESSION
 import logging
 from research_agent.five_star_agent.five_star_agent_controller import FiveStarAgentController
 from research_agent.company_calendar import CompanyCalendarError
-import sys, io
-sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8', errors='ignore')
-from research_agent.logging_setup import setup_logging, get_logger
-setup_logging()
-log = get_logger("web")
+
 
 
 # === Runtime Constants ===
@@ -57,8 +63,27 @@ regression_backtest_tracker = {
 }
 
 app = Flask(__name__)
-logger = logging.getLogger("app.report_bias")
-logger.setLevel(logging.INFO)
+
+# Configure Flask's logger to use our logging setup
+import logging
+app.logger.setLevel(logging.INFO)
+app.logger.propagate = True
+
+from flask import request
+
+
+
+@app.after_request
+def _access_log_out(resp):
+    try:
+        app.logger.info(f"test<<< {resp.status_code} {request.method} {request.path}")
+        print(f"PRINT DEBUG: After request - {resp.status_code} {request.method} {request.path}")  # Extra debug
+    except Exception as e:
+        print(f"PRINT DEBUG: Exception in after_request: {e}")
+    return resp
+
+# logger = logging.getLogger("app.report_bias")
+# logger.setLevel(logging.INFO)
 app.secret_key = 'snapshot-session-key'
 # Enable debugging and detailed error display
 app.config['DEBUG'] = True
@@ -109,9 +134,9 @@ LOGIN_TEMPLATE = """
 
 @app.before_request
 def enforce_login():
-    # Allow static and login endpoints
+    # Allow static, login, and test endpoints
     endpoint = request.endpoint or ""
-    if endpoint in {"login", "static"}:
+    if endpoint in {"login", "static", "test_logging", "simple_test"}:
         return
     # If no allow-list configured, skip gate
     if not ALLOWED_USERS:
@@ -279,10 +304,10 @@ def api_five_star_report_bias():
         data = ctrl.get_symbol_report_info(symbol=symbol, days_ahead=days_ahead)
         return jsonify({"ok": True, "data": data, "error": None}), 200
     except CompanyCalendarError as ce:
-        logger.exception("validation error")
+        log.exception("validation error")
         return jsonify({"ok": False, "data": None, "error": str(ce)}), 400
     except Exception:
-        logger.exception("internal error")
+        log.exception("internal error")
         return jsonify({"ok": False, "data": None, "error": "internal server error"}), 500
 
 @app.route("/upload_csv", methods=["POST"])
@@ -1059,9 +1084,73 @@ def symbol_chart():
     </html>
     """
 
-@app.route("/test")
-def test_route():
-    return "Test route is working!"
+import logging, sys
+from flask import current_app
+
+
+@app.route("/simple", methods=["GET"])
+def simple_test():
+    """Dead simple test route"""
+    return f"<h1>SIMPLE TEST WORKS! Time: {datetime.now()}</h1>"
+
+@app.route("/test", methods=["GET"])
+@app.route("/testlog", methods=["GET"])  # New route to bypass cache
+def test_logging():
+    """Test route to check logging functionality"""
+    
+    # BYPASS ALL CUSTOM LOGGING - Use raw Python logging
+    import logging
+    import sys
+    
+    # Create a completely fresh logger with direct stdout handler
+    test_logger = logging.getLogger("DIRECT_TEST")
+    test_logger.handlers.clear()  # Remove any existing handlers
+    
+    # Add direct stdout handler
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = logging.Formatter('DIRECT_LOG: %(message)s')
+    handler.setFormatter(formatter)
+    test_logger.addHandler(handler)
+    test_logger.setLevel(logging.INFO)
+    
+    print("🔥 PRINT: Test route called - YOU SHOULD SEE THIS!")
+    test_logger.info("🔥 DIRECT LOGGER: This bypasses all custom logging!")
+    
+    # Also write to a file to prove the route is being called
+    with open("test_route_log.txt", "a") as f:
+        f.write(f"Test route called at {datetime.now()}\n")
+        f.flush()
+    
+    # Force flush everything
+    sys.stdout.flush()
+    sys.stderr.flush()
+    
+    from flask import make_response
+    
+    html = f"""
+    <html>
+    <head><title>DIRECT LOGGING TEST</title></head>
+    <body style="font-family: Arial; padding: 40px;">
+        <h1>🔥 DIRECT LOGGING TEST - {datetime.now()}</h1>
+        <p><strong>This should show different HTML than before!</strong></p>
+        <p>Current time: {datetime.now()}</p>
+        <p>You should see in console:</p>
+        <ul>
+            <li>🔥 PRINT: Test route called</li>
+            <li>DIRECT_LOG: message</li>
+        </ul>
+        <p><a href="/testlog">🔄 Test Again</a> | <a href="/test">Old /test</a></p>
+    </body>
+    </html>
+    """
+    
+    # Create response with no-cache headers
+    response = make_response(html)
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
 
 @app.route("/scalp-agent", methods=["GET", "POST"])
 def scalp_agent():
@@ -2143,17 +2232,17 @@ def serve_uploaded_csvs(filename):
     dir_path = os.path.join(os.path.dirname(__file__), 'uploaded_csvs')
     return send_from_directory(dir_path, filename)
 
-
 if __name__ == "__main__":
-    import os
-    import sys
-    # Detect if PyCharm debugger is attached
-    if "pydevd" in sys.modules:
-        from werkzeug.serving import run_simple
-        run_simple("127.0.0.1", 8080, app, use_reloader=False, use_debugger=False)
-    else:
-        port = int(os.environ.get("PORT", 8080))
-        app.run(host="0.0.0.0", port=port)
+    import os, sys
+    # if "pydevd" in sys.modules:
+    #     from werkzeug.serving import run_simple
+    #     # already no reloader here
+    #     run_simple("127.0.0.1", 8080, app, use_reloader=False, use_debugger=False)
+    # else:
+    #     port = int(os.environ.get("PORT", 8080))
+    #     # 👇 add use_reloader=False and debug=False so it’s a single process
+    #     app.run(host="0.0.0.0", port=port, use_reloader=False, debug=False)
+    app.run(host="0.0.0.0", port=8080, use_reloader=False, debug=True)
 
     #TODO: DO NOT DEPLOY THE DEBUGGER PART MAIN (ABOVE) ONLY THE COMMENTED OUT PART (BELOW ) TO AVOID BREAKS!!!
 
