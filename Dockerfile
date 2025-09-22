@@ -25,8 +25,7 @@ RUN grep -v "^#\|pandas_ta\|numpy" requirements.txt | grep -v "^$" > cleaned_req
     pip install --no-cache-dir -r cleaned_requirements.txt
 
 # Install numpy and pandas_ta in the correct order
-RUN pip install numpy==1.24.4
-RUN pip install pandas_ta==0.4.71b0
+
 
 # ✅ PATCH for squeeze_pro bug (from numpy import NaN → nan)
 RUN sed -i 's/from numpy import NaN as npNaN/from numpy import nan as npNaN/' $(find / -type f -name squeeze_pro.py 2>/dev/null | head -n 1)

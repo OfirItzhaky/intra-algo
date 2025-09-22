@@ -27,7 +27,7 @@ rm -rf venv backend/analyzer/__pycache__ research_agent/**/__pycache__
 ## 🐍 3. Create a New Virtual Environment (Optional but recommended)
 
 ```bash
-python3.10 -m venv venv
+python3.12 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
