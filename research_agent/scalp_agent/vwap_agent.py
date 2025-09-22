@@ -128,7 +128,7 @@ class VWAPAgent:
                 ],
                 "max_tokens": 1000
             }
-            log.info("🧪 DEBUG: OpenAI payload:\n", json.dumps(payload, indent=2))
+            # log.info("🧪 DEBUG: OpenAI payload:\n", json.dumps(payload, indent=2))
             response = requests.post(endpoint, headers=headers, json=payload)
             response.raise_for_status()
             response_data = response.json()
