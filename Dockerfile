@@ -1,53 +1,48 @@
-# Use slim Python 3.10 image
 FROM python:3.12-slim
 
-# Set working directory inside container
 WORKDIR /app
 
-# Install system dependencies (needed by Pillow, matplotlib, Tkinter, etc.)
+# OS deps (keep light; add libgomp1 for lightgbm, g++ for some builds)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libc6-dev \
-    python3-tk \
-    tk-dev \
+    build-essential gcc g++ libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Set environment variables
-ENV FLASK_ENV=production
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH="/app"
+# Faster pip + no .pyc
+ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
 
-# Copy and install dependencies
-COPY requirements.txt .
+# Copy requirements and install EVERYTHING (no filtering)
+COPY requirements.txt /app/requirements.txt
+RUN python -m pip install --upgrade pip setuptools wheel \
+ && pip install --no-cache-dir -r requirements.txt
 
-# Install all packages except numpy and pandas_ta (due to compatibility issues)
-RUN grep -v "^#\|pandas_ta\|numpy" requirements.txt | grep -v "^$" > cleaned_requirements.txt && \
-    pip install --no-cache-dir -r cleaned_requirements.txt
+# (Optional) squeeze_pro patch — make conditional to avoid 'no input files'
+# RUN f="$(find /usr/local -type f -name squeeze_pro.py 2>/dev/null | head -n 1)" \
+#  && if [ -n "$f" ]; then \
+#       sed -i 's/from numpy import NaN as npNaN/from numpy import nan as npNaN/' "$f"; \
+#     fi
 
-# Install numpy and pandas_ta in the correct order
+# (Optional) sanity prints (not log.info)
+RUN python - << 'PY'
+import numpy, sys
+print("NumPy:", numpy.__version__, file=sys.stderr)
+try:
+    import pandas_ta
+    print("pandas_ta:", pandas_ta.__version__, file=sys.stderr)
+except Exception as e:
+    print("pandas_ta import failed:", e, file=sys.stderr)
+PY
 
+# Copy project
+COPY . /app
 
-# ✅ PATCH for squeeze_pro bug (from numpy import NaN → nan)
-RUN sed -i 's/from numpy import NaN as npNaN/from numpy import nan as npNaN/' $(find / -type f -name squeeze_pro.py 2>/dev/null | head -n 1)
-
-# Optional: Verify critical packages
-RUN python -c "import numpy; log.info('Numpy version:', numpy.__version__)"
-RUN python -c "import pandas_ta; log.info('Pandas_ta version:', pandas_ta.__version__)"
-RUN python -c "import requests; log.info('Requests installed successfully')"
-
-# Copy source code (including app and research_agent folders)
-COPY research_agent/ research_agent/
-COPY backend/ backend/
-COPY frontend/ frontend/
-COPY requirements.txt .
-
-
-
-# Ensure folders exist
+# Ensure data dirs exist
 RUN mkdir -p uploaded_csvs temp_uploads data && chmod 777 uploaded_csvs temp_uploads data
 
-# Expose port expected by Cloud Run
+# Cloud Run port
+ENV PORT=8080
 EXPOSE 8080
 
-# Entrypoint for Flask app (inside research_agent)
+# Start app (Flask example). Make sure your app reads PORT or binds to 0.0.0.0:8080
 CMD ["python", "research_agent/app.py"]
