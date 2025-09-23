@@ -67,6 +67,11 @@ session.permanent = False
 docker build -t intra-algo-app .
 ```
 
+OR 
+```bash
+docker build -t europe-west4-docker.pkg.dev/research-agent-459210/intra-algo-repo/intra-algo-app:latest .
+```
+
 ## 📦 6. Tag and Push Image to Artifact Registry
 
 Replace <your-region> if needed (you used europe-west4):
